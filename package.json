@@ -1,0 +1,37 @@
+{
+  "name": "@nuxt/module-builder",
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "nuxt-build-module": "./dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "unbuild",
+    "cli": "jiti ./src/cli.ts",
+    "lint": "eslint --ext .ts,.js,.mjs .",
+    "prepack": "yarn build",
+    "play": "yarn cli ./playground",
+    "release": "yarn test && standard-version && git push --follow-tags && npm publish",
+    "test": "yarn lint"
+  },
+  "dependencies": {
+    "mri": "^1.2.0",
+    "pathe": "^0.2.0",
+    "unbuild": "^0.6.2"
+  },
+  "devDependencies": {
+    "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
+    "@nuxtjs/eslint-config-typescript": "^8.0.0",
+    "@types/mri": "^1.1.1",
+    "eslint": "^8.3.0",
+    "jiti": "^1.12.9",
+    "standard-version": "^9.3.2"
+  }
+}
