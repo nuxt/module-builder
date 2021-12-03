@@ -24,7 +24,7 @@
   "dependencies": {
     "mri": "^1.2.0",
     "pathe": "^0.2.0",
-    "unbuild": "^0.6.2"
+    "unbuild": "^0.6.1"
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",

@@ -3303,7 +3303,7 @@ unbox-primitive@^1.0.1:
     has-symbols "^1.0.2"
     which-boxed-primitive "^1.0.2"
 
-unbuild@^0.6.2:
+unbuild@^0.6.1:
   version "0.6.2"
   resolved "https://registry.yarnpkg.com/unbuild/-/unbuild-0.6.2.tgz#4a6cbefed8eb88a39d39b1a66f919b515477bf4e"
   integrity sha512-x0myXRngsixMEDMc88Wwc03JNZYxq2ZGvFwzy+5e7d4R4OIfB1K5uUaQsREObfUCbigJG+pkcFsbe7HOHkL4Tw==
