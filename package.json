@@ -24,13 +24,13 @@
   "dependencies": {
     "mri": "^1.2.0",
     "pathe": "^0.2.0",
-    "unbuild": "^0.6.2"
+    "unbuild": "^0.6.7"
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
     "@nuxtjs/eslint-config-typescript": "^8.0.0",
     "@types/mri": "^1.1.1",
-    "eslint": "^8.3.0",
+    "eslint": "^8.5.0",
     "jiti": "^1.12.9",
     "standard-version": "^9.3.2"
   }
