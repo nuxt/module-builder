@@ -1,5 +1,6 @@
 import { existsSync, promises as fsp } from 'fs'
 import { resolve } from 'pathe'
+import consola from 'consola'
 import type { ModuleMeta } from '@nuxt/schema'
 
 export async function buildModule (rootDir: string) {
@@ -23,13 +24,23 @@ export async function buildModule (rootDir: string) {
     ],
     hooks: {
       async 'rollup:done' (ctx) {
-        // Load meta
+        // Generate CommonJS stup
+        await writeCJSStub(ctx.options.outDir)
+
+        // Load module meta
         const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-        const moduleFn = await import(moduleEntryPath).then(r => r.default || r)
+        const moduleFn = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
+          consola.error(err)
+          console.error('Cannot load module. Please check dist:', moduleEntryPath)
+          return null
+        })
+        if (!moduleFn) {
+          return
+        }
         const moduleMeta = await moduleFn.getMeta()
 
+        // Generate types
         await writeTypes(ctx.options.outDir, moduleMeta)
-        await writeCJSStub(ctx.options.outDir)
       }
     }
   })
@@ -44,8 +55,8 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const schemaShims = []
   if (meta.configKey) {
     schemaShims.push(
-      `  interface NuxtConfig { ${meta.configKey}?: ModuleOptions }`,
-      `  interface NuxtOptions { ${meta.configKey}?: Partial<ModuleOptions> }`
+      `  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`,
+      `  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`
     )
   }
 
