@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.2](https://github.com/nuxt/module-builder/compare/v0.1.1...v0.1.2) (2021-12-23)
+
+
+### Bug Fixes
+
+* **pkg:** only include dist ([d2ff7e4](https://github.com/nuxt/module-builder/commit/d2ff7e4168363dd4e8a93dc9c909e6f6e07765ff))
+
 ### 0.1.1 (2021-12-23)
 
 
