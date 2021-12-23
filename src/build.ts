@@ -1,5 +1,6 @@
-import { promises as fsp } from 'fs'
+import { existsSync, promises as fsp } from 'fs'
 import { resolve } from 'pathe'
+import type { ModuleMeta } from '@nuxt/schema'
 
 export async function buildModule (rootDir: string) {
   const { build } = await import('unbuild')
@@ -22,16 +23,48 @@ export async function buildModule (rootDir: string) {
     ],
     hooks: {
       async 'rollup:done' (ctx) {
+        // Load meta
+        const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
+        const moduleFn = await import(moduleEntryPath).then(r => r.default || r)
+        const moduleMeta = await moduleFn.getMeta()
+
+        await writeTypes(ctx.options.outDir, moduleMeta)
         await writeCJSStub(ctx.options.outDir)
       }
     }
   })
 }
 
+async function writeTypes (distDir: string, meta: ModuleMeta) {
+  const dtsFile = resolve(distDir, 'types.d.ts')
+  if (existsSync(dtsFile)) {
+    return
+  }
+
+  const schemaShims = []
+  if (meta.configKey) {
+    schemaShims.push(
+      `  interface NuxtConfig { ${meta.configKey}?: ModuleOptions }`,
+      `  interface NuxtOptions { ${meta.configKey}?: Partial<ModuleOptions> }`
+    )
+  }
+
+  const dtsContents = `
+import type { ModuleOptions } from './module'
+
+${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
+export * from './module'
+`
+
+  await fsp.writeFile(dtsFile, dtsContents, 'utf8')
+}
+
 async function writeCJSStub (distDir: string) {
   const cjsStubFile = resolve(distDir, 'module.cjs')
-  const cjsStub = `// CommonJS proxy to use native ESM
-module.exports = function(...args) {
+  if (existsSync(cjsStubFile)) {
+    return
+  }
+  const cjsStub = `module.exports = function(...args) {
   return import('./module.mjs').then(m => m.default.call(this, ...args))
 }
 module.exports.meta = require('../package.json')

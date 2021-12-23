@@ -271,7 +271,7 @@
     unctx "^1.0.2"
     untyped "^0.3.0"
 
-"@nuxt/schema@npm:@nuxt/schema-edge@3.0.0-27337794.cac70e4":
+"@nuxt/schema@npm:@nuxt/schema-edge@3.0.0-27337794.cac70e4", "@nuxt/schema@npm:@nuxt/schema-edge@latest":
   version "3.0.0-27337794.cac70e4"
   resolved "https://registry.yarnpkg.com/@nuxt/schema-edge/-/schema-edge-3.0.0-27337794.cac70e4.tgz#47ecd9f68695777fcebbdb994b0f3704c0160021"
   integrity sha512-ErouOzVXgHgJ1tuWuwPbOST0bCX+utNaBeW6t6yBm7JiMjsJRjCHuti/claQDRrkntZShjF2nMYeRP2A4c8bsQ==

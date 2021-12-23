@@ -1,10 +1,6 @@
 {
   "name": "mymodule",
   "private": true,
-  "scripts": {
-    "build": "nuxt-build-module",
-    "prepack": "npm run build"
-  },
   "exports": {
     ".": {
       "require": "./dist/module.cjs",
@@ -12,7 +8,11 @@
     }
   },
   "main": "./dist/module.cjs",
-  "types": "./dist/module.d.ts",
+  "types": "./dist/types.d.ts",
+  "scripts": {
+    "build": "nuxt-build-module",
+    "prepack": "npm run build"
+  },
   "build": {
     "entries": [
       "./src/custom"

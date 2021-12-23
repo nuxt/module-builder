@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
+    "@nuxt/schema": "npm:@nuxt/schema-edge@latest",
     "@nuxtjs/eslint-config-typescript": "^8.0.0",
     "@types/mri": "^1.1.1",
     "eslint": "^8.5.0",
