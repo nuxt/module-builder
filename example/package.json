@@ -1,5 +1,7 @@
 {
   "name": "my-module",
+  "license": "MIT",
+  "version": "1.0.0",
   "exports": {
     ".": {
       "import": "./dist/module.mjs",
@@ -9,8 +11,10 @@
   },
   "main": "./dist/module.cjs",
   "types": "./dist/types.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "nuxt-module-build",
     "prepack": "npm run build"
   },
   "dependencies": {

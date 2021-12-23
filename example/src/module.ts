@@ -7,7 +7,7 @@ export interface ModuleOptions {
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'my-module',
-    configKey2: 'myModule'
+    configKey: 'myModule'
   },
   defaults: {
     apiKey: null
