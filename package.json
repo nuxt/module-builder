@@ -14,6 +14,9 @@
     "nuxt-build-module": "./dist/cli.mjs",
     "nuxt-module-build": "./dist/cli.mjs"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "unbuild",
     "example:build": "yarn nuxt-module-build ./example",
