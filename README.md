@@ -85,6 +85,20 @@ A minimum `package.json` should look like this:
 }
 ```
 
+## Dist files
+
+Module builder generates dist files in `dist/` directory:
+
+- `module.mjs`: Module entrypoint build from `src/module`
+- `module.json`: Module meta extracted from `module.mjs` + `package.json`
+- `module.cjs`: ESM proxy to allow require module in CommonJS context
+- `types.d.ts`: Exported types in addition to shims for `nuxt.config` auto completion.
+- `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
+  - Javascript and `.ts` files will be transformed to `.mjs` with extracted types on `.d.ts` file with same name
+  - `.vue` files will be transformed with extracted `.d.ts` file
+  - Other files will be copied as as
+
+
 
 ## 💻 Development
 
