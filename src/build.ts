@@ -21,7 +21,7 @@ export async function buildModule (rootDir: string) {
       '@nuxt/kit-edge'
     ],
     hooks: {
-      async 'build:done' (ctx) {
+      async 'rollup:done' (ctx) {
         await writeCJSStub(ctx.options.outDir)
       }
     }
