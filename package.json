@@ -10,18 +10,20 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
-    "nuxt-build-module": "./dist/cli.mjs"
+    "nuxt-build-module": "./dist/cli.mjs",
+    "nuxt-module-build": "./dist/cli.mjs"
   },
   "scripts": {
     "build": "unbuild",
-    "cli": "jiti ./src/cli.ts",
+    "example:build": "yarn nuxt-module-build ./example",
     "lint": "eslint --ext .ts,.js,.mjs .",
+    "nuxt-module-build": "jiti ./src/cli.ts",
     "prepack": "yarn build",
-    "play": "yarn cli ./playground",
     "release": "yarn test && standard-version && git push --follow-tags && npm publish",
     "test": "yarn lint"
   },
   "dependencies": {
+    "consola": "^2.15.3",
     "mri": "^1.2.0",
     "pathe": "^0.2.0",
     "unbuild": "^0.6.7"

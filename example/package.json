@@ -1,0 +1,28 @@
+{
+  "name": "my-module",
+  "exports": {
+    ".": {
+      "import": "./dist/module.mjs",
+      "require": "./dist/module.cjs"
+    },
+    "./utils": "./dist/utils.mjs"
+  },
+  "main": "./dist/module.cjs",
+  "types": "./dist/types.d.ts",
+  "scripts": {
+    "build": "nuxt-module-build",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@nuxt/kit": "npm:@nuxt/kit-edge@latest"
+  },
+  "devDependencies": {
+    "@nuxt/module-builder": "latest",
+    "nuxt3": "latest"
+  },
+  "build": {
+    "entries": [
+      "./src/utils"
+    ]
+  }
+}

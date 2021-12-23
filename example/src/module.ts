@@ -7,13 +7,10 @@ export interface ModuleOptions {
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'my-module',
-    configKey: 'myModule'
+    configKey2: 'myModule'
   },
   defaults: {
     apiKey: null
   },
-  setup (options, _nuxt) {
-    // eslint-disable-next-line no-console
-    console.log('My module options:', options)
-  }
+  setup (_options, _nuxt) {}
 })

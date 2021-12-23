@@ -31,7 +31,7 @@ export async function buildModule (rootDir: string) {
         const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
         const moduleFn = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
           consola.error(err)
-          console.error('Cannot load module. Please check dist:', moduleEntryPath)
+          consola.error('Cannot load module. Please check dist:', moduleEntryPath)
           return null
         })
         if (!moduleFn) {
