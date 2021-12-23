@@ -20,4 +20,4 @@ jobs:
       - run: yarn install
       - run: yarn lint
       - run: yarn build
-      - run: yarn play
+      - run: yarn example:build
