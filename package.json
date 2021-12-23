@@ -1,6 +1,7 @@
 {
   "name": "@nuxt/module-builder",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Complete solution to build Nuxt Modules",
   "license": "MIT",
   "type": "module",
   "exports": {

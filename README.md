@@ -2,8 +2,7 @@
 
 > Complete solution to build Nuxt Modules.
 
-**🧪 This tool is still under heavy development for Nuxt3.**
-**Feedback is more than welcome but please do not publish modules using module builder yet.**
+**🧪 This tool is still under heavy development for Nuxt3. Feedback is more than welcome!**
 
 ## Features
 
