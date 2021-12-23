@@ -1,7 +1,7 @@
 import { existsSync, promises as fsp } from 'fs'
 import { resolve } from 'pathe'
 import consola from 'consola'
-import type { ModuleMeta } from '@nuxt/schema'
+import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 
 export async function buildModule (rootDir: string) {
   const { build } = await import('unbuild')
@@ -29,7 +29,7 @@ export async function buildModule (rootDir: string) {
 
         // Load module meta
         const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-        const moduleFn = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
+        const moduleFn: NuxtModule<any> = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
           consola.error(err)
           consola.error('Cannot load module. Please check dist:', moduleEntryPath)
           return null
@@ -38,6 +38,20 @@ export async function buildModule (rootDir: string) {
           return
         }
         const moduleMeta = await moduleFn.getMeta()
+
+        // Enhance meta using package.json
+        if (ctx.pkg) {
+          if (!moduleMeta.name) {
+            moduleMeta.name = ctx.pkg.name
+          }
+          if (!moduleMeta.version) {
+            moduleMeta.version = ctx.pkg.version
+          }
+        }
+
+        // Write meta
+        const metaFile = resolve(ctx.options.outDir, 'module.json')
+        await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
 
         // Generate types
         await writeTypes(ctx.options.outDir, moduleMeta)
@@ -78,7 +92,8 @@ async function writeCJSStub (distDir: string) {
   const cjsStub = `module.exports = function(...args) {
   return import('./module.mjs').then(m => m.default.call(this, ...args))
 }
-module.exports.meta = require('../package.json')
+const _meta = module.exports.meta = require('./meta.json')
+module.exports.getMeta = () => Promise.resolve(_meta)
 `
   await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
 }
