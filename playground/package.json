@@ -1,17 +1,21 @@
 {
-  "private": true,
   "name": "mymodule",
-  "main": "./dist/module.cjs",
-  "types": "./dist/module.d.ts",
-  "build": {
-    "entries": [
-      "./src/custom"
-    ]
+  "private": true,
+  "scripts": {
+    "build": "nuxt-build-module",
+    "prepack": "npm run build"
   },
   "exports": {
     ".": {
       "require": "./dist/module.cjs",
       "import": "./dist/module.mjs"
     }
+  },
+  "main": "./dist/module.cjs",
+  "types": "./dist/module.d.ts",
+  "build": {
+    "entries": [
+      "./src/custom"
+    ]
   }
 }
