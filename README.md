@@ -24,11 +24,15 @@ This is the entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-```js [src/module.ts]
+```ts [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
 
 export interface ModuleOptions {
   apiKey: string
+}
+
+export interface ModuleHooks {
+  'my-module:options': (options: ModuleOptions) => Promise<void>|void
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -85,6 +89,11 @@ A minimum `package.json` should look like this:
 }
 ```
 
+## Nuxt types in development
+
+@todo document .nuxt folder, tsconfig.json, etc.
+
+
 ## Dist files
 
 Module builder generates dist files in `dist/` directory:
@@ -92,11 +101,11 @@ Module builder generates dist files in `dist/` directory:
 - `module.mjs`: Module entrypoint build from `src/module`
 - `module.json`: Module meta extracted from `module.mjs` + `package.json`
 - `module.cjs`: ESM proxy to allow require module in CommonJS context
-- `types.d.ts`: Exported types in addition to shims for `nuxt.config` auto completion.
+- `types.d.ts`: Exported types in addition to shims for `nuxt.config` auto-completion.
 - `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
   - Javascript and `.ts` files will be transformed to `.mjs` with extracted types on `.d.ts` file with same name
   - `.vue` files will be transformed with extracted `.d.ts` file
-  - Other files will be copied as as
+  - Other files will be copied as is
 
 
 
