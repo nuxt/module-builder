@@ -30,7 +30,7 @@ export async function buildModule (rootDir: string) {
         const buildRuntimeDir = resolve(ctx.options.rootDir, '.nuxt')
 
         // Load module meta
-        const moduleEntryPath = resolve(ctx.options.rootDir, 'src', 'module')
+        const moduleEntryPath = resolve(ctx.options.rootDir, 'src', 'module.ts')
         const moduleFn: NuxtModule<any> = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
           consola.error(err)
           consola.error('Cannot load module. Please check dist:', moduleEntryPath)
