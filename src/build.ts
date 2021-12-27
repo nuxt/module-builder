@@ -3,7 +3,13 @@ import { resolve, relative } from 'pathe'
 import consola from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 
+const HasModuleHooksTest = /interface\s*?ModuleHooks/gms
+
 let moduleMeta: ModuleMeta
+
+const typeAugmentations: { hooks: boolean } = {
+  hooks: false
+}
 
 export async function buildModule (rootDir: string) {
   const { build } = await import('unbuild')
@@ -53,6 +59,10 @@ export async function buildModule (rootDir: string) {
         }
 
         // Write development types
+        const moduleFileContent = await fsp.readFile(moduleEntryPath, 'utf-8')
+        // Hacky way to check that ModuleHooks has been defined
+        typeAugmentations.hooks = !!moduleFileContent.match(HasModuleHooksTest)
+        // Write development types
         const relativeModulePath = relative(buildRuntimeDir, moduleEntryPath)
             // bit hacky, need a better way to remove extension
             .replace('.ts', '')
@@ -88,8 +98,14 @@ async function writeTypes (typesDir: string, relativeModulePath: string) {
     )
   }
 
+  if (typeAugmentations.hooks) {
+    schemaShims.push(
+        `  interface NuxtHooks extends ModuleHooks {}`
+    )
+  }
+
   const dtsContents =
-      `import type { ModuleOptions } from '${relativeModulePath}'
+      `import type { ModuleOptions${typeAugmentations.hooks ? `, ModuleHooks` : ''} } from '${relativeModulePath}'
 
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}

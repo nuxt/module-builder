@@ -24,11 +24,15 @@ This is the entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-```js [src/module.ts]
+```ts [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
 
 export interface ModuleOptions {
   apiKey: string
+}
+
+export interface ModuleHooks {
+  'my-module:options': (options: ModuleOptions) => Promise<void>|void
 }
 
 export default defineNuxtModule<ModuleOptions>({
