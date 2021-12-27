@@ -58,15 +58,13 @@ export async function buildModule (rootDir: string) {
           }
         }
 
-        // Write development types
         const moduleFileContent = await fsp.readFile(moduleEntryPath, 'utf-8')
         // Hacky way to check that ModuleHooks has been defined
         typeAugmentations.hooks = !!moduleFileContent.match(HasModuleHooksTest)
-        // Write development types
         const relativeModulePath = relative(buildRuntimeDir, moduleEntryPath)
             // bit hacky, need a better way to remove extension
             .replace('.ts', '')
-        // Generate types
+        // Generate runtime types
         await writeTypes(buildRuntimeDir, relativeModulePath)
       },
       async 'rollup:done' (ctx) {
