@@ -1,7 +1,9 @@
 import { existsSync, promises as fsp } from 'fs'
-import { resolve } from 'pathe'
+import { resolve, relative } from 'pathe'
 import consola from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
+
+let moduleMeta: ModuleMeta
 
 export async function buildModule (rootDir: string) {
   const { build } = await import('unbuild')
@@ -23,12 +25,12 @@ export async function buildModule (rootDir: string) {
       '@nuxt/kit-edge'
     ],
     hooks: {
-      async 'rollup:done' (ctx) {
-        // Generate CommonJS stup
-        await writeCJSStub(ctx.options.outDir)
+      async 'build:prepare' (ctx) {
+        // runtime build files live in the .nuxt folder
+        const buildRuntimeDir = resolve(ctx.options.rootDir, '.nuxt')
 
         // Load module meta
-        const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
+        const moduleEntryPath = resolve(ctx.options.rootDir, 'src', 'module')
         const moduleFn: NuxtModule<any> = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
           consola.error(err)
           consola.error('Cannot load module. Please check dist:', moduleEntryPath)
@@ -37,7 +39,8 @@ export async function buildModule (rootDir: string) {
         if (!moduleFn) {
           return
         }
-        const moduleMeta = await moduleFn.getMeta()
+        // we need the meta pre-build so we can generate types with the correct config key
+        moduleMeta = await moduleFn.getMeta()
 
         // Enhance meta using package.json
         if (ctx.pkg) {
@@ -49,36 +52,48 @@ export async function buildModule (rootDir: string) {
           }
         }
 
+        // Write development types
+        const relativeModulePath = relative(buildRuntimeDir, moduleEntryPath)
+            // bit hacky, need a better way to remove extension
+            .replace('.ts', '')
+        // Generate types
+        await writeTypes(buildRuntimeDir, relativeModulePath)
+      },
+      async 'rollup:done' (ctx) {
+        // Write dist types
+        await writeTypes(ctx.options.outDir,'./module')
+        // Generate CommonJS stup
+        await writeCJSStub(ctx.options.outDir)
+
         // Write meta
         const metaFile = resolve(ctx.options.outDir, 'module.json')
         await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
-
-        // Generate types
-        await writeTypes(ctx.options.outDir, moduleMeta)
       }
     }
   })
 }
 
-async function writeTypes (distDir: string, meta: ModuleMeta) {
-  const dtsFile = resolve(distDir, 'types.d.ts')
-  if (existsSync(dtsFile)) {
-    return
+async function writeTypes (typesDir: string, relativeModulePath: string) {
+  // types dir may not exist
+  if (!existsSync(typesDir)) {
+    await fsp.mkdir(typesDir)
   }
+  const dtsFile = resolve(typesDir, 'types.d.ts')
 
   const schemaShims = []
-  if (meta.configKey) {
+  if (moduleMeta.configKey) {
     schemaShims.push(
-      `  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`,
-      `  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`
+        `  interface NuxtConfig { ['${moduleMeta.configKey}']?: Partial<ModuleOptions> }`,
+        `  interface NuxtOptions { ['${moduleMeta.configKey}']?: ModuleOptions }`
     )
   }
 
-  const dtsContents = `
-import type { ModuleOptions } from './module'
+  const dtsContents =
+      `import type { ModuleOptions } from '${relativeModulePath}'
+
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
-export * from './module'
+export * from '${relativeModulePath}'
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
