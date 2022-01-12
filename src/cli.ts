@@ -1,4 +1,4 @@
-#!/bin/env node
+#!/usr/bin/env node
 
 /* eslint-disable no-console */
 import mri from 'mri'
