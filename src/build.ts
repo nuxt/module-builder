@@ -1,4 +1,5 @@
 import { existsSync, promises as fsp } from 'fs'
+import { pathToFileURL } from 'url'
 import { resolve } from 'pathe'
 import consola from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
@@ -29,7 +30,9 @@ export async function buildModule (rootDir: string) {
 
         // Load module meta
         const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-        const moduleFn: NuxtModule<any> = await import(moduleEntryPath).then(r => r.default || r).catch((err) => {
+        const moduleFn: NuxtModule<any> = await import(
+          pathToFileURL(moduleEntryPath).toString()
+        ).then(r => r.default || r).catch((err) => {
           consola.error(err)
           consola.error('Cannot load module. Please check dist:', moduleEntryPath)
           return null
