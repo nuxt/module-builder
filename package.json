@@ -37,7 +37,7 @@
     "@nuxt/schema": "npm:@nuxt/schema-edge@latest",
     "@nuxtjs/eslint-config-typescript": "^8.0.0",
     "@types/mri": "^1.1.1",
-    "eslint": "^8.5.0",
+    "eslint": "^8.6.0",
     "jiti": "^1.12.9",
     "standard-version": "^9.3.2"
   }
