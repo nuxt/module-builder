@@ -83,6 +83,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const isStub = moduleTypes.includes('export *')
 
   const hasModuleOptions = isStub || typeExports.find(exp => exp.names.includes('ModuleOptions'))
+  const hasModuleHooks = isStub || typeExports.find(exp => exp.names.includes('ModuleHooks'))
 
   const schemaShims = []
   const moduleImports = []
@@ -91,6 +92,10 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     moduleImports.push('ModuleOptions')
     schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
     schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
+  }
+  if (hasModuleHooks) {
+    moduleImports.push('ModuleHooks')
+    schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
 
   const dtsContents = `

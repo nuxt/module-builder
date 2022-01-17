@@ -4,6 +4,10 @@ export interface ModuleOptions {
   apiKey: string
 }
 
+export interface ModuleHooks {
+  'my-module:init': any
+}
+
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'my-module',
