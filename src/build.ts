@@ -4,11 +4,17 @@ import { resolve } from 'pathe'
 import consola from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 
-export async function buildModule (rootDir: string) {
+export interface BuildModuleOptions {
+  rootDir: string
+  stub?: boolean
+}
+
+export async function buildModule (opts: BuildModuleOptions) {
   const { build } = await import('unbuild')
 
-  await build(rootDir, false, {
+  await build(opts.rootDir, false, {
     declaration: true,
+    stub: opts.stub,
     entries: [
       'src/module',
       { input: 'src/runtime/', outDir: 'dist/runtime', ext: 'mjs' }
