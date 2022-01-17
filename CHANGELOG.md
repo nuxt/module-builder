@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.4](https://github.com/nuxt/module-builder/compare/v0.1.3...v0.1.4) (2022-01-17)
+
+
+### Features
+
+* parse `module.d` exports to generate ModuleOptions conditionally ([9cd8282](https://github.com/nuxt/module-builder/commit/9cd828203623d25c325129b0bd2d1fa40470b55a))
+* support `--stub` ([746d59b](https://github.com/nuxt/module-builder/commit/746d59bd95ddc3dd63c89db01193c764f6f0bdde))
+* support `ModuleHooks` type export ([269ce20](https://github.com/nuxt/module-builder/commit/269ce20b33377707c2e7a9460cdc3403afacb285))
+
 ### [0.1.3](https://github.com/nuxt/module-builder/compare/v0.1.2...v0.1.3) (2022-01-17)
 
 
