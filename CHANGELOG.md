@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.5](https://github.com/nuxt/module-builder/compare/v0.1.4...v0.1.5) (2022-01-17)
+
+
+### Bug Fixes
+
+* add default export for `types.d.ts` ([885c02f](https://github.com/nuxt/module-builder/commit/885c02f0285679ab437ae3e9b5dca8436a8e84f8))
+
 ### [0.1.4](https://github.com/nuxt/module-builder/compare/v0.1.3...v0.1.4) (2022-01-17)
 
 
