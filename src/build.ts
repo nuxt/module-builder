@@ -117,7 +117,7 @@ async function writeCJSStub (distDir: string) {
   const cjsStub = `module.exports = function(...args) {
   return import('./module.mjs').then(m => m.default.call(this, ...args))
 }
-const _meta = module.exports.meta = require('./meta.json')
+const _meta = module.exports.meta = require('./module.json')
 module.exports.getMeta = () => Promise.resolve(_meta)
 `
   await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
