@@ -10,7 +10,7 @@ export interface BuildModuleOptions {
   stub?: boolean
 }
 
-export async function buildModule (opts: BuildModuleOptions) {
+export async function buildModule(opts: BuildModuleOptions) {
   const { build } = await import('unbuild')
 
   await build(opts.rootDir, false, {
@@ -31,7 +31,7 @@ export async function buildModule (opts: BuildModuleOptions) {
       '@nuxt/kit-edge'
     ],
     hooks: {
-      async 'rollup:done' (ctx) {
+      async 'rollup:done'(ctx) {
         // Generate CommonJS stup
         await writeCJSStub(ctx.options.outDir)
 
@@ -70,7 +70,7 @@ export async function buildModule (opts: BuildModuleOptions) {
   })
 }
 
-async function writeTypes (distDir: string, meta: ModuleMeta) {
+async function writeTypes(distDir: string, meta: ModuleMeta) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   if (existsSync(dtsFile)) {
     return
@@ -103,13 +103,13 @@ import { ${moduleImports.join(', ')} } from './module'
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
-export * from './module'
+export { default } from './module'
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
 }
 
-async function writeCJSStub (distDir: string) {
+async function writeCJSStub(distDir: string) {
   const cjsStubFile = resolve(distDir, 'module.cjs')
   if (existsSync(cjsStubFile)) {
     return
