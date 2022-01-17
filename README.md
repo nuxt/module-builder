@@ -14,9 +14,17 @@
 - Auto generated types and shims for `@nuxt/schema`
 
 
+## Quick start
+
+You can quickly get started with pre-configured [module starter](https://github.com/nuxt/starter/tree/module):
+
+```bash
+$ npx nuxi init -t "nuxt/starter#module" my-module
+```
+
 ## Project structure
 
-Using module builder, requires a special project setup. You can check a full example [here](./example).
+Using module builder, requires a special project setup. You can check an example [here](./example).
 
 ### `src/module.ts`
 
