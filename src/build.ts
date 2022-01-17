@@ -3,6 +3,7 @@ import { pathToFileURL } from 'url'
 import { resolve } from 'pathe'
 import consola from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
+import { findExports } from 'mlly'
 
 export interface BuildModuleOptions {
   rootDir: string
@@ -75,18 +76,28 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     return
   }
 
+  // Read generated module types
+  const moduleTypesFile = resolve(distDir, 'module.d.ts')
+  const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
+  const typeExports = findExports(moduleTypes)
+  const isStub = moduleTypes.includes('export *')
+
+  const hasModuleOptions = isStub || typeExports.find(exp => exp.names.includes('ModuleOptions'))
+
   const schemaShims = []
-  if (meta.configKey) {
-    schemaShims.push(
-      `  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`,
-      `  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`
-    )
+  const moduleImports = []
+
+  if (meta.configKey && hasModuleOptions) {
+    moduleImports.push('ModuleOptions')
+    schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
+    schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
   }
 
   const dtsContents = `
-import type { ModuleOptions } from './module'
+import { ${moduleImports.join(', ')} } from './module'
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
+
 export * from './module'
 `
 

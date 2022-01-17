@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "consola": "^2.15.3",
+    "mlly": "^0.3.19",
     "mri": "^1.2.0",
     "pathe": "^0.2.0",
     "unbuild": "^0.6.7"
@@ -38,7 +39,7 @@
     "@nuxtjs/eslint-config-typescript": "latest",
     "@types/mri": "latest",
     "eslint": "latest",
-    "jiti": "latest",
+    "jiti": "^1.12.9",
     "standard-version": "latest"
   }
 }
