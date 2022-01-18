@@ -28,7 +28,11 @@ export async function buildModule (opts: BuildModuleOptions) {
       '@nuxt/schema',
       '@nuxt/schema-edge',
       '@nuxt/kit',
-      '@nuxt/kit-edge'
+      '@nuxt/kit-edge',
+      'nuxt',
+      'nuxt-edge',
+      'nuxt3',
+      'vue'
     ],
     hooks: {
       async 'rollup:done' (ctx) {
