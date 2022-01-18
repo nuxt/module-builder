@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.7](https://github.com/nuxt/module-builder/compare/v0.1.6...v0.1.7) (2022-01-18)
+
+
+### Bug Fixes
+
+* ensure nuxt packages are externalized ([ebad137](https://github.com/nuxt/module-builder/commit/ebad137dea9cc3d45659dc7cdb6446ee81e82e96))
+
 ### [0.1.6](https://github.com/nuxt/module-builder/compare/v0.1.5...v0.1.6) (2022-01-17)
 
 
