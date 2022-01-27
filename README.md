@@ -2,8 +2,6 @@
 
 > Complete solution to build Nuxt Modules.
 
-**🧪 This tool is still under heavy development for Nuxt3. Feedback is more than welcome!**
-
 ## Features
 
 - Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
@@ -14,12 +12,16 @@
 - Auto generated types and shims for `@nuxt/schema`
 
 
+## Learn More
+
+Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/) before starting with module-builder.
+
 ## Quick start
 
 You can quickly get started with pre-configured [module starter](https://github.com/nuxt/starter/tree/module):
 
 ```bash
-$ npx nuxi init -t "nuxt/starter#module" my-module
+$ npx nuxi init -t module  my-module
 ```
 
 ## Project structure
