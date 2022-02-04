@@ -34,7 +34,7 @@ This is the entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-You could also optionally export `ModuleHooks` to annotate any custom hooks module uses.
+You could also optionally export `ModuleHooks` to annotate any custom hooks module uses, and `ModulePublicRuntimeConfig` to provide typings for the public runtime configuration your module is setting.
 
 ```js [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
@@ -45,6 +45,13 @@ export interface ModuleOptions {
 
 export interface ModuleHooks {
   'my-module:init': any
+}
+
+export interface ModulePublicRuntimeConfig {
+  'my-module': {
+    foo: string
+    bar: number
+  }
 }
 
 export default defineNuxtModule<ModuleOptions>({
