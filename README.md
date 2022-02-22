@@ -11,14 +11,14 @@
 - Auto generated CommonJS stubs
 - Auto generated types and shims for `@nuxt/schema`
 
+
 ## Learn More
 
-Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/)
-before starting with module-builder.
+Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/) before starting with module-builder.
 
 ### Requirements
 
-Using a Nuxt module generated from module-builder, requires the following:
+For a user to use a module generated from module-builder, it's recommended they have:
 - Node.js >= 14.x. _The latest Node LTS is always recommended_
 - Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
 
