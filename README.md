@@ -19,7 +19,7 @@ Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modul
 ### Requirements
 
 For a user to use a module generated from module-builder, it's recommended they have:
-- Node.js >= 14.x. _The latest Node LTS is always recommended_
+- Node.js >= 14.x. _Latest Node LTS preferred_
 - Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
 
 ## Quick start
