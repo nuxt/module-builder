@@ -5,7 +5,7 @@
 ## Features
 
 - Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
-- Compatible with Nuxt 3 and Nuxt Bridge
+- Compatible with Nuxt 3 and Nuxt Kit
 - Automated build config using last module spec
 - Typescript and ESM support
 - Auto generated CommonJS stubs
@@ -15,6 +15,12 @@
 
 Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/)
 before starting with module-builder.
+
+### Requirements
+
+Using a Nuxt module generated from module-builder, requires the following:
+- Node.js >= 14.x. _The latest Node LTS is always recommended_
+- Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
 
 ## Quick start
 
