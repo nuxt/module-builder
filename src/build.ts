@@ -99,7 +99,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta, options: any) {
     if (hasModuleOptions) {
       moduleImports.push('ModuleOptions')
     } else {
-      schemaShims.push(`  ${generateTypes(resolveSchema(options), 'ModuleOptions')}`)
+      schemaShims.push(`  ${generateTypes(resolveSchema(options), { interfaceName: 'ModuleOptions' })}`)
     }
 
     schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
