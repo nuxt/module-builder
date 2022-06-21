@@ -5,7 +5,7 @@ import mri from 'mri'
 import { resolve } from 'pathe'
 import { buildModule } from './build'
 
-async function main() {
+async function main () {
   const args = mri(process.argv.slice(2))
   const rootDir = resolve(args._[0] || '.')
   await buildModule({

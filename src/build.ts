@@ -11,7 +11,7 @@ export interface BuildModuleOptions {
   outDir?: string
 }
 
-export async function buildModule(opts: BuildModuleOptions) {
+export async function buildModule (opts: BuildModuleOptions) {
   const { build } = await import('unbuild')
 
   const outDir = opts.outDir || 'dist'
@@ -39,7 +39,7 @@ export async function buildModule(opts: BuildModuleOptions) {
       'vue'
     ],
     hooks: {
-      async 'rollup:done'(ctx) {
+      async 'rollup:done' (ctx) {
         // Generate CommonJS stup
         await writeCJSStub(ctx.options.outDir)
 
@@ -78,7 +78,7 @@ export async function buildModule(opts: BuildModuleOptions) {
   })
 }
 
-async function writeTypes(distDir: string, meta: ModuleMeta) {
+async function writeTypes (distDir: string, meta: ModuleMeta) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   if (existsSync(dtsFile)) {
     return
@@ -117,7 +117,7 @@ export { default } from './module'
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
 }
 
-async function writeCJSStub(distDir: string) {
+async function writeCJSStub (distDir: string) {
   const cjsStubFile = resolve(distDir, 'module.cjs')
   if (existsSync(cjsStubFile)) {
     return
