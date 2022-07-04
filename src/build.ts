@@ -88,6 +88,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
 
   const hasModuleOptions = isStub || typeExports.find(exp => exp.names.includes('ModuleOptions'))
   const hasModuleHooks = isStub || typeExports.find(exp => exp.names.includes('ModuleHooks'))
+  const hasModulePublicRuntimeConfig = isStub || typeExports.find(exp => exp.names.includes('ModulePublicRuntimeConfig'))
 
   const schemaShims = []
   const moduleImports = []
@@ -100,6 +101,11 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   if (hasModuleHooks) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
+  }
+
+  if (hasModulePublicRuntimeConfig) {
+    moduleImports.push('ModulePublicRuntimeConfig')
+    schemaShims.push('  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}')
   }
 
   const dtsContents = `
