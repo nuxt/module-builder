@@ -16,12 +16,18 @@
 
 Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/) before starting with module-builder.
 
+### Requirements
+
+For a user to use a module generated from module-builder, it's recommended they have:
+- Node.js >= 14.x. _Latest Node LTS preferred_
+- Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
+
 ## Quick start
 
-You can quickly get started with pre-configured [module starter](https://github.com/nuxt/starter/tree/module):
+You can quickly get started with the pre-configured [module starter](https://github.com/nuxt/starter/tree/module):
 
 ```bash
-$ npx nuxi init -t module  my-module
+$ npx nuxi init -t module my-module
 ```
 
 ## Project structure
@@ -34,9 +40,9 @@ This is the entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-You could also optionally export `ModuleHooks` to annotate any custom hooks module uses, and `ModulePublicRuntimeConfig` to provide typings for the public runtime configuration your module is setting.
+You could also optionally export `ModuleHooks` to annotate any custom hooks the module uses and `ModulePublicRuntimeConfig` to provide typings for the public runtime configuration your module is setting.
 
-```js [src/module.ts]
+```ts [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
 
 export interface ModuleOptions {
@@ -119,9 +125,7 @@ Module builder generates dist files in `dist/` directory:
 - `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
   - Javascript and `.ts` files will be transformed to `.mjs` with extracted types on `.d.ts` file with same name
   - `.vue` files will be transformed with extracted `.d.ts` file
-  - Other files will be copied as as
-
-
+  - Other files will be copied as is
 
 ## 💻 Development
 
