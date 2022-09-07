@@ -28,10 +28,10 @@
   },
   "dependencies": {
     "consola": "^2.15.3",
-    "mlly": "^0.5.3",
+    "mlly": "^0.5.14",
     "mri": "^1.2.0",
-    "pathe": "^0.3.0",
-    "unbuild": "^0.7.4"
+    "pathe": "^0.3.7",
+    "unbuild": "^0.8.10"
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
@@ -39,7 +39,7 @@
     "@nuxtjs/eslint-config-typescript": "latest",
     "@types/mri": "latest",
     "eslint": "latest",
-    "jiti": "^1.14.0",
+    "jiti": "^1.15.0",
     "standard-version": "latest"
   }
 }
