@@ -31,7 +31,7 @@
     "mlly": "^0.5.14",
     "mri": "^1.2.0",
     "pathe": "^0.3.7",
-    "unbuild": "^0.8.10"
+    "unbuild": "^0.8.11"
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",

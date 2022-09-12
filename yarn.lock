@@ -22,7 +22,7 @@
   resolved "https://registry.yarnpkg.com/@babel/compat-data/-/compat-data-7.19.0.tgz#2a592fd89bacb1fcde68de31bee4f2f2dacb0e86"
   integrity sha512-y5rqgTTPTmaF5e2nVhOxw+Ur9HDJLsWb6U/KpgUzRZEdPfE6VOubXBKLdbcUTijzRptednSBDQbYZBOSqJxpJw==
 
-"@babel/core@^7.18.13":
+"@babel/core@^7.18.13", "@babel/core@^7.19.0":
   version "7.19.0"
   resolved "https://registry.yarnpkg.com/@babel/core/-/core-7.19.0.tgz#d2f5f4f2033c00de8096be3c9f45772563e150c3"
   integrity sha512-reM4+U7B9ss148rh2n1Qs9ASS+w94irYXga7c2jaQv9RVzpS7Mv1a9rnYYwuDa45G+DkORt9g6An2k/V4d9LbQ==
@@ -155,7 +155,7 @@
   resolved "https://registry.yarnpkg.com/@babel/parser/-/parser-7.19.0.tgz#497fcafb1d5b61376959c1c338745ef0577aa02c"
   integrity sha512-74bEXKX2h+8rrfQUfsBfuZZHzsEs6Eql4pqy/T4Nn6Y9wNPggQOqD6z6pn5Bl8ZfysKouFZT/UXEH94ummEeQw==
 
-"@babel/standalone@^7.18.13":
+"@babel/standalone@^7.18.13", "@babel/standalone@^7.19.0":
   version "7.19.0"
   resolved "https://registry.yarnpkg.com/@babel/standalone/-/standalone-7.19.0.tgz#23cbe261557a72dcc58ba56c3a2125944a251c4f"
   integrity sha512-P8lYynBl10MYpgkhGEV1fOsGDE/6lQSYp+e2YvqUPMWHT4JaQrOkM49FizjswrRzJ6KZTgG6ZY90/1GYvAR3/Q==
@@ -3742,10 +3742,10 @@ unbox-primitive@^1.0.2:
     has-symbols "^1.0.3"
     which-boxed-primitive "^1.0.2"
 
-unbuild@^0.8.10:
-  version "0.8.10"
-  resolved "https://registry.yarnpkg.com/unbuild/-/unbuild-0.8.10.tgz#99eb54f5f6dfa535b638f31e7d7f034c46ee087f"
-  integrity sha512-i9VPStkM59dBLFNpeED1G2+EQuR8Tb35yErNxlo5WVDN0zAlE9PHgK5JilX/73sZD9381BTe28H8U/dgXsMvSA==
+unbuild@^0.8.11:
+  version "0.8.11"
+  resolved "https://registry.yarnpkg.com/unbuild/-/unbuild-0.8.11.tgz#5ff2848b354fca1da4f122cd47201216d673e7a0"
+  integrity sha512-q/oUXuqpJCoDKUk3qIkRjHPcgee5vvV1oiRJYpKwNkFSSRfzvYchQ+HxObwGrUubzDhnT+0qxO2wz5UunZtzog==
   dependencies:
     "@rollup/plugin-alias" "^3.1.9"
     "@rollup/plugin-commonjs" "^22.0.2"
@@ -3774,7 +3774,7 @@ unbuild@^0.8.10:
     rollup-plugin-esbuild "^4.10.1"
     scule "^0.3.2"
     typescript "^4.8.2"
-    untyped "^0.4.7"
+    untyped "^0.5.0"
 
 unctx@^2.0.2:
   version "2.0.2"
@@ -3825,6 +3825,16 @@ untyped@^0.4.7:
     "@babel/core" "^7.18.13"
     "@babel/standalone" "^7.18.13"
     "@babel/types" "^7.18.13"
+    scule "^0.3.2"
+
+untyped@^0.5.0:
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/untyped/-/untyped-0.5.0.tgz#0c8be1296d128a3f35e0df229b542f288741a50f"
+  integrity sha512-2Sre5A1a7G61bjaAKZnSFaVgbJMwwbbYQpJFH69hAYcDfN7kIaktlSphS02XJilz4+/jR1tsJ5MHo1oMoCezxg==
+  dependencies:
+    "@babel/core" "^7.19.0"
+    "@babel/standalone" "^7.19.0"
+    "@babel/types" "^7.19.0"
     scule "^0.3.2"
 
 update-browserslist-db@^1.0.5:
