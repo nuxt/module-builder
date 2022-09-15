@@ -86,20 +86,32 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const typeExports = findExports(moduleTypes)
   const isStub = moduleTypes.includes('export *')
 
-  const hasModuleOptions = isStub || typeExports.find(exp => exp.names.includes('ModuleOptions'))
-  const hasModuleHooks = isStub || typeExports.find(exp => exp.names.includes('ModuleHooks'))
+  const hasExportOption = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
 
   const schemaShims = []
   const moduleImports = []
+  const moduleImportKeys = [
+    { key: 'ModuleOptions', interfaces: ['NuxtConfig', 'NuxtOptions'] },
+    { key: 'ModuleHooks', interfaces: ['ModuleHooks'] },
+    { key: 'ModulePublicRuntimeConfig', interfaces: ['PublicRuntimeConfig'] },
+    { key: 'ModulePrivateRuntimeConfig', interfaces: ['PrivateRuntimeConfig'] }
+  ]
 
-  if (meta.configKey && hasModuleOptions) {
-    moduleImports.push('ModuleOptions')
-    schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
-    schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
-  }
-  if (hasModuleHooks) {
-    moduleImports.push('ModuleHooks')
-    schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
+  // Generate schema shims
+  for (const { key, interfaces } of moduleImportKeys) {
+    // Does is have export ?
+    if (hasExportOption(key)) {
+      moduleImports.push(key)
+      for (const iface of interfaces) {
+        if (iface === 'NuxtConfig') {
+          schemaShims.push(`  interface ${iface} { ['${meta.configKey}']?: Partial<${key}> }`)
+        } else if (iface === 'NuxtOptions') {
+          schemaShims.push(`  interface ${iface} { ['${meta.configKey}']?: ${key} }`)
+        } else {
+          schemaShims.push(`  interface ${iface} extends ${key} {}`)
+        }
+      }
+    }
   }
 
   const dtsContents = `
