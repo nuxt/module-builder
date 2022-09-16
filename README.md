@@ -88,7 +88,8 @@ A minimum `package.json` should look like this:
     ".": {
       "import": "./dist/module.mjs",
       "require": "./dist/module.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "main": "./dist/module.cjs",
   "types": "./dist/types.d.ts",
