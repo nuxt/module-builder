@@ -53,6 +53,14 @@ export interface ModuleHooks {
   'my-module:init': any
 }
 
+export interface ModulePublicRuntimeConfig {
+  NAME: string
+}
+
+export interface ModulePrivateRuntimeConfig {
+  PRIVATE_NAME: string
+}
+
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'my-module',
