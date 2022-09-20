@@ -87,20 +87,27 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const typeExports = findExports(moduleTypes)
   const isStub = moduleTypes.includes('export *')
 
-  const hasModuleOptions = isStub || typeExports.find(exp => exp.names.includes('ModuleOptions'))
-  const hasModuleHooks = isStub || typeExports.find(exp => exp.names.includes('ModuleHooks'))
-
   const schemaShims = []
   const moduleImports = []
 
-  if (meta.configKey && hasModuleOptions) {
+  const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
+
+  if (meta.configKey && hasTypeExport('ModuleOptions')) {
     moduleImports.push('ModuleOptions')
     schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
     schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
   }
-  if (hasModuleHooks) {
+  if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
+  }
+  if (hasTypeExport('ModuleRuntimeConfig')) {
+    moduleImports.push('ModuleRuntimeConfig')
+    schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
+  }
+  if (hasTypeExport('ModulePublicRuntimeConfig')) {
+    moduleImports.push('ModulePublicRuntimeConfig')
+    schemaShims.push('  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}')
   }
 
   const dtsContents = `
