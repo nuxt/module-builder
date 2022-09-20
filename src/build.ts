@@ -87,32 +87,27 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const typeExports = findExports(moduleTypes)
   const isStub = moduleTypes.includes('export *')
 
-  const hasExportOption = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
-
   const schemaShims = []
   const moduleImports = []
-  const moduleImportKeys = [
-    { key: 'ModuleOptions', interfaces: ['NuxtConfig', 'NuxtOptions'] },
-    { key: 'ModuleHooks', interfaces: ['NuxtHooks'] },
-    { key: 'ModuleRuntimeConfig', interfaces: ['RuntimeConfig'] },
-    { key: 'ModulePublicRuntimeConfig', interfaces: ['PublicRuntimeConfig'] }
-  ]
 
-  // Generate schema shims
-  for (const { key, interfaces } of moduleImportKeys) {
-    // Does is have export ?
-    if (hasExportOption(key)) {
-      moduleImports.push(key)
-      for (const iface of interfaces) {
-        if (iface === 'NuxtConfig') {
-          schemaShims.push(`  interface ${iface} { ['${meta.configKey}']?: Partial<${key}> }`)
-        } else if (iface === 'NuxtOptions') {
-          schemaShims.push(`  interface ${iface} { ['${meta.configKey}']?: ${key} }`)
-        } else {
-          schemaShims.push(`  interface ${iface} extends ${key} {}`)
-        }
-      }
-    }
+  const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
+
+  if (meta.configKey && hasTypeExport('ModuleOptions')) {
+    moduleImports.push('ModuleOptions')
+    schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
+    schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
+  }
+  if (hasTypeExport('ModuleHooks')) {
+    moduleImports.push('ModuleHooks')
+    schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
+  }
+  if (hasTypeExport('ModuleRuntimeConfig')) {
+    moduleImports.push('ModuleRuntimeConfig')
+    schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
+  }
+  if (hasTypeExport('ModulePublicRuntimeConfig')) {
+    moduleImports.push('ModulePublicRuntimeConfig')
+    schemaShims.push('  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}')
   }
 
   const dtsContents = `
