@@ -32,7 +32,8 @@ export async function buildModule (opts: BuildModuleOptions) {
       'nuxt',
       'nuxt-edge',
       'nuxt3',
-      'vue'
+      'vue',
+      'vue-demi'
     ],
     hooks: {
       async 'rollup:done' (ctx) {
