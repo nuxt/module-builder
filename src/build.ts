@@ -8,17 +8,21 @@ import { findExports } from 'mlly'
 export interface BuildModuleOptions {
   rootDir: string
   stub?: boolean
+  outDir?: string
 }
 
 export async function buildModule (opts: BuildModuleOptions) {
   const { build } = await import('unbuild')
 
+  const outDir = opts.outDir || 'dist'
+
   await build(opts.rootDir, false, {
     declaration: true,
     stub: opts.stub,
+    outDir,
     entries: [
       'src/module',
-      { input: 'src/runtime/', outDir: 'dist/runtime', ext: 'mjs' }
+      { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' }
     ],
     rollup: {
       emitCJS: false,

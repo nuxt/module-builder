@@ -10,6 +10,7 @@ async function main () {
   const rootDir = resolve(args._[0] || '.')
   await buildModule({
     rootDir,
+    outDir: args.outDir,
     stub: args.stub
   })
 }
