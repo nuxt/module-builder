@@ -7,7 +7,8 @@
   "exports": {
     ".": {
       "import": "./dist/index.mjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "types": "./dist/index.d.ts",
   "bin": {
@@ -28,10 +29,10 @@
   },
   "dependencies": {
     "consola": "^2.15.3",
-    "mlly": "^0.5.14",
+    "mlly": "^0.5.16",
     "mri": "^1.2.0",
-    "pathe": "^0.3.7",
-    "unbuild": "^0.8.10"
+    "pathe": "^0.3.8",
+    "unbuild": "^0.8.11"
   },
   "devDependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
@@ -39,7 +40,7 @@
     "@nuxtjs/eslint-config-typescript": "latest",
     "@types/mri": "latest",
     "eslint": "latest",
-    "jiti": "^1.15.0",
+    "jiti": "^1.16.0",
     "standard-version": "latest"
   }
 }
