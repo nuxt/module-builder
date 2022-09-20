@@ -108,7 +108,7 @@ import { ${moduleImports.join(', ')} } from './module'
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
-export { default } from './module'
+export { ${typeExports[0].names.join(', ')} } from './module'
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
