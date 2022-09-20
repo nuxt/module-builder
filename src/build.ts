@@ -93,8 +93,8 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const moduleImportKeys = [
     { key: 'ModuleOptions', interfaces: ['NuxtConfig', 'NuxtOptions'] },
     { key: 'ModuleHooks', interfaces: ['ModuleHooks'] },
-    { key: 'ModulePublicRuntimeConfig', interfaces: ['PublicRuntimeConfig'] },
-    { key: 'ModulePrivateRuntimeConfig', interfaces: ['PrivateRuntimeConfig'] }
+    { key: 'ModuleRuntimeConfig', interfaces: ['RuntimeConfig'] },
+    { key: 'ModulePublicRuntimeConfig', interfaces: ['PublicRuntimeConfig'] }
   ]
 
   // Generate schema shims
