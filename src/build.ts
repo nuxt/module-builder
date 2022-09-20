@@ -93,7 +93,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const moduleImports = []
   const moduleImportKeys = [
     { key: 'ModuleOptions', interfaces: ['NuxtConfig', 'NuxtOptions'] },
-    { key: 'ModuleHooks', interfaces: ['ModuleHooks'] },
+    { key: 'ModuleHooks', interfaces: ['NuxtHooks'] },
     { key: 'ModuleRuntimeConfig', interfaces: ['RuntimeConfig'] },
     { key: 'ModulePublicRuntimeConfig', interfaces: ['PublicRuntimeConfig'] }
   ]

@@ -12,7 +12,7 @@ export interface ModulePublicRuntimeConfig {
   NAME: string
 }
 
-export interface ModulePrivateRuntimeConfig {
+export interface ModuleRuntimeConfig {
   PRIVATE_NAME: string
 }
 
