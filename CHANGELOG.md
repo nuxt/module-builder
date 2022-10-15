@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.0](https://github.com/nuxt/module-builder/compare/v0.1.7...v0.2.0) (2022-10-15)
+
+
+### Features
+
+* export all module types in `types.d.ts` ([#46](https://github.com/nuxt/module-builder/issues/46)) ([64f3ba5](https://github.com/nuxt/module-builder/commit/64f3ba5e89471fb3dfed0cf83411f90c584f205c))
+* support `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` type exports ([#45](https://github.com/nuxt/module-builder/issues/45)) ([a552495](https://github.com/nuxt/module-builder/commit/a5524952ef09ed3748e46db71b6e989611253076))
+* support `outDir` option  ([#37](https://github.com/nuxt/module-builder/issues/37)) ([6453ed0](https://github.com/nuxt/module-builder/commit/6453ed0bc104f7ef167f9f16bc012968d1b9261d))
+
+
+### Bug Fixes
+
+* **pkg:** export `./package.json` subpath ([#47](https://github.com/nuxt/module-builder/issues/47)) ([82ab400](https://github.com/nuxt/module-builder/commit/82ab400f236bbc8aacaaddfabb62dcf292d5b698))
+
 ### [0.1.7](https://github.com/nuxt/module-builder/compare/v0.1.6...v0.1.7) (2022-01-18)
 
 
