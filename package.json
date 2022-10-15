@@ -35,13 +35,13 @@
     "unbuild": "^0.9.4"
   },
   "devDependencies": {
-    "@nuxt/kit": "npm:@nuxt/kit-edge@latest",
-    "@nuxt/schema": "npm:@nuxt/schema-edge@latest",
-    "@nuxtjs/eslint-config-typescript": "latest",
-    "@types/mri": "latest",
+    "@nuxt/kit": "^3.0.0-rc.11",
+    "@nuxt/schema": "^3.0.0-rc.11",
+    "@nuxtjs/eslint-config-typescript": "^11.0.0",
+    "@types/mri": "^1.1.1",
     "@types/node": "^18.11.0",
-    "eslint": "latest",
+    "eslint": "^8.25.0",
     "jiti": "^1.16.0",
-    "standard-version": "latest"
+    "standard-version": "^9.5.0"
   }
 }
