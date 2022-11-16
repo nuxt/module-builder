@@ -22,7 +22,7 @@ export default defineNuxtModule<ModuleOptions>({
     configKey: 'myModule'
   },
   defaults: {
-    apiKey: null
+    apiKey: ''
   },
   setup (_options, _nuxt) {}
 })

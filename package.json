@@ -20,19 +20,19 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "example:build": "yarn nuxt-module-build ./example",
+    "example:build": "pnpm nuxt-module-build ./example",
     "lint": "eslint --ext .ts,.js,.mjs .",
     "nuxt-module-build": "jiti ./src/cli.ts",
-    "prepack": "yarn build",
-    "release": "yarn test && standard-version && git push --follow-tags && npm publish",
-    "test": "yarn lint"
+    "prepack": "pnpm build",
+    "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
+    "test": "pnpm lint"
   },
   "dependencies": {
     "consola": "^2.15.3",
-    "mlly": "^0.5.16",
+    "mlly": "^1.0.0",
     "mri": "^1.2.0",
-    "pathe": "^0.3.9",
-    "unbuild": "^0.9.4"
+    "pathe": "^1.0.0",
+    "unbuild": "^1.0.1"
   },
   "devDependencies": {
     "@nuxt/kit": "^3.0.0-rc.13",
@@ -40,8 +40,9 @@
     "@nuxtjs/eslint-config-typescript": "^11.0.0",
     "@types/mri": "^1.1.1",
     "@types/node": "^18.11.9",
-    "eslint": "^8.26.0",
+    "eslint": "^8.27.0",
     "jiti": "^1.16.0",
+    "nuxt": "^3.0.0-rc.13",
     "standard-version": "^9.5.0"
   }
 }

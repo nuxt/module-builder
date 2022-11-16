@@ -18,11 +18,12 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@nuxt/kit": "npm:@nuxt/kit-edge@latest"
+    "@nuxt/kit": "^3.0.0-rc.13"
   },
   "devDependencies": {
-    "@nuxt/module-builder": "latest",
-    "nuxt3": "latest"
+    "@nuxt/schema": "^3.0.0-rc.13",
+    "@nuxt/module-builder": "..",
+    "nuxt": "^3.0.0-rc.13"
   },
   "build": {
     "entries": [
