@@ -14,7 +14,7 @@
 
 ## Learn More
 
-Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/) before starting with module-builder.
+Check the new [Guide for Nuxt Modules](https://nuxt.com/docs/guide/going-further/modules) before starting with module-builder.
 
 ### Requirements
 
