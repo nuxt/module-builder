@@ -32,7 +32,7 @@
     "mlly": "^1.0.0",
     "mri": "^1.2.0",
     "pathe": "^1.0.0",
-    "unbuild": "^1.0.1"
+    "unbuild": "^1.0.2"
   },
   "devDependencies": {
     "@nuxt/kit": "^3.0.0",
