@@ -1,6 +1,11 @@
 # 📦 Nuxt Module Builder
 
-> Complete solution to build Nuxt Modules.
+[![npm version][npm-version-src]][npm-version-href]
+[![License][license-src]][license-href]
+[![npm downloads][npm-downloads-src]][npm-downloads-href]
+<a href="https://volta.net/nuxt/module-builder?utm_source=nuxt_module_builder_readme"><img src="https://user-images.githubusercontent.com/904724/209143798-32345f6c-3cf8-4e06-9659-f4ace4a6acde.svg" alt="Volta board"></a>
+
+> Complete solution to build [Nuxt Modules](https://nuxt.com/modules).
 
 ## Features
 
@@ -138,3 +143,15 @@ Module builder generates dist files in `dist/` directory:
 ## License
 
 [MIT](./LICENSE) - Made with 💚
+
+
+<!-- Badges -->
+[npm-version-src]: https://img.shields.io/npm/v/nuxt-module-builder/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-version-href]: https://npmjs.com/package/nuxt-module-builder
+
+[npm-downloads-src]: https://img.shields.io/npm/dt/nuxt-module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-downloads-href]: https://npmjs.com/package/nuxt-module-builder
+
+[license-src]: https://img.shields.io/github/license/nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[license-href]: https://github.com/nuxt/module-builder/blob/main/LICENSE
+
