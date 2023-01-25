@@ -34,7 +34,7 @@ npx nuxi init -t module my-module
 
 ## Project structure
 
-The module builder requires a special project structur. You can checkour the [example](./example).
+The module builder requires a special project structur. You can checkout the [module template](https://github.com/nuxt/starter/tree/module).
 
 ### `src/module.ts`
 
