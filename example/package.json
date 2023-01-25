@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "npm run build"
+    "prepack": "nuxt-module-build"
   },
   "dependencies": {
     "@nuxt/kit": "^3.0.0"
