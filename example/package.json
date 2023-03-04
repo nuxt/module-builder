@@ -18,12 +18,12 @@
     "prepack": "nuxt-module-build"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.2.0"
+    "@nuxt/kit": "^3.2.3"
   },
   "devDependencies": {
-    "@nuxt/schema": "^3.2.0",
+    "@nuxt/schema": "^3.2.3",
     "@nuxt/module-builder": "..",
-    "nuxt": "^3.2.0"
+    "nuxt": "^3.2.3"
   },
   "build": {
     "entries": [
