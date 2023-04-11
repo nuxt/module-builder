@@ -28,7 +28,7 @@
     "test": "pnpm lint"
   },
   "dependencies": {
-    "consola": "^2.15.3",
+    "consola": "^3.0.1",
     "mlly": "^1.1.1",
     "mri": "^1.2.0",
     "pathe": "^1.1.0",
