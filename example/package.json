@@ -17,10 +17,10 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt-module-build",
+    "prepack": "jiti ../src/cli.ts",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "nuxt-module-build --stub && nuxi prepare playground"
+    "dev:prepare": "jiti ../src/cli.ts --stub && nuxi prepare playground"
   },
   "dependencies": {
     "@nuxt/kit": "^3.4.1"
