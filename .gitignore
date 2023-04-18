@@ -6,3 +6,4 @@ coverage
 dist
 types
 package-lock.json
+.nuxt
