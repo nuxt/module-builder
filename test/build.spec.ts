@@ -38,6 +38,37 @@ describe('module builder', () => {
     `)
   })
 
+  it('should write types to output directory', async () => {
+    const types = await readFile(join(distDir, 'types.d.ts'), 'utf-8')
+    expect(types).toMatchInlineSnapshot(`
+      "
+      import { ModuleOptions, ModuleHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
+
+      declare module '@nuxt/schema' {
+        interface NuxtConfig { ['myModule']?: Partial<ModuleOptions> }
+        interface NuxtOptions { ['myModule']?: ModuleOptions }
+        interface NuxtHooks extends ModuleHooks {}
+        interface RuntimeConfig extends ModuleRuntimeConfig {}
+        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
+      }
+
+
+      export { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, default } from './module'
+      "
+    `)
+  })
+
+  it('should generate module metadata as separate JSON file', async () => {
+    const meta = await readFile(join(distDir, 'module.json'), 'utf-8')
+    expect(JSON.parse(meta)).toMatchInlineSnapshot(`
+      {
+        "configKey": "myModule",
+        "name": "my-module",
+        "version": "1.0.0",
+      }
+    `)
+  })
+
   it.todo('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugin.d.ts'), 'utf-8')
     expect(pluginDts).toMatchInlineSnapshot(`
