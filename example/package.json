@@ -2,8 +2,10 @@
   "name": "my-module",
   "license": "MIT",
   "version": "1.0.0",
+  "type": "module",
   "exports": {
     ".": {
+      "types": "./dist/types.d.ts",
       "import": "./dist/module.mjs",
       "require": "./dist/module.cjs"
     },
@@ -15,14 +17,18 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt-module-build"
+    "prepack": "nuxt-module-build",
+    "dev": "nuxi dev playground",
+    "dev:build": "nuxi build playground",
+    "dev:prepare": "nuxt-module-build --stub && nuxi prepare playground"
   },
   "dependencies": {
     "@nuxt/kit": "^3.4.1"
   },
   "devDependencies": {
+    "@types/node": "^18",
+    "@nuxt/module-builder": "workspace:*",
     "@nuxt/schema": "^3.4.1",
-    "@nuxt/module-builder": "..",
     "nuxt": "^3.4.1"
   },
   "build": {

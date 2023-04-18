@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "my-module-playground",
+  "dependencies": {
+    "my-module": "workspace:*",
+    "nuxt": "latest"
+  }
+}
