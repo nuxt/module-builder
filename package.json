@@ -25,7 +25,7 @@
     "nuxt-module-build": "jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
-    "test": "pnpm lint"
+    "test": "pnpm vitest"
   },
   "dependencies": {
     "consola": "^3.0.2",
@@ -40,9 +40,11 @@
     "@nuxtjs/eslint-config-typescript": "^12.0.0",
     "@types/mri": "^1.1.1",
     "@types/node": "^18.15.11",
+    "@vitest/coverage-c8": "^0.30.1",
     "eslint": "^8.38.0",
     "jiti": "^1.18.2",
     "nuxt": "^3.4.1",
-    "standard-version": "^9.5.0"
+    "standard-version": "^9.5.0",
+    "vitest": "^0.30.1"
   }
 }
