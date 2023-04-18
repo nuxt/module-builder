@@ -23,4 +23,4 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm example:build
-      - run: pnpm test --coverage
+      - run: pnpm test -- --coverage
