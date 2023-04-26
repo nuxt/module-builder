@@ -23,13 +23,13 @@
     "dev:prepare": "jiti ../src/cli.ts --stub && nuxi prepare playground"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.4.1"
+    "@nuxt/kit": "^3.4.2"
   },
   "devDependencies": {
-    "@types/node": "^18",
+    "@types/node": "^18.16.1",
     "@nuxt/module-builder": "workspace:*",
-    "@nuxt/schema": "^3.4.1",
-    "nuxt": "^3.4.1"
+    "@nuxt/schema": "^3.4.2",
+    "nuxt": "^3.4.2"
   },
   "build": {
     "entries": [
