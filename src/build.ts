@@ -118,6 +118,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
 import { ${moduleImports.join(', ')} } from './module'
 
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
+${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
 export { ${typeExports[0].names.join(', ')} } from './module'
 `
