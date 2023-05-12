@@ -1,7 +1,7 @@
 import { existsSync, promises as fsp } from 'fs'
 import { pathToFileURL } from 'url'
 import { resolve } from 'pathe'
-import consola from 'consola'
+import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
 
