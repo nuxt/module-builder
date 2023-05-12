@@ -21,7 +21,7 @@ We recommend to checkout the [Nuxt modules author guide](https://nuxt.com/docs/g
 ## Requirements
 
 For a user to use a module generated from module-builder, it's recommended they have:
-- Node.js >= 14.x. _Latest Node LTS preferred_
+- Node.js >= 16.x. _Latest Node LTS preferred_
 - Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
 
 ## Quick start
@@ -133,7 +133,7 @@ Module builder generates dist files in `dist/` directory:
 ## 💻 Development
 
 - Clone repository
-- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable` (use `npm i -g corepack` for Node.js < 16.10)
+- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
 - Install dependencies using `pnpm install`
 - Try building [example module](./example) using `pnpm example:build`
 
@@ -151,4 +151,3 @@ Module builder generates dist files in `dist/` directory:
 
 [license-src]: https://img.shields.io/github/license/nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
 [license-href]: https://github.com/nuxt/module-builder/blob/main/LICENSE
-
