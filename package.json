@@ -28,7 +28,7 @@
     "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
     "test": "pnpm vitest"
   },
-  "packageManager": "pnpm@8.5.0",
+  "packageManager": "pnpm@8.5.1",
   "dependencies": {
     "consola": "^3.1.0",
     "mlly": "^1.2.1",
