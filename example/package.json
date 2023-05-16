@@ -20,7 +20,7 @@
     "prepack": "jiti ../src/cli.ts",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "jiti ../src/cli.ts --stub && nuxi prepare playground"
+    "dev:prepare": "jiti ../src/cli.ts --stub && jiti ../src/cli.ts --prepare"
   },
   "dependencies": {
     "@nuxt/kit": "^3.5.0"
