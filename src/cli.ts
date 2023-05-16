@@ -6,7 +6,7 @@ import { resolve } from 'pathe'
 import { buildModule } from './build'
 
 // TODO: use citty
-async function main () {
+function main () {
   const args = mri(process.argv.slice(2))
   if ('prepare' in args) {
     return prepare()
@@ -39,8 +39,8 @@ async function prepare () {
       },
       modules: [
         resolve(rootDir, './src/module'),
-        function (options, nuxt) {
-          nuxt.hooks.hook('app:templates', app => {
+        function (_options, nuxt) {
+          nuxt.hooks.hook('app:templates', (app) => {
             for (const template of app.templates) {
               template.write = true
             }
