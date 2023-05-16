@@ -23,7 +23,7 @@
     "build": "unbuild",
     "example:build": "pnpm nuxt-module-build ./example",
     "lint": "eslint --ext .ts,.js,.mjs .",
-    "nuxt-module-build": "jiti ./src/cli.ts",
+    "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
     "test": "pnpm vitest"

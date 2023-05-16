@@ -17,10 +17,10 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "jiti ../src/cli.ts",
+    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "jiti ../src/cli.ts --stub && jiti ../src/cli.ts --prepare"
+    "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts --prepare"
   },
   "dependencies": {
     "@nuxt/kit": "^3.5.0"
