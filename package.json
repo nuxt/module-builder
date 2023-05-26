@@ -23,7 +23,7 @@
     "build": "unbuild",
     "example:build": "pnpm nuxt-module-build ./example",
     "lint": "eslint --ext .ts,.js,.mjs .",
-    "nuxt-module-build": "jiti ./src/cli.ts",
+    "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
     "test": "pnpm vitest"
@@ -36,6 +36,10 @@
     "pathe": "^1.1.0",
     "unbuild": "^1.2.1"
   },
+  "peerDependencies": {
+    "@nuxt/kit": "^3.5.0",
+    "nuxi": "^3.5.0"
+  },
   "devDependencies": {
     "@nuxt/kit": "^3.5.1",
     "@nuxt/schema": "^3.5.1",
@@ -45,6 +49,7 @@
     "@vitest/coverage-c8": "^0.31.1",
     "eslint": "^8.41.0",
     "jiti": "^1.18.2",
+    "nuxi": "^3.5.1",
     "nuxt": "^3.5.1",
     "standard-version": "^9.5.0",
     "vitest": "^0.31.1"
