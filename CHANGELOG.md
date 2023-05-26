@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.4.0](https://github.com/nuxt/module-builder/compare/v0.3.1...v0.4.0) (2023-05-26)
+
+
+### Features
+
+* add `prepare` command for local types support ([#124](https://github.com/nuxt/module-builder/issues/124)) ([612c6b2](https://github.com/nuxt/module-builder/commit/612c6b29a6bad321764d1b0d48d28ada56677f85))
+
 ### [0.3.1](https://github.com/nuxt/module-builder/compare/v0.3.0...v0.3.1) (2023-05-01)
 
 
