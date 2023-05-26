@@ -37,8 +37,8 @@
     "unbuild": "^1.2.1"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.5.0",
-    "nuxi": "^3.5.0"
+    "@nuxt/kit": "^3.5.1",
+    "nuxi": "^3.5.1"
   },
   "devDependencies": {
     "@nuxt/kit": "^3.5.1",
