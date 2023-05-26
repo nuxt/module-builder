@@ -4,50 +4,22 @@
 import mri from 'mri'
 import { resolve } from 'pathe'
 import { buildModule } from './build'
+import { prepareModule } from './prepare'
 
 // TODO: use citty
 function main () {
   const args = mri(process.argv.slice(2))
-  if ('prepare' in args) {
-    return prepare()
-  }
-  return build()
-}
 
-async function build () {
-  const args = mri(process.argv.slice(2))
-  const rootDir = resolve(args._[0] || '.')
-  await buildModule({
-    rootDir,
+  if (args._[0] === 'prepare') {
+    return prepareModule({
+      rootDir: resolve(args._[1] || '.')
+    })
+  }
+
+  return buildModule({
+    rootDir: resolve(args._[0] || '.'),
     outDir: args.outDir,
     stub: args.stub
-  })
-}
-
-async function prepare () {
-  const { runCommand } = await import('nuxi')
-  const args = mri(process.argv.slice(2))
-  const rootDir = resolve(args._[0] || '.')
-
-  return runCommand('prepare', [rootDir], {
-    overrides: {
-      typescript: {
-        builder: 'shared'
-      },
-      imports: {
-        autoImport: false
-      },
-      modules: [
-        resolve(rootDir, './src/module'),
-        function (_options, nuxt) {
-          nuxt.hooks.hook('app:templates', (app) => {
-            for (const template of app.templates) {
-              template.write = true
-            }
-          })
-        }
-      ]
-    }
   })
 }
 
