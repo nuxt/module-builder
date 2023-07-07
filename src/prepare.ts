@@ -1,3 +1,4 @@
+import type { NuxtConfig } from '@nuxt/schema'
 import { resolve } from 'pathe'
 
 export interface PrepareModuleOptions {
@@ -25,6 +26,6 @@ export async function prepareModule (options: PrepareModuleOptions) {
           })
         }
       ]
-    }
+    } satisfies NuxtConfig
   })
 }
