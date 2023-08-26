@@ -34,7 +34,7 @@
     "mlly": "^1.4.1",
     "mri": "^1.2.0",
     "pathe": "^1.1.1",
-    "unbuild": "^1.2.1"
+    "unbuild": "^2.0.0"
   },
   "peerDependencies": {
     "@nuxt/kit": "^3.7.0",
