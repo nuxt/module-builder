@@ -31,27 +31,27 @@
   "packageManager": "pnpm@8.6.12",
   "dependencies": {
     "consola": "^3.2.3",
-    "mlly": "^1.4.0",
+    "mlly": "^1.4.1",
     "mri": "^1.2.0",
     "pathe": "^1.1.1",
     "unbuild": "^1.2.1"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.6.5",
-    "nuxi": "^3.6.5"
+    "@nuxt/kit": "^3.7.0",
+    "nuxi": "^3.7.0"
   },
   "devDependencies": {
-    "@nuxt/kit": "^3.6.5",
-    "@nuxt/schema": "^3.6.5",
+    "@nuxt/kit": "^3.7.0",
+    "@nuxt/schema": "^3.7.0",
     "@nuxtjs/eslint-config-typescript": "^12.0.0",
     "@types/mri": "^1.1.1",
-    "@types/node": "^20.5.2",
-    "@vitest/coverage-v8": "^0.34.2",
-    "eslint": "^8.47.0",
+    "@types/node": "^20.5.6",
+    "@vitest/coverage-v8": "^0.34.3",
+    "eslint": "^8.48.0",
     "jiti": "^1.19.3",
-    "nuxi": "^3.6.5",
-    "nuxt": "^3.6.5",
+    "nuxi": "^3.7.0",
+    "nuxt": "^3.7.0",
     "standard-version": "^9.5.0",
-    "vitest": "^0.34.2"
+    "vitest": "^0.34.3"
   }
 }
