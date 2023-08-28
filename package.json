@@ -38,7 +38,7 @@
   },
   "peerDependencies": {
     "@nuxt/kit": "^3.7.0",
-    "nuxi": "^3.7.0"
+    "nuxi": "^3.7.2"
   },
   "devDependencies": {
     "@nuxt/kit": "^3.7.0",
