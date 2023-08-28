@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.4.0...v0.5.0)
+
+### 🚀 Enhancements
+
+- Expose `prepareModule` function ([76b5654](https://github.com/nuxt/module-builder/commit/76b5654))
+- Upgrade to `unbuild@2` ([#161](https://github.com/nuxt/module-builder/pull/161))
+
+### 🏡 Chore
+
+- Add type safety to prepare overrides ([9d0804a](https://github.com/nuxt/module-builder/commit/9d0804a))
+- Switch to changelogen for release ([ba811da](https://github.com/nuxt/module-builder/commit/ba811da))
+
+### ❤️ Contributors
+
+- Daniel Roe <daniel@roe.dev>
+- Anthony Fu <anthonyfu117@hotmail.com>
+
 ## [0.4.0](https://github.com/nuxt/module-builder/compare/v0.3.1...v0.4.0) (2023-05-26)
 
 
