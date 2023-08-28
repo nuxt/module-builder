@@ -26,9 +26,9 @@
     "@nuxt/kit": "^3.7.0"
   },
   "devDependencies": {
-    "@types/node": "^20.5.6",
     "@nuxt/module-builder": "workspace:*",
     "@nuxt/schema": "^3.7.0",
+    "@types/node": "^20.5.7",
     "nuxt": "^3.7.0"
   },
   "build": {
