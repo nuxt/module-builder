@@ -25,7 +25,7 @@
     "lint": "eslint --ext .ts,.js,.mjs .",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
-    "release": "pnpm test && standard-version && git push --follow-tags && npm publish",
+    "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm vitest"
   },
   "packageManager": "pnpm@8.7.0",
@@ -47,11 +47,11 @@
     "@types/mri": "^1.1.1",
     "@types/node": "^20.5.7",
     "@vitest/coverage-v8": "^0.34.3",
+    "changelogen": "^0.5.5",
     "eslint": "^8.48.0",
     "jiti": "^1.19.3",
     "nuxi": "^3.7.2",
     "nuxt": "^3.7.0",
-    "standard-version": "^9.5.0",
     "vitest": "^0.34.3"
   }
 }
