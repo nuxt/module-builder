@@ -41,7 +41,7 @@ export async function buildModule (opts: BuildModuleOptions) {
     ],
     hooks: {
       async 'rollup:done' (ctx) {
-        // Generate CommonJS stup
+        // Generate CommonJS stub
         await writeCJSStub(ctx.options.outDir)
 
         // Load module meta
@@ -53,6 +53,7 @@ export async function buildModule (opts: BuildModuleOptions) {
           consola.error('Cannot load module. Please check dist:', moduleEntryPath)
           return null
         })
+
         if (!moduleFn) {
           return
         }
@@ -81,6 +82,7 @@ export async function buildModule (opts: BuildModuleOptions) {
 
 async function writeTypes (distDir: string, meta: ModuleMeta) {
   const dtsFile = resolve(distDir, 'types.d.ts')
+  const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
     return
   }
@@ -88,7 +90,13 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   // Read generated module types
   const moduleTypesFile = resolve(distDir, 'module.d.ts')
   const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
-  const typeExports = findExports(moduleTypes)
+  const typeExports = findExports(
+    // Replace `export { type Foo }` with `export { Foo }`
+    moduleTypes
+      .replace(/export\s*{.*?}/sg, match =>
+        match.replace(/\btype\b/g, '')
+      )
+  )
   const isStub = moduleTypes.includes('export *')
 
   const schemaShims = []
@@ -124,6 +132,9 @@ export { ${typeExports[0].names.join(', ')} } from './module'
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
+  if (!existsSync(dtsFileMts)) {
+    await fsp.writeFile(dtsFileMts, dtsContents, 'utf8')
+  }
 }
 
 async function writeCJSStub (distDir: string) {

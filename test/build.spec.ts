@@ -19,11 +19,14 @@ describe('module builder', () => {
     expect(files).toMatchInlineSnapshot(`
       [
         "module.cjs",
+        "module.d.mts",
         "module.d.ts",
         "module.json",
         "module.mjs",
         "runtime",
+        "types.d.mts",
         "types.d.ts",
+        "utils.d.mts",
         "utils.d.ts",
         "utils.mjs",
       ]
