@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.1
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.0...v0.5.1)
+
+### 🚀 Enhancements
+
+- Support `--sourcemap` option ([#163](https://github.com/nuxt/module-builder/pull/163))
+
+### ❤️ Contributors
+
+- Bobbie Goede <bobbiegoede@gmail.com>
+
 ## v0.5.0
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.4.0...v0.5.0)
