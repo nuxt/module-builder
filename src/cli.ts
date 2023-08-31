@@ -19,6 +19,7 @@ function main () {
   return buildModule({
     rootDir: resolve(args._[0] || '.'),
     outDir: args.outDir,
+    sourcemap: args.sourcemap,
     stub: args.stub
   })
 }
