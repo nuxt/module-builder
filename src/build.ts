@@ -7,6 +7,7 @@ import { findExports } from 'mlly'
 
 export interface BuildModuleOptions {
   rootDir: string
+  sourcemap?: boolean
   stub?: boolean
   outDir?: string
 }
@@ -18,6 +19,7 @@ export async function buildModule (opts: BuildModuleOptions) {
 
   await build(opts.rootDir, false, {
     declaration: true,
+    sourcemap: opts.sourcemap,
     stub: opts.stub,
     outDir,
     entries: [
