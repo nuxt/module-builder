@@ -4,83 +4,105 @@ import { resolve } from 'pathe'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
+import { defineCommand } from 'citty'
 
-export interface BuildModuleOptions {
-  rootDir: string
-  sourcemap?: boolean
-  stub?: boolean
-  outDir?: string
-}
-
-export async function buildModule (opts: BuildModuleOptions) {
-  const { build } = await import('unbuild')
-
-  const outDir = opts.outDir || 'dist'
-
-  await build(opts.rootDir, false, {
-    declaration: true,
-    sourcemap: opts.sourcemap,
-    stub: opts.stub,
-    outDir,
-    entries: [
-      'src/module',
-      { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' }
-    ],
-    rollup: {
-      emitCJS: false,
-      cjsBridge: true
+export default defineCommand({
+  meta: {
+    name: 'build',
+    description: 'Build module for distribution'
+  },
+  args: {
+    cwd: {
+      type: 'string',
+      description: 'Current working directory'
     },
-    externals: [
-      '@nuxt/schema',
-      '@nuxt/schema-edge',
-      '@nuxt/kit',
-      '@nuxt/kit-edge',
-      'nuxt',
-      'nuxt-edge',
-      'nuxt3',
-      'vue',
-      'vue-demi'
-    ],
-    hooks: {
-      async 'rollup:done' (ctx) {
-        // Generate CommonJS stub
-        await writeCJSStub(ctx.options.outDir)
-
-        // Load module meta
-        const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-        const moduleFn: NuxtModule<any> = await import(
-          pathToFileURL(moduleEntryPath).toString()
-        ).then(r => r.default || r).catch((err) => {
-          consola.error(err)
-          consola.error('Cannot load module. Please check dist:', moduleEntryPath)
-          return null
-        })
-
-        if (!moduleFn) {
-          return
-        }
-        const moduleMeta = await moduleFn.getMeta()
-
-        // Enhance meta using package.json
-        if (ctx.pkg) {
-          if (!moduleMeta.name) {
-            moduleMeta.name = ctx.pkg.name
-          }
-          if (!moduleMeta.version) {
-            moduleMeta.version = ctx.pkg.version
-          }
-        }
-
-        // Write meta
-        const metaFile = resolve(ctx.options.outDir, 'module.json')
-        await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
-
-        // Generate types
-        await writeTypes(ctx.options.outDir, moduleMeta)
-      }
+    rootDir: {
+      type: 'positional',
+      description: 'Root directory',
+      required: false
+    },
+    outDir: {
+      type: 'string'
+    },
+    sourcemap: {
+      type: 'boolean'
+    },
+    stub: {
+      type: 'boolean'
     }
-  })
-}
+  },
+  async run (context) {
+    const { build } = await import('unbuild')
+
+    const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
+
+    const outDir = context.args.outDir || 'dist'
+
+    await build(cwd, false, {
+      declaration: true,
+      sourcemap: context.args.sourcemap,
+      stub: context.args.stub,
+      outDir,
+      entries: [
+        'src/module',
+        { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' }
+      ],
+      rollup: {
+        emitCJS: false,
+        cjsBridge: true
+      },
+      externals: [
+        '@nuxt/schema',
+        '@nuxt/schema-edge',
+        '@nuxt/kit',
+        '@nuxt/kit-edge',
+        'nuxt',
+        'nuxt-edge',
+        'nuxt3',
+        'vue',
+        'vue-demi'
+      ],
+      hooks: {
+        async 'rollup:done' (ctx) {
+        // Generate CommonJS stub
+          await writeCJSStub(ctx.options.outDir)
+
+          // Load module meta
+          const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
+          const moduleFn: NuxtModule<any> = await import(
+            pathToFileURL(moduleEntryPath).toString()
+          ).then(r => r.default || r).catch((err) => {
+            consola.error(err)
+            consola.error('Cannot load module. Please check dist:', moduleEntryPath)
+            return null
+          })
+
+          if (!moduleFn) {
+            return
+          }
+          const moduleMeta = await moduleFn.getMeta()
+
+          // Enhance meta using package.json
+          if (ctx.pkg) {
+            if (!moduleMeta.name) {
+              moduleMeta.name = ctx.pkg.name
+            }
+            if (!moduleMeta.version) {
+              moduleMeta.version = ctx.pkg.version
+            }
+          }
+
+          // Write meta
+          const metaFile = resolve(ctx.options.outDir, 'module.json')
+          await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
+
+          // Generate types
+          await writeTypes(ctx.options.outDir, moduleMeta)
+        }
+      }
+    })
+  }
+})
 
 async function writeTypes (distDir: string, meta: ModuleMeta) {
   const dtsFile = resolve(distDir, 'types.d.ts')

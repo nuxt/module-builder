@@ -1,30 +1,25 @@
 #!/usr/bin/env node
+import { defineCommand, runMain } from 'citty'
+import type { CommandDef } from 'citty'
 
-/* eslint-disable no-console */
-import mri from 'mri'
-import { resolve } from 'pathe'
-import { buildModule } from './build'
-import { prepareModule } from './prepare'
+const _rDefault = (r: any) => (r.default || r) as Promise<CommandDef>
 
-// TODO: use citty
-function main () {
-  const args = mri(process.argv.slice(2))
-
-  if (args._[0] === 'prepare') {
-    return prepareModule({
-      rootDir: resolve(args._[1] || '.')
-    })
+const main = defineCommand({
+  meta: {
+    name: 'nuxt-module-build',
+    description: 'Nuxt Module Builder'
+  },
+  subCommands: {
+    prepare: () => import('./prepare').then(_rDefault),
+    build: () => import('./build').then(_rDefault)
+  },
+  setup (context) {
+    // TODO: support 'default command' in citty?
+    const firstArg = context.rawArgs[0]
+    if (!(firstArg in context.cmd.subCommands)) {
+      context.rawArgs.unshift('build')
+    }
   }
-
-  return buildModule({
-    rootDir: resolve(args._[0] || '.'),
-    outDir: args.outDir,
-    sourcemap: args.sourcemap,
-    stub: args.stub
-  })
-}
-
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
 })
+
+runMain(main)
