@@ -28,7 +28,7 @@
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm vitest"
   },
-  "packageManager": "pnpm@8.7.1",
+  "packageManager": "pnpm@8.8.0",
   "dependencies": {
     "consola": "^3.2.3",
     "mlly": "^1.4.2",
@@ -37,21 +37,21 @@
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.7.1",
-    "nuxi": "^3.7.3"
+    "@nuxt/kit": "^3.7.4",
+    "nuxi": "^3.9.0"
   },
   "devDependencies": {
-    "@nuxt/kit": "^3.7.1",
-    "@nuxt/schema": "^3.7.1",
+    "@nuxt/kit": "^3.7.4",
+    "@nuxt/schema": "^3.7.4",
     "@nuxtjs/eslint-config-typescript": "^12.1.0",
-    "@types/mri": "^1.1.1",
-    "@types/node": "^20.5.9",
-    "@vitest/coverage-v8": "^0.34.3",
+    "@types/mri": "^1.1.2",
+    "@types/node": "^20.7.1",
+    "@vitest/coverage-v8": "^0.34.5",
     "changelogen": "^0.5.5",
-    "eslint": "^8.48.0",
-    "jiti": "^1.19.3",
-    "nuxi": "^3.7.3",
-    "nuxt": "^3.7.1",
-    "vitest": "^0.34.3"
+    "eslint": "^8.50.0",
+    "jiti": "^1.20.0",
+    "nuxi": "^3.9.0",
+    "nuxt": "^3.7.4",
+    "vitest": "^0.34.5"
   }
 }
