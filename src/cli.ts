@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from 'citty'
 import type { CommandDef } from 'citty'
+import { name, description, version } from '../package.json' assert { type: 'json' }
 
 const _rDefault = (r: any) => (r.default || r) as Promise<CommandDef>
 
 const main = defineCommand({
   meta: {
-    name: 'nuxt-module-build',
-    description: 'Nuxt Module Builder'
+    name,
+    description,
+    version
   },
   subCommands: {
     prepare: () => import('./commands/prepare').then(_rDefault),
