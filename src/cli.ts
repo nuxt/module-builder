@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from 'citty'
 import type { CommandDef } from 'citty'
-import { name, description, version } from '../package.json' assert { type: 'json' }
+import { name, description, version } from '../package.json'
 
 const _rDefault = (r: any) => (r.default || r) as Promise<CommandDef>
 
