@@ -10,8 +10,8 @@ const main = defineCommand({
     description: 'Nuxt Module Builder'
   },
   subCommands: {
-    prepare: () => import('./prepare').then(_rDefault),
-    build: () => import('./build').then(_rDefault)
+    prepare: () => import('./commands/prepare').then(_rDefault),
+    build: () => import('./commands/build').then(_rDefault)
   },
   setup (context) {
     // TODO: support 'default command' in citty?
