@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.2
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.1...v0.5.2)
+
+### 💅 Refactors
+
+- Migrate to `citty` ([#169](https://github.com/nuxt/module-builder/pull/169))
+
+### 📖 Documentation
+
+- Fix typo ([#174](https://github.com/nuxt/module-builder/pull/174))
+
+### 🏡 Chore
+
+- **release:** V0.5.1 ([fc3a760](https://github.com/nuxt/module-builder/commit/fc3a760))
+
+### ❤️ Contributors
+
+- Daniel Roe <daniel@roe.dev>
+- Pionxzh <spigbbbbb@gmail.com>
+
 ## v0.5.1
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.0...v0.5.1)
