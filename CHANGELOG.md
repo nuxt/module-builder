@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.3
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.2...v0.5.3)
+
+### 🩹 Fixes
+
+- Esnext-compatible output ([#181](https://github.com/nuxt/module-builder/pull/181))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.5.2
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.1...v0.5.2)
