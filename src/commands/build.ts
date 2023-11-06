@@ -48,6 +48,9 @@ export default defineCommand({
         { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' }
       ],
       rollup: {
+        esbuild: {
+          target: 'esnext'
+        },
         emitCJS: false,
         cjsBridge: true
       },
