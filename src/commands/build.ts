@@ -126,6 +126,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   )
   const isStub = moduleTypes.includes('export *')
 
+  const appShims = []
   const schemaShims = []
   const moduleImports = []
 
@@ -140,6 +141,10 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
+  if (hasTypeExport('RuntimeModuleHooks')) {
+    moduleImports.push('RuntimeModuleHooks')
+    appShims.push('  interface RuntimeNuxtHooks extends RuntimeModuleHooks {}')
+  }
   if (hasTypeExport('ModuleRuntimeConfig')) {
     moduleImports.push('ModuleRuntimeConfig')
     schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
@@ -152,6 +157,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const dtsContents = `
 import { ${moduleImports.join(', ')} } from './module'
 
+${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
