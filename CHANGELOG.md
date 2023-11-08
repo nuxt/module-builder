@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.4
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.3...v0.5.4)
+
+### 🚀 Enhancements
+
+- Support writing `RuntimeNuxtHooks` types ([#183](https://github.com/nuxt/module-builder/pull/183))
+
+### 🩹 Fixes
+
+- Generate explicit type import/exports ([#184](https://github.com/nuxt/module-builder/pull/184))
+
+### 📖 Documentation
+
+- Import nuxt composables from #imports ([#186](https://github.com/nuxt/module-builder/pull/186))
+
+### ❤️ Contributors
+
+- Bobbie Goede <bobbiegoede@gmail.com>
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.5.3
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.2...v0.5.3)
