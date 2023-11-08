@@ -157,7 +157,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   const dtsContents = `
 import type { ${moduleImports.join(', ')} } from './module'
 
-${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
+${appShims.length ? `declare module '#app/nuxt' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
