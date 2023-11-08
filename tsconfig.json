@@ -3,6 +3,7 @@
     "baseUrl": ".",
     "target": "ESNext",
     "module": "ESNext",
+    "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "moduleResolution": "Node",
     "esModuleInterop": true,
