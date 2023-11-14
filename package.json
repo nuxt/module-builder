@@ -28,7 +28,7 @@
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm vitest"
   },
-  "packageManager": "pnpm@8.10.2",
+  "packageManager": "pnpm@8.10.5",
   "dependencies": {
     "citty": "^0.1.4",
     "consola": "^3.2.3",
