@@ -155,13 +155,13 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
   }
 
   const dtsContents = `
-import type { ${moduleImports.join(', ')} } from './module'
+import type { ${moduleImports.join(', ')} } from './module.js'
 
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 
-export type { ${typeExports[0].names.join(', ')} } from './module'
+export type { ${typeExports[0].names.join(', ')} } from './module.js'
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
