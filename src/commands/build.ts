@@ -142,8 +142,13 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
   if (hasTypeExport('RuntimeModuleHooks')) {
+    consola.warn('Please use \'ModuleRuntimeHooks\' instead of \'RuntimeModuleHooks\' as this misspelling will be removed in the future.')
     moduleImports.push('RuntimeModuleHooks')
     appShims.push('  interface RuntimeNuxtHooks extends RuntimeModuleHooks {}')
+  }
+  if (hasTypeExport('ModuleRuntimeHooks')) {
+    moduleImports.push('ModuleRuntimeHooks')
+    appShims.push('  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}')
   }
   if (hasTypeExport('ModuleRuntimeConfig')) {
     moduleImports.push('ModuleRuntimeConfig')

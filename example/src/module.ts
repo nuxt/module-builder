@@ -9,6 +9,13 @@ export interface ModuleHooks {
   'my-module:init': () => void
 }
 
+export interface ModuleRuntimeHooks {
+  'my-module:runtime-hook': any
+}
+
+/**
+ * @deprecated Misspelling will be removed in the future
+ */
 export interface RuntimeModuleHooks {
   'my-module:runtime-hook': () => void
 }

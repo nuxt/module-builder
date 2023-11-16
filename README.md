@@ -42,7 +42,7 @@ The entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-You could also optionally export `ModuleHooks` or `RuntimeModuleHooks` to annotate any custom hooks the module uses.
+You could also optionally export `ModuleHooks` or `ModuleRuntimeHooks` to annotate any custom hooks the module uses.
 
 ```ts [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
@@ -55,8 +55,12 @@ export interface ModuleHooks {
   'my-module:init': any
 }
 
-export interface RuntimeModuleHooks {
+export interface ModuleRuntimeHooks {
   'my-module:runtime-hook': any
+}
+
+export interface ModuleRuntimeConfig {
+  PRIVATE_NAME: string
 }
 
 export interface ModulePublicRuntimeConfig {
@@ -140,7 +144,6 @@ Module builder generates dist files in `dist/` directory:
 ## License
 
 [MIT](./LICENSE) - Made with 💚
-
 
 <!-- Badges -->
 [npm-version-src]: https://img.shields.io/npm/v/@nuxt/module-builder/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
