@@ -5,9 +5,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/module.mjs",
-      "require": "./dist/module.cjs"
+      "types": "./dist/types.d.mts",
+      "default": "./dist/module.mjs"
     },
     "./utils": "./dist/utils.mjs"
   },
@@ -17,10 +16,10 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts",
+    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare"
+    "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare"
   },
   "dependencies": {
     "@nuxt/kit": "^3.8.1"
