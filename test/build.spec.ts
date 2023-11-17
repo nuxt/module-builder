@@ -48,8 +48,7 @@ describe('module builder', () => {
       import type { ModuleOptions, ModuleHooks, RuntimeModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
 
       declare module '#app' {
-        interface RuntimeNuxtHooks extends RuntimeModuleHooks {}
-        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
+        interface RuntimeNuxtHooks extends RuntimeModuleHooks, ModuleRuntimeHooks {}
       }
 
       declare module '@nuxt/schema' {

@@ -141,15 +141,22 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
-  if (hasTypeExport('RuntimeModuleHooks')) {
-    consola.warn('Please use \'ModuleRuntimeHooks\' instead of \'RuntimeModuleHooks\' as this misspelling will be removed in the future.')
-    moduleImports.push('RuntimeModuleHooks')
-    appShims.push('  interface RuntimeNuxtHooks extends RuntimeModuleHooks {}')
+
+  if (hasTypeExport('RuntimeModuleHooks') || hasTypeExport('ModuleRuntimeHooks')) {
+    const runtimeHooksInterfaces = []
+
+    if (hasTypeExport('RuntimeModuleHooks')) {
+      consola.warn('Please use \'ModuleRuntimeHooks\' instead of \'RuntimeModuleHooks\' as this misspelling will be removed in the future.')
+      runtimeHooksInterfaces.push('RuntimeModuleHooks')
+    }
+    if (hasTypeExport('ModuleRuntimeHooks')) {
+      runtimeHooksInterfaces.push('ModuleRuntimeHooks')
+    }
+
+    moduleImports.push(...runtimeHooksInterfaces)
+    appShims.push(`  interface RuntimeNuxtHooks extends ${runtimeHooksInterfaces.join(', ')} {}`)
   }
-  if (hasTypeExport('ModuleRuntimeHooks')) {
-    moduleImports.push('ModuleRuntimeHooks')
-    appShims.push('  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}')
-  }
+
   if (hasTypeExport('ModuleRuntimeConfig')) {
     moduleImports.push('ModuleRuntimeConfig')
     schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
