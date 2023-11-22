@@ -2,7 +2,9 @@
   "private": true,
   "name": "my-module-playground",
   "scripts": {
-    "test:types": "nuxt prepare && vue-tsc --noEmit"
+    "test:types": "pnpm test:types:bundler && pnpm test:types:node10",
+    "test:types:bundler": "echo typescript.tsConfig.compilerOptions.moduleResolution=bundler > .nuxtrc && nuxt prepare && vue-tsc --noEmit",
+    "test:types:node10": "echo typescript.tsConfig.compilerOptions.moduleResolution=node10 > .nuxtrc && nuxt prepare && vue-tsc --noEmit"
   },
   "dependencies": {
     "my-module": "workspace:*",

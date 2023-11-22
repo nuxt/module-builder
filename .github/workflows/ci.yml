@@ -11,9 +11,6 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        resolution: ['bundler', 'node10']
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
       - run: corepack enable
@@ -27,7 +24,6 @@ jobs:
       - run: pnpm test -- --coverage
       - run: pnpm build
       - run: pnpm example:build
-      - run: echo typescript.tsConfig.compilerOptions.moduleResolution=${{ matrix.resolution }} > example/playground/.nuxtrc
       - run: pnpm test:types
       - run: npx publint
         working-directory: example
