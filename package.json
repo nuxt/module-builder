@@ -44,7 +44,7 @@
     "@nuxt/kit": "^3.8.2",
     "@nuxt/schema": "^3.8.2",
     "@nuxtjs/eslint-config-typescript": "^12.1.0",
-    "@types/node": "^20.9.3",
+    "@types/node": "^20.9.4",
     "@vitest/coverage-v8": "^0.34.6",
     "changelogen": "^0.5.5",
     "eslint": "^8.54.0",
