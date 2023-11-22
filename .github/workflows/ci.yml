@@ -24,5 +24,6 @@ jobs:
       - run: pnpm test -- --coverage
       - run: pnpm build
       - run: pnpm example:build
+      - run: pnpm test:types
       - run: npx publint
         working-directory: example
