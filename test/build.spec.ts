@@ -45,7 +45,7 @@ describe('module builder', () => {
     const types = await readFile(join(distDir, 'types.d.ts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
       "
-      import type { ModuleOptions, ModuleHooks, RuntimeModuleHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.js'
+      import type { ModuleOptions, ModuleHooks, RuntimeModuleHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
 
       declare module '#app' {
         interface RuntimeNuxtHooks extends RuntimeModuleHooks {}
@@ -68,7 +68,7 @@ describe('module builder', () => {
       }
 
 
-      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, RuntimeModuleHooks, default } from './module.js'
+      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, RuntimeModuleHooks, default } from './module'
       "
     `)
   })
