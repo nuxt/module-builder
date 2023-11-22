@@ -1,3 +1,5 @@
+// TODO: fix module-builder failing to emit correct types
+import type { Plugin } from 'nuxt/app'
 import { defineNuxtPlugin } from '#imports'
 
 export default defineNuxtPlugin(() => {
@@ -8,4 +10,4 @@ export default defineNuxtPlugin(() => {
       injection: 'injected' as const
     }
   }
-})
+}) as Plugin<{ injection: 'injected' }>
