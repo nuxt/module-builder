@@ -22,12 +22,12 @@ jobs:
           node-version: 18
           cache: 'pnpm'
       - run: pnpm install
-      - run: echo typescript.tsConfig.compilerOptions.moduleResolution=${{ matrix.resolution }} > example/playground/.nuxtrc
       - run: pnpm -r dev:prepare
       - run: pnpm lint
       - run: pnpm test -- --coverage
       - run: pnpm build
       - run: pnpm example:build
+      - run: echo typescript.tsConfig.compilerOptions.moduleResolution=${{ matrix.resolution }} > example/playground/.nuxtrc
       - run: pnpm test:types
       - run: npx publint
         working-directory: example
