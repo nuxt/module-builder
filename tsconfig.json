@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "skipLibCheck": true,
     "target": "ESNext",
     "module": "ESNext",
     "verbatimModuleSyntax": true,
@@ -14,6 +15,5 @@
   },
   "include": [
     "src",
-    "node_modules"
   ]
 }

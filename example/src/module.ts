@@ -6,11 +6,11 @@ export interface ModuleOptions {
 }
 
 export interface ModuleHooks {
-  'my-module:init': any
+  'my-module:init': () => void
 }
 
 export interface RuntimeModuleHooks {
-  'my-module:runtime-hook': any
+  'my-module:runtime-hook': () => void
 }
 
 export interface ModulePublicRuntimeConfig {

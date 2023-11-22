@@ -1,8 +1,15 @@
 {
   "private": true,
   "name": "my-module-playground",
+  "scripts": {
+    "test:types": "nuxt prepare && vue-tsc --noEmit"
+  },
   "dependencies": {
     "my-module": "workspace:*",
     "nuxt": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.2",
+    "vue-tsc": "^1.8.22"
   }
 }
