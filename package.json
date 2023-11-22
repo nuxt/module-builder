@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "example:build": "pnpm nuxt-module-build ./example",
+    "example:build": "pnpm nuxt-module-build build ./example",
     "lint": "eslint --ext .ts,.js,.mjs .",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
