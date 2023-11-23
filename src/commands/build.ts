@@ -146,7 +146,7 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     const runtimeHooksInterfaces = []
 
     if (hasTypeExport('RuntimeModuleHooks')) {
-      consola.warn('Please use \'ModuleRuntimeHooks\' instead of \'RuntimeModuleHooks\' as this misspelling will be removed in the future.')
+      consola.warn('`RuntimeModuleHooks` is a deprecated naming and will be removed in the future. Please use `ModuleRuntimeHooks` instead.')
       runtimeHooksInterfaces.push('RuntimeModuleHooks')
     }
     if (hasTypeExport('ModuleRuntimeHooks')) {
