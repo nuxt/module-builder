@@ -8,10 +8,7 @@
       "types": "./dist/types.d.mts",
       "default": "./dist/module.mjs"
     },
-    "./utils": {
-      "types": "./dist/utils.d.mts",
-      "default": "./dist/utils.mjs"
-    }
+    "./utils": "./dist/utils.mjs"
   },
   "main": "dist/module.mjs",
   "types": "dist/types.d.ts",
