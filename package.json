@@ -29,7 +29,7 @@
     "test": "pnpm vitest",
     "test:types": "tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@8.10.5",
+  "packageManager": "pnpm@8.11.0",
   "dependencies": {
     "citty": "^0.1.5",
     "consola": "^3.2.3",
@@ -45,10 +45,10 @@
     "@nuxt/kit": "^3.8.2",
     "@nuxt/schema": "^3.8.2",
     "@nuxtjs/eslint-config-typescript": "^12.1.0",
-    "@types/node": "^20.9.5",
+    "@types/node": "^20.10.3",
     "@vitest/coverage-v8": "^0.34.6",
     "changelogen": "^0.5.5",
-    "eslint": "^8.54.0",
+    "eslint": "^8.55.0",
     "jiti": "^1.21.0",
     "nuxi": "^3.10.0",
     "nuxt": "^3.8.2",
