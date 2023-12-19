@@ -178,7 +178,7 @@ export type { ${typeExports[0].names.join(', ')} } from './module'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
   if (!existsSync(dtsFileMts)) {
-    await fsp.writeFile(dtsFileMts, dtsContents, 'utf8')
+    await fsp.writeFile(dtsFileMts, dtsContents.replaceAll('./module', './module.js'), 'utf8')
   }
 }
 

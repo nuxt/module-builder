@@ -10,8 +10,16 @@
     },
     "./utils": "./dist/utils.mjs"
   },
-  "main": "./dist/module.cjs",
-  "types": "./dist/types.d.ts",
+  "main": "dist/module.mjs",
+  "types": "dist/types.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/*",
+        "./*"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
