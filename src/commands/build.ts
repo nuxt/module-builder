@@ -141,10 +141,22 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
-  if (hasTypeExport('RuntimeModuleHooks')) {
-    moduleImports.push('RuntimeModuleHooks')
-    appShims.push('  interface RuntimeNuxtHooks extends RuntimeModuleHooks {}')
+
+  if (hasTypeExport('RuntimeModuleHooks') || hasTypeExport('ModuleRuntimeHooks')) {
+    const runtimeHooksInterfaces = []
+
+    if (hasTypeExport('RuntimeModuleHooks')) {
+      consola.warn('`RuntimeModuleHooks` is a deprecated naming and will be removed in the future. Please use `ModuleRuntimeHooks` instead.')
+      runtimeHooksInterfaces.push('RuntimeModuleHooks')
+    }
+    if (hasTypeExport('ModuleRuntimeHooks')) {
+      runtimeHooksInterfaces.push('ModuleRuntimeHooks')
+    }
+
+    moduleImports.push(...runtimeHooksInterfaces)
+    appShims.push(`  interface RuntimeNuxtHooks extends ${runtimeHooksInterfaces.join(', ')} {}`)
   }
+
   if (hasTypeExport('ModuleRuntimeConfig')) {
     moduleImports.push('ModuleRuntimeConfig')
     schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
