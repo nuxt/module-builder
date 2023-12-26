@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.5
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.4...v0.5.5)
+
+### 🩹 Fixes
+
+- Rename `RuntimeModuleHooks` to `ModuleRuntimeHooks` ([#194](https://github.com/nuxt/module-builder/pull/194))
+- Use import with extension in generated `.d.mts` file ([#202](https://github.com/nuxt/module-builder/pull/202))
+
+### 📖 Documentation
+
+- Remove reference to `ModulePrivateRuntimeConfig` ([34ee148](https://github.com/nuxt/module-builder/commit/34ee148))
+
+### 🏡 Chore
+
+- Add shell emulator for Windows ([#191](https://github.com/nuxt/module-builder/pull/191))
+- Fix example `package.json` ([#192](https://github.com/nuxt/module-builder/pull/192))
+
+### ✅ Tests
+
+- Add root + module type tests ([#198](https://github.com/nuxt/module-builder/pull/198))
+
+### 🤖 CI
+
+- Run tests on node 18 ([81b7b4c](https://github.com/nuxt/module-builder/commit/81b7b4c))
+
+### ❤️ Contributors
+
+- Joaquín Sánchez ([@userquin](http://github.com/userquin))
+- Bobbie Goede <bobbiegoede@gmail.com>
+- Daniel Roe <daniel@roe.dev>
+
 ## v0.5.4
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.3...v0.5.4)
