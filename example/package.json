@@ -30,13 +30,13 @@
     "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.9.2"
+    "@nuxt/kit": "^3.10.3"
   },
   "devDependencies": {
     "@nuxt/module-builder": "workspace:*",
-    "@nuxt/schema": "^3.9.2",
-    "@types/node": "^20.11.5",
-    "nuxt": "^3.9.2"
+    "@nuxt/schema": "^3.10.3",
+    "@types/node": "^20.11.20",
+    "nuxt": "^3.10.3"
   },
   "build": {
     "entries": [
