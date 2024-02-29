@@ -13,13 +13,6 @@ export interface ModuleRuntimeHooks {
   'my-module:runtime-hook': any
 }
 
-/**
- * @deprecated `RuntimeModuleHooks` is a deprecated naming and will be removed in the future. Please use `ModuleRuntimeHooks` instead.
- */
-export interface RuntimeModuleHooks {
-  'my-module:runtime-hook': () => void
-}
-
 export interface ModulePublicRuntimeConfig {
   NAME: string
 }

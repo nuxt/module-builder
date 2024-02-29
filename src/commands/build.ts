@@ -142,13 +142,9 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
   }
 
-  if (hasTypeExport('RuntimeModuleHooks') || hasTypeExport('ModuleRuntimeHooks')) {
+  if (hasTypeExport('ModuleRuntimeHooks')) {
     const runtimeHooksInterfaces = []
 
-    if (hasTypeExport('RuntimeModuleHooks')) {
-      consola.warn('`RuntimeModuleHooks` is a deprecated naming and will be removed in the future. Please use `ModuleRuntimeHooks` instead.')
-      runtimeHooksInterfaces.push('RuntimeModuleHooks')
-    }
     if (hasTypeExport('ModuleRuntimeHooks')) {
       runtimeHooksInterfaces.push('ModuleRuntimeHooks')
     }
