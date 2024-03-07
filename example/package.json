@@ -35,7 +35,7 @@
   "devDependencies": {
     "@nuxt/module-builder": "workspace:*",
     "@nuxt/schema": "^3.10.3",
-    "@types/node": "^20.11.24",
+    "@types/node": "^20.11.25",
     "nuxt": "^3.10.3"
   },
   "build": {
