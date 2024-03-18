@@ -54,8 +54,8 @@ importers:
         specifier: ^1.21.0
         version: 1.21.0
       nuxi:
-        specifier: ^3.10.1
-        version: 3.10.1
+        specifier: ^3.11.0
+        version: 3.11.0
       nuxt:
         specifier: ^3.11.0
         version: 3.11.0(@types/node@20.11.28)(eslint@8.57.0)(rollup@3.29.4)(typescript@5.4.2)(vite@5.1.6)(vue-tsc@2.0.6)
@@ -5584,6 +5584,14 @@ packages:
     hasBin: true
     optionalDependencies:
       fsevents: 2.3.3
+
+  /nuxi@3.11.0:
+    resolution: {integrity: sha512-0LHrUNvQ2E+izHllvoGPPfgWkKkD7bxVjUekWeO7FjKLo83N4oumZdK78Qiau/HOh6CW3Y9mcc7kkJd4IPh5uw==}
+    engines: {node: ^16.10.0 || >=18.0.0}
+    hasBin: true
+    optionalDependencies:
+      fsevents: 2.3.3
+    dev: true
 
   /nuxt@3.11.0(@types/node@20.11.28)(eslint@8.57.0)(rollup@3.29.4)(typescript@5.4.2)(vite@5.1.6)(vue-tsc@2.0.6):
     resolution: {integrity: sha512-eRjmXk2hC+mUghj46H+sndVjK+VMmS8W5HqWE+k18vASrTxtpHxgG2+gxiiDaOPi/dY0POv+cg5GEs8muZPjEQ==}

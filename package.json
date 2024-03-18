@@ -39,7 +39,7 @@
   },
   "peerDependencies": {
     "@nuxt/kit": "^3.11.0",
-    "nuxi": "^3.10.1"
+    "nuxi": "^3.11.0"
   },
   "devDependencies": {
     "@nuxt/kit": "^3.11.0",
@@ -50,7 +50,7 @@
     "changelogen": "^0.5.5",
     "eslint": "^8.57.0",
     "jiti": "^1.21.0",
-    "nuxi": "^3.10.1",
+    "nuxi": "^3.11.0",
     "nuxt": "^3.11.0",
     "vue": "^3.4.21",
     "vitest": "^1.4.0"
