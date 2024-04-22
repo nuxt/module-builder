@@ -1,5 +1,5 @@
-import { existsSync, promises as fsp } from 'fs'
-import { pathToFileURL } from 'url'
+import { existsSync, promises as fsp } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 import { resolve } from 'pathe'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
@@ -9,29 +9,29 @@ import { defineCommand } from 'citty'
 export default defineCommand({
   meta: {
     name: 'build',
-    description: 'Build module for distribution'
+    description: 'Build module for distribution',
   },
   args: {
     cwd: {
       type: 'string',
-      description: 'Current working directory'
+      description: 'Current working directory',
     },
     rootDir: {
       type: 'positional',
       description: 'Root directory',
-      required: false
+      required: false,
     },
     outDir: {
-      type: 'string'
+      type: 'string',
     },
     sourcemap: {
-      type: 'boolean'
+      type: 'boolean',
     },
     stub: {
-      type: 'boolean'
-    }
+      type: 'boolean',
+    },
   },
-  async run (context) {
+  async run(context) {
     const { build } = await import('unbuild')
 
     const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
@@ -45,14 +45,14 @@ export default defineCommand({
       outDir,
       entries: [
         'src/module',
-        { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' }
+        { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' },
       ],
       rollup: {
         esbuild: {
-          target: 'esnext'
+          target: 'esnext',
         },
         emitCJS: false,
-        cjsBridge: true
+        cjsBridge: true,
       },
       externals: [
         '@nuxt/schema',
@@ -63,10 +63,10 @@ export default defineCommand({
         'nuxt-edge',
         'nuxt3',
         'vue',
-        'vue-demi'
+        'vue-demi',
       ],
       hooks: {
-        async 'rollup:done' (ctx) {
+        async 'rollup:done'(ctx) {
         // Generate CommonJS stub
           await writeCJSStub(ctx.options.outDir)
 
@@ -101,13 +101,13 @@ export default defineCommand({
 
           // Generate types
           await writeTypes(ctx.options.outDir, moduleMeta)
-        }
-      }
+        },
+      },
     })
-  }
+  },
 })
 
-async function writeTypes (distDir: string, meta: ModuleMeta) {
+async function writeTypes(distDir: string, meta: ModuleMeta) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
@@ -121,8 +121,8 @@ async function writeTypes (distDir: string, meta: ModuleMeta) {
     // Replace `export { type Foo }` with `export { Foo }`
     moduleTypes
       .replace(/export\s*{.*?}/sg, match =>
-        match.replace(/\btype\b/g, '')
-      )
+        match.replace(/\btype\b/g, ''),
+      ),
   )
   const isStub = moduleTypes.includes('export *')
 
@@ -178,7 +178,7 @@ export type { ${typeExports[0].names.join(', ')} } from './module'
   }
 }
 
-async function writeCJSStub (distDir: string) {
+async function writeCJSStub(distDir: string) {
   const cjsStubFile = resolve(distDir, 'module.cjs')
   if (existsSync(cjsStubFile)) {
     return

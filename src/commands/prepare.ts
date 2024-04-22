@@ -5,20 +5,20 @@ import { resolve } from 'pathe'
 export default defineCommand({
   meta: {
     name: 'prepare',
-    description: 'Prepare @nuxt/module-builder environment by writing types and stubs'
+    description: 'Prepare @nuxt/module-builder environment by writing types and stubs',
   },
   args: {
     cwd: {
       type: 'string',
-      description: 'Current working directory'
+      description: 'Current working directory',
     },
     rootDir: {
       type: 'positional',
       description: 'Root directory',
-      required: false
-    }
+      required: false,
+    },
   },
-  async run (context) {
+  async run(context) {
     const { runCommand } = await import('nuxi')
 
     const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
@@ -26,10 +26,10 @@ export default defineCommand({
     return runCommand('prepare', [cwd], {
       overrides: {
         typescript: {
-          builder: 'shared'
+          builder: 'shared',
         },
         imports: {
-          autoImport: false
+          autoImport: false,
         },
         modules: [
           resolve(cwd, './src/module'),
@@ -39,9 +39,9 @@ export default defineCommand({
                 template.write = true
               }
             })
-          }
-        ]
-      } satisfies NuxtConfig
+          },
+        ],
+      } satisfies NuxtConfig,
     })
-  }
+  },
 })

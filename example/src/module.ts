@@ -24,16 +24,16 @@ export interface ModuleRuntimeConfig {
 export default defineNuxtModule<ModuleOptions>({
   meta: {
     name: 'my-module',
-    configKey: 'myModule'
+    configKey: 'myModule',
   },
   // Default configuration options of the Nuxt module
   defaults: {
-    apiKey: ''
+    apiKey: '',
   },
-  setup (_options, _nuxt) {
+  setup(_options, _nuxt) {
     const resolver = createResolver(import.meta.url)
 
     // Do not add the extension since the `.ts` will be transpiled to `.mjs` after `npm run prepack`
     addPlugin(resolver.resolve('./runtime/plugin'))
-  }
+  },
 })
