@@ -10,7 +10,7 @@ export interface ModuleHooks {
 }
 
 export interface ModuleRuntimeHooks {
-  'my-module:runtime-hook': any
+  'my-module:runtime-hook': unknown
 }
 
 export interface ModulePublicRuntimeConfig {

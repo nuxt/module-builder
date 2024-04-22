@@ -4,7 +4,7 @@ import type { CommandDef } from 'citty'
 import { consola } from 'consola'
 import { name, description, version } from '../package.json'
 
-const _rDefault = (r: any) => (r.default || r) as Promise<CommandDef>
+const _rDefault = (r: unknown) => (r && typeof r === 'object' && 'default' in r ? r.default : r) as Promise<CommandDef>
 
 const main = defineCommand({
   meta: {

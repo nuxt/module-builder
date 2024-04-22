@@ -72,7 +72,7 @@ export default defineCommand({
 
           // Load module meta
           const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-          const moduleFn: NuxtModule<any> = await import(
+          const moduleFn: NuxtModule<unknown> = await import(
             pathToFileURL(moduleEntryPath).toString()
           ).then(r => r.default || r).catch((err) => {
             consola.error(err)
