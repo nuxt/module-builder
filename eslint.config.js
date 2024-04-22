@@ -8,7 +8,8 @@ export default createConfigForNuxt({
   },
   dirs: {
     src: [
-
+      './example',
+      './example/playground',
     ],
   },
 })
