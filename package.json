@@ -29,7 +29,7 @@
     "test": "pnpm vitest",
     "test:types": "tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@8.15.6",
+  "packageManager": "pnpm@8.15.7",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
@@ -45,19 +45,19 @@
     "@nuxt/kit": "^3.11.2",
     "@nuxt/schema": "^3.11.2",
     "@nuxtjs/eslint-config-typescript": "^12.1.0",
-    "@types/node": "^20.12.5",
-    "@vitest/coverage-v8": "^1.4.0",
+    "@types/node": "^20.12.7",
+    "@vitest/coverage-v8": "^1.5.0",
     "changelogen": "^0.5.5",
     "eslint": "^8.57.0",
     "jiti": "^1.21.0",
     "nuxi": "^3.11.1",
     "nuxt": "^3.11.2",
-    "vue": "^3.4.21",
-    "vitest": "^1.4.0"
+    "vue": "^3.4.24",
+    "vitest": "^1.5.0"
   },
   "resolutions": {
     "@nuxt/kit": "^3.11.2",
     "@nuxt/schema": "^3.11.2",
-    "vue": "^3.4.21"
+    "vue": "^3.4.24"
   }
 }
