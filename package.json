@@ -29,7 +29,7 @@
     "test": "pnpm vitest",
     "test:types": "tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@8.15.7",
+  "packageManager": "pnpm@9.0.5",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
