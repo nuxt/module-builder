@@ -4,6 +4,6 @@ export default defineBuildConfig({
   declaration: true,
   entries: [
     './src/cli',
-    './src/index'
-  ]
+    './src/index',
+  ],
 })

@@ -1,5 +1,5 @@
-import { fileURLToPath } from 'url'
-import { readFile, readdir } from 'fs/promises'
+import { fileURLToPath } from 'node:url'
+import { readFile, readdir } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
 import { execaCommand } from 'execa'
 import { join } from 'pathe'

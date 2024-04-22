@@ -3,9 +3,9 @@ export default defineNuxtConfig({
   myModule: {
     apiKey: '',
     // @ts-expect-error invalid configuration key
-    api: ''
+    api: '',
   },
   hooks: {
-    'my-module:init' () {}
-  }
+    'my-module:init'() {},
+  },
 })
