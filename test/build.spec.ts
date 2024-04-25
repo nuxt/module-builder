@@ -86,14 +86,17 @@ describe('module builder', () => {
 
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
-    expect(pluginDts).toMatchInlineSnapshot(`
-      "declare const _default: import("#app").Plugin<{
-          injection: "injected";
-      }> & import("#app").ObjectPlugin<{
-          injection: "injected";
-      }>;
-      export default _default;
-      "
-    `)
+    expect(pluginDts).toMatchFileSnapshot('__snapshots__/plugin.d.ts')
+  })
+
+  // TODO: https://github.com/nuxt/module-builder/issues/239
+  it('should generate components correctly', async () => {
+    const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
+    expect(componentFile).toMatchFileSnapshot('__snapshots__/TestMe.vue')
+  })
+
+  it('should generate wrapped composables', async () => {
+    const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
+    expect(componentFile).toMatchFileSnapshot('__snapshots__/useWrappedFetch.d.ts')
   })
 })
