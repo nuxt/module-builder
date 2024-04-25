@@ -50,7 +50,16 @@ export default defineCommand({
       outDir,
       entries: [
         'src/module',
-        { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' },
+        {
+          input: 'src/runtime/',
+          outDir: `${outDir}/runtime`,
+          ext: 'mjs',
+          esbuild: {
+            jsxImportSource: 'vue',
+            jsx: 'automatic',
+            jsxFactory: 'h',
+          }
+        },
       ],
       rollup: {
         esbuild: {
