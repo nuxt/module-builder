@@ -46,14 +46,14 @@
     "@nuxt/kit": "^3.11.2",
     "@nuxt/schema": "^3.11.2",
     "@types/node": "^20.12.7",
-    "@vitest/coverage-v8": "^1.5.1",
+    "@vitest/coverage-v8": "^1.5.2",
     "changelogen": "^0.5.5",
     "eslint": "^9.1.1",
     "jiti": "^1.21.0",
     "nuxi": "^3.11.1",
     "nuxt": "^3.11.2",
     "vue": "^3.4.25",
-    "vitest": "^1.5.1",
+    "vitest": "^1.5.2",
     "@nuxt/eslint-config": "^0.3.9"
   },
   "resolutions": {
