@@ -9,6 +9,7 @@ import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
 import { resolveSchema, generateTypes } from 'untyped'
 import { defineCommand } from 'citty'
+import { loadNuxt } from '@nuxt/kit'
 
 export default defineCommand({
   meta: {
@@ -79,7 +80,7 @@ export default defineCommand({
           })
         },
         async 'rollup:done'(ctx) {
-        // Generate CommonJS stub
+          // Generate CommonJS stub
           await writeCJSStub(ctx.options.outDir)
 
           // Load module meta
@@ -96,7 +97,6 @@ export default defineCommand({
             return
           }
           const moduleMeta = await moduleFn.getMeta?.() || {}
-          const moduleOptions = await moduleFn.getOptions?.() || {}
 
           // Enhance meta using package.json
           if (ctx.pkg) {
@@ -113,14 +113,24 @@ export default defineCommand({
           await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
 
           // Generate types
-          await writeTypes(ctx.options.outDir, moduleMeta, moduleOptions)
+          await writeTypes(ctx.options.outDir, moduleMeta, async () => {
+            const nuxt = await loadNuxt({
+              cwd,
+              overrides: {
+                modules: [resolve(cwd, './src/module')],
+              },
+            })
+            const moduleOptions = await moduleFn.getOptions?.({}, nuxt) || {}
+            await nuxt.close()
+            return moduleOptions
+          })
         },
       },
     })
   },
 })
 
-async function writeTypes(distDir: string, meta: ModuleMeta, options: any) {
+async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => Promise<Record<string, unknown>>) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
@@ -149,8 +159,9 @@ async function writeTypes(distDir: string, meta: ModuleMeta, options: any) {
     moduleImports.push('ModuleOptions')
     schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
     schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
-  } else if (meta.configKey) {
-    schemaShims.push(`  ${generateTypes(resolveSchema(options), { interfaceName: 'ModuleOptions' })}`)
+  }
+  else if (meta.configKey) {
+    schemaShims.push(`  ${generateTypes(await resolveSchema(await getOptions()), { interfaceName: 'ModuleOptions' })}`)
   }
   if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
