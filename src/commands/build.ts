@@ -7,7 +7,7 @@ import { defu } from 'defu'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
-import { resolveSchema, generateTypes } from 'untyped'
+import { resolveSchema, generateTypes, InputObject } from 'untyped'
 import { defineCommand } from 'citty'
 import { loadNuxt } from '@nuxt/kit'
 
@@ -161,7 +161,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
     schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
   }
   else if (meta.configKey) {
-    schemaShims.push(`  ${generateTypes(await resolveSchema(await getOptions()), { interfaceName: 'ModuleOptions' })}`)
+    schemaShims.push(`  ${generateTypes(await resolveSchema(await getOptions() as InputObject), { interfaceName: 'ModuleOptions' })}`)
   }
   if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
