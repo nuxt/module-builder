@@ -34,6 +34,7 @@
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
+    "defu": "^6.1.4",
     "mlly": "^1.6.1",
     "pathe": "^1.1.2",
     "pkg-types": "^1.1.0",
