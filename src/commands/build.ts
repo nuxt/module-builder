@@ -1,13 +1,15 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'pathe'
-import { readTSConfig } from 'pkg-types'
+import { readPackageJSON, readTSConfig } from 'pkg-types'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
 import { defineCommand } from 'citty'
+
+import { name, version } from '../../package.json'
 
 export default defineCommand({
   meta: {
@@ -105,6 +107,12 @@ export default defineCommand({
             if (!moduleMeta.version) {
               moduleMeta.version = ctx.pkg.version
             }
+          }
+
+          // Add module builder metadata
+          moduleMeta.builder = {
+            [name]: version,
+            'unbuild': await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
           }
 
           // Write meta

@@ -2,7 +2,9 @@ import { fileURLToPath } from 'node:url'
 import { readFile, readdir } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
 import { execaCommand } from 'execa'
+import { readPackageJSON } from 'pkg-types'
 import { join } from 'pathe'
+import { version } from '../package.json'
 
 describe('module builder', () => {
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
@@ -75,13 +77,18 @@ describe('module builder', () => {
 
   it('should generate module metadata as separate JSON file', async () => {
     const meta = await readFile(join(distDir, 'module.json'), 'utf-8')
-    expect(JSON.parse(meta)).toMatchInlineSnapshot(`
+    const unbuildPkg = await readPackageJSON('unbuild')
+    expect(JSON.parse(meta)).toMatchObject(
       {
+        "builder": {
+          "@nuxt/module-builder": version,
+          "unbuild": unbuildPkg.version,
+        },
         "configKey": "myModule",
         "name": "my-module",
         "version": "1.0.0",
       }
-    `)
+    )
   })
 
   it('should generate typed plugin', async () => {
