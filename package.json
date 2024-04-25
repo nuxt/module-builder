@@ -28,7 +28,7 @@
     "prepack": "pnpm build",
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm vitest",
-    "test:types": "tsc --noEmit && pnpm -r test:types"
+    "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
   "packageManager": "pnpm@9.0.6",
   "dependencies": {
