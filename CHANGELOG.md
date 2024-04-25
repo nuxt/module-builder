@@ -2,6 +2,155 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.5.5
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.4...v0.5.5)
+
+### 🩹 Fixes
+
+- Rename `RuntimeModuleHooks` to `ModuleRuntimeHooks` ([#194](https://github.com/nuxt/module-builder/pull/194))
+- Use import with extension in generated `.d.mts` file ([#202](https://github.com/nuxt/module-builder/pull/202))
+
+### 📖 Documentation
+
+- Remove reference to `ModulePrivateRuntimeConfig` ([34ee148](https://github.com/nuxt/module-builder/commit/34ee148))
+
+### 🏡 Chore
+
+- Add shell emulator for Windows ([#191](https://github.com/nuxt/module-builder/pull/191))
+- Fix example `package.json` ([#192](https://github.com/nuxt/module-builder/pull/192))
+
+### ✅ Tests
+
+- Add root + module type tests ([#198](https://github.com/nuxt/module-builder/pull/198))
+
+### 🤖 CI
+
+- Run tests on node 18 ([81b7b4c](https://github.com/nuxt/module-builder/commit/81b7b4c))
+
+### ❤️ Contributors
+
+- Joaquín Sánchez ([@userquin](http://github.com/userquin))
+- Bobbie Goede <bobbiegoede@gmail.com>
+- Daniel Roe <daniel@roe.dev>
+
+## v0.5.4
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.3...v0.5.4)
+
+### 🚀 Enhancements
+
+- Support writing `RuntimeNuxtHooks` types ([#183](https://github.com/nuxt/module-builder/pull/183))
+
+### 🩹 Fixes
+
+- Generate explicit type import/exports ([#184](https://github.com/nuxt/module-builder/pull/184))
+
+### 📖 Documentation
+
+- Import nuxt composables from #imports ([#186](https://github.com/nuxt/module-builder/pull/186))
+
+### ❤️ Contributors
+
+- Bobbie Goede <bobbiegoede@gmail.com>
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
+## v0.5.3
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.2...v0.5.3)
+
+### 🩹 Fixes
+
+- Esnext-compatible output ([#181](https://github.com/nuxt/module-builder/pull/181))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
+## v0.5.2
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.1...v0.5.2)
+
+### 💅 Refactors
+
+- Migrate to `citty` ([#169](https://github.com/nuxt/module-builder/pull/169))
+
+### 📖 Documentation
+
+- Fix typo ([#174](https://github.com/nuxt/module-builder/pull/174))
+
+### 🏡 Chore
+
+- **release:** V0.5.1 ([fc3a760](https://github.com/nuxt/module-builder/commit/fc3a760))
+
+### ❤️ Contributors
+
+- Daniel Roe <daniel@roe.dev>
+- Pionxzh <spigbbbbb@gmail.com>
+
+## v0.5.1
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.0...v0.5.1)
+
+### 🚀 Enhancements
+
+- Support `--sourcemap` option ([#163](https://github.com/nuxt/module-builder/pull/163))
+
+### ❤️ Contributors
+
+- Bobbie Goede <bobbiegoede@gmail.com>
+
+## v0.5.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.4.0...v0.5.0)
+
+### 🚀 Enhancements
+
+- Expose `prepareModule` function ([76b5654](https://github.com/nuxt/module-builder/commit/76b5654))
+- Upgrade to `unbuild@2` ([#161](https://github.com/nuxt/module-builder/pull/161))
+
+### 🏡 Chore
+
+- Add type safety to prepare overrides ([9d0804a](https://github.com/nuxt/module-builder/commit/9d0804a))
+- Switch to changelogen for release ([ba811da](https://github.com/nuxt/module-builder/commit/ba811da))
+
+### ❤️ Contributors
+
+- Daniel Roe <daniel@roe.dev>
+- Anthony Fu <anthonyfu117@hotmail.com>
+
+## [0.4.0](https://github.com/nuxt/module-builder/compare/v0.3.1...v0.4.0) (2023-05-26)
+
+
+### Features
+
+* add `prepare` command for local types support ([#124](https://github.com/nuxt/module-builder/issues/124)) ([612c6b2](https://github.com/nuxt/module-builder/commit/612c6b29a6bad321764d1b0d48d28ada56677f85))
+
+### [0.3.1](https://github.com/nuxt/module-builder/compare/v0.3.0...v0.3.1) (2023-05-01)
+
+
+### Bug Fixes
+
+* extend `nuxt/schema` as well ([796d6ab](https://github.com/nuxt/module-builder/commit/796d6ab161f753b3cce66ebf182f1f46b22f2a7c))
+
+## [0.3.0](https://github.com/nuxt/module-builder/compare/v0.2.1...v0.3.0) (2023-04-11)
+
+### [0.2.1](https://github.com/nuxt/module-builder/compare/v0.2.0...v0.2.1) (2022-11-16)
+
+## [0.2.0](https://github.com/nuxt/module-builder/compare/v0.1.7...v0.2.0) (2022-10-15)
+
+
+### Features
+
+* export all module types in `types.d.ts` ([#46](https://github.com/nuxt/module-builder/issues/46)) ([64f3ba5](https://github.com/nuxt/module-builder/commit/64f3ba5e89471fb3dfed0cf83411f90c584f205c))
+* support `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` type exports ([#45](https://github.com/nuxt/module-builder/issues/45)) ([a552495](https://github.com/nuxt/module-builder/commit/a5524952ef09ed3748e46db71b6e989611253076))
+* support `outDir` option  ([#37](https://github.com/nuxt/module-builder/issues/37)) ([6453ed0](https://github.com/nuxt/module-builder/commit/6453ed0bc104f7ef167f9f16bc012968d1b9261d))
+
+
+### Bug Fixes
+
+* **pkg:** export `./package.json` subpath ([#47](https://github.com/nuxt/module-builder/issues/47)) ([82ab400](https://github.com/nuxt/module-builder/commit/82ab400f236bbc8aacaaddfabb62dcf292d5b698))
+
 ### [0.1.7](https://github.com/nuxt/module-builder/compare/v0.1.6...v0.1.7) (2022-01-18)
 
 

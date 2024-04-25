@@ -6,3 +6,7 @@ coverage
 dist
 types
 package-lock.json
+.nuxt
+.output
+.idea/
+example/playground/.nuxtrc

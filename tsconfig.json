@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
+    "skipLibCheck": true,
     "target": "ESNext",
     "module": "ESNext",
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
     "moduleResolution": "Node",
     "esModuleInterop": true,
     "declaration": true,
@@ -11,6 +14,6 @@
     ]
   },
   "include": [
-    "src"
+    "src",
   ]
 }

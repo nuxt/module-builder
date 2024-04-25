@@ -2,27 +2,42 @@
   "name": "my-module",
   "license": "MIT",
   "version": "1.0.0",
+  "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/module.mjs",
-      "require": "./dist/module.cjs"
+      "types": "./dist/types.d.mts",
+      "default": "./dist/module.mjs"
     },
     "./utils": "./dist/utils.mjs"
   },
-  "main": "./dist/module.cjs",
-  "types": "./dist/types.d.ts",
+  "main": "dist/module.mjs",
+  "types": "dist/types.d.ts",
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/*",
+        "./*"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
-    "prepack": "npm run build"
+    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build",
+    "dev": "nuxi dev playground",
+    "dev:build": "nuxi build playground",
+    "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare",
+    "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@nuxt/kit": "npm:@nuxt/kit-edge@latest"
+    "@nuxt/kit": "^3.11.2"
   },
   "devDependencies": {
-    "@nuxt/module-builder": "latest",
-    "nuxt3": "latest"
+    "@nuxt/module-builder": "workspace:*",
+    "@nuxt/schema": "^3.11.2",
+    "@types/node": "^20.12.7",
+    "nuxt": "^3.11.2"
   },
   "build": {
     "entries": [

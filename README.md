@@ -1,46 +1,48 @@
 # 📦 Nuxt Module Builder
 
-> Complete solution to build Nuxt Modules.
+[![npm version][npm-version-src]][npm-version-href]
+[![License][license-src]][license-href]
+[![npm downloads][npm-downloads-src]][npm-downloads-href]
+<a href="https://volta.net/nuxt/module-builder?utm_source=nuxt_module_builder_readme"><img src="https://user-images.githubusercontent.com/904724/209143798-32345f6c-3cf8-4e06-9659-f4ace4a6acde.svg" alt="Volta board"></a>
+
+> The complete solution to build and ship [Nuxt modules](https://nuxt.com/modules).
 
 ## Features
 
-- Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
 - Compatible with Nuxt 3 and Nuxt Kit
+- Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
 - Automated build config using last module spec
 - Typescript and ESM support
 - Auto generated CommonJS stubs
 - Auto generated types and shims for `@nuxt/schema`
 
+We recommend to checkout the [Nuxt modules author guide](https://nuxt.com/docs/guide/going-further/modules) before starting with the module-builder.
 
-## Learn More
-
-Check the new [Guide for Nuxt Modules](https://v3.nuxtjs.org/docs/advanced/modules/) before starting with module-builder.
-
-### Requirements
+## Requirements
 
 For a user to use a module generated from module-builder, it's recommended they have:
-- Node.js >= 14.x. _Latest Node LTS preferred_
+- Node.js >= 16.x. _Latest Node LTS preferred_
 - Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
 
 ## Quick start
 
-You can quickly get started with the pre-configured [module starter](https://github.com/nuxt/starter/tree/module):
+Get started with our [module starter](https://github.com/nuxt/starter/tree/module):
 
 ```bash
-$ npx nuxi init -t module my-module
+npx nuxi init -t module my-module
 ```
 
 ## Project structure
 
-Using module builder, requires a special project setup. You can check an example [here](./example).
+The module builder requires a special project structure. You can check out the [module template](https://github.com/nuxt/starter/tree/module).
 
 ### `src/module.ts`
 
-This is the entrypoint for module definition.
+The entrypoint for module definition.
 
 A default export using `defineNuxtModule` and `ModuleOptions` type export is expected.
 
-You could also optionally export `ModuleHooks` to annotate any custom hooks the module uses.
+You could also optionally export `ModuleHooks` or `ModuleRuntimeHooks` to annotate any custom hooks the module uses.
 
 ```ts [src/module.ts]
 import { defineNuxtModule } from '@nuxt/kit'
@@ -51,6 +53,18 @@ export interface ModuleOptions {
 
 export interface ModuleHooks {
   'my-module:init': any
+}
+
+export interface ModuleRuntimeHooks {
+  'my-module:runtime-hook': any
+}
+
+export interface ModuleRuntimeConfig {
+  PRIVATE_NAME: string
+}
+
+export interface ModulePublicRuntimeConfig {
+  NAME: string
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -123,10 +137,20 @@ Module builder generates dist files in `dist/` directory:
 ## 💻 Development
 
 - Clone repository
-- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable` (use `npm i -g corepack` for Node.js < 16.10)
-- Install dependencies using `yarn install`
-- Try building [example module](./example) using `yarn example:build`
+- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
+- Install dependencies using `pnpm install`
+- Try building [example module](./example) using `pnpm example:build`
 
 ## License
 
 [MIT](./LICENSE) - Made with 💚
+
+<!-- Badges -->
+[npm-version-src]: https://img.shields.io/npm/v/@nuxt/module-builder/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-version-href]: https://npmjs.com/package/@nuxt/module-builder
+
+[npm-downloads-src]: https://img.shields.io/npm/dt/@nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-downloads-href]: https://npmjs.com/package/@nuxt/module-builder
+
+[license-src]: https://img.shields.io/github/license/nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[license-href]: https://github.com/nuxt/module-builder/blob/main/LICENSE
