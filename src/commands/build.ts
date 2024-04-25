@@ -56,10 +56,13 @@ export default defineCommand({
       },
       externals: [
         '@nuxt/schema',
+        '@nuxt/schema-nightly',
         '@nuxt/schema-edge',
         '@nuxt/kit',
+        '@nuxt/kit-nightly',
         '@nuxt/kit-edge',
         'nuxt',
+        'nuxt-nightly',
         'nuxt-edge',
         'nuxt3',
         'vue',
