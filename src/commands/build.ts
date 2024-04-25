@@ -2,6 +2,7 @@ import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'pathe'
 import { readTSConfig } from 'pkg-types'
+import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
@@ -83,7 +84,7 @@ export default defineCommand({
 
           // Load module meta
           const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-          const moduleFn: NuxtModule<unknown> = await import(
+          const moduleFn: NuxtModule<Record<string, unknown>> = await import(
             pathToFileURL(moduleEntryPath).toString()
           ).then(r => r.default || r).catch((err) => {
             consola.error(err)
@@ -182,8 +183,7 @@ import type { ${moduleImports.join(', ')} } from './module'
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
-
-export type { ${typeExports[0].names.join(', ')} } from './module'
+${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from './module'` : ''}
 `
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
@@ -206,13 +206,14 @@ module.exports.getMeta = () => Promise.resolve(_meta)
   await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
 }
 
-async function loadTSCompilerOptions(path: string) {
+async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
   const config = await readTSConfig(path).catch(() => {})
 
   if (!config) return []
 
-  for (const alias in config.compilerOptions?.paths || {}) {
-    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p) => {
+  config.compilerOptions ||= {}
+  for (const alias in config.compilerOptions.paths || {}) {
+    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p: string) => {
       if (!/^\.{1,2}(\/|$)/.test(p)) return p
 
       return resolve(path, p)
