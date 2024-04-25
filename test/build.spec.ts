@@ -32,7 +32,7 @@ describe('module builder', () => {
       ]
     `)
 
-    const runtime = await readdir(runtimeDir)
+    const runtime = await readdir(join(runtimeDir, 'plugins'))
     expect(runtime).toMatchInlineSnapshot(`
       [
         "plugin.d.ts",
@@ -84,10 +84,14 @@ describe('module builder', () => {
     `)
   })
 
-  it.todo('should generate typed plugin', async () => {
-    const pluginDts = await readFile(join(distDir, 'runtime/plugin.d.ts'), 'utf-8')
+  it('should generate typed plugin', async () => {
+    const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
     expect(pluginDts).toMatchInlineSnapshot(`
-      "declare const _default: any;
+      "declare const _default: import("#app").Plugin<{
+          injection: "injected";
+      }> & import("#app").ObjectPlugin<{
+          injection: "injected";
+      }>;
       export default _default;
       "
     `)

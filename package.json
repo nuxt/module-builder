@@ -34,8 +34,10 @@
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
+    "defu": "^6.1.4",
     "mlly": "^1.6.1",
     "pathe": "^1.1.2",
+    "pkg-types": "^1.1.0",
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
@@ -43,6 +45,7 @@
     "nuxi": "^3.11.1"
   },
   "devDependencies": {
+    "@nuxt/eslint-config": "^0.3.9",
     "@nuxt/kit": "^3.11.2",
     "@nuxt/schema": "^3.11.2",
     "@types/node": "^20.12.7",
@@ -52,9 +55,9 @@
     "jiti": "^1.21.0",
     "nuxi": "^3.11.1",
     "nuxt": "^3.11.2",
-    "vue": "^3.4.25",
     "vitest": "^1.5.2",
-    "@nuxt/eslint-config": "^0.3.9"
+    "vue": "^3.4.25",
+    "vue-tsc": "^2.0.14"
   },
   "resolutions": {
     "@nuxt/kit": "^3.11.2",
