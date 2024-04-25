@@ -202,13 +202,13 @@ module.exports.getMeta = () => Promise.resolve(_meta)
   await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
 }
 
-async function loadTSCompilerOptions (path: string) {
+async function loadTSCompilerOptions(path: string) {
   const config = await readTSConfig(path).catch(() => {})
 
   if (!config) return []
 
   for (const alias in config.compilerOptions?.paths || {}) {
-    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map(p => {
+    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p) => {
       if (!/^\.{1,2}(\/|$)/.test(p)) return p
 
       return resolve(path, p)
