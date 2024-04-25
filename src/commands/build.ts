@@ -149,9 +149,9 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   )
   const isStub = moduleTypes.includes('export *')
 
-  const appShims = []
-  const schemaShims = []
-  const moduleImports = []
+  const appShims: string[] = []
+  const schemaShims: string[] = []
+  const moduleImports: string[] = []
 
   const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
 
@@ -169,7 +169,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   }
 
   if (hasTypeExport('ModuleRuntimeHooks')) {
-    const runtimeHooksInterfaces = []
+    const runtimeHooksInterfaces: string[] = []
 
     if (hasTypeExport('ModuleRuntimeHooks')) {
       runtimeHooksInterfaces.push('ModuleRuntimeHooks')
@@ -199,7 +199,7 @@ ${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from '.
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
   if (!existsSync(dtsFileMts)) {
-    await fsp.writeFile(dtsFileMts, dtsContents.replaceAll('./module', './module.js'), 'utf8')
+    await fsp.writeFile(dtsFileMts, dtsContents.replace(/\.\/module/g, './module.js'), 'utf8')
   }
 }
 
