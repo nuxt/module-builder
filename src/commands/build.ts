@@ -58,7 +58,7 @@ export default defineCommand({
             jsxImportSource: 'vue',
             jsx: 'automatic',
             jsxFactory: 'h',
-          }
+          },
         },
       ],
       rollup: {
