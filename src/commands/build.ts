@@ -112,7 +112,7 @@ export default defineCommand({
           // Add module builder metadata
           moduleMeta.builder = {
             [name]: version,
-            'unbuild': await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
+            unbuild: await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
           }
 
           // Write meta

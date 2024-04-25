@@ -80,14 +80,14 @@ describe('module builder', () => {
     const unbuildPkg = await readPackageJSON('unbuild')
     expect(JSON.parse(meta)).toMatchObject(
       {
-        "builder": {
-          "@nuxt/module-builder": version,
-          "unbuild": unbuildPkg.version,
+        builder: {
+          '@nuxt/module-builder': version,
+          'unbuild': unbuildPkg.version,
         },
-        "configKey": "myModule",
-        "name": "my-module",
-        "version": "1.0.0",
-      }
+        configKey: 'myModule',
+        name: 'my-module',
+        version: '1.0.0',
+      },
     )
   })
 
