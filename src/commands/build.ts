@@ -1,6 +1,8 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { resolve } from 'pathe'
+import { dirname, resolve } from 'pathe'
+import { readTSConfig } from 'pkg-types'
+import { defu } from 'defu'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports } from 'mlly'
@@ -69,6 +71,11 @@ export default defineCommand({
         'vue-demi',
       ],
       hooks: {
+        async 'mkdist:entry:options'(_ctx, _entry, options) {
+          options.typescript = defu(options.typescript, {
+            compilerOptions: await loadTSCompilerOptions(cwd),
+          })
+        },
         async 'rollup:done'(ctx) {
         // Generate CommonJS stub
           await writeCJSStub(ctx.options.outDir)
@@ -193,4 +200,21 @@ const _meta = module.exports.meta = require('./module.json')
 module.exports.getMeta = () => Promise.resolve(_meta)
 `
   await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
+}
+
+async function loadTSCompilerOptions (path: string) {
+  const config = await readTSConfig(path).catch(() => {})
+
+  if (!config) return []
+
+  for (const alias in config.compilerOptions?.paths || {}) {
+    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map(p => {
+      if (!/^\.{1,2}(\/|$)/.test(p)) return p
+
+      return resolve(path, p)
+    })
+  }
+
+  const files = Array.isArray(config.extends) ? config.extends : config.extends ? [config.extends] : []
+  return defu(config.compilerOptions, ...await Promise.all(files.map(file => loadTSCompilerOptions(dirname(resolve(path, file))))))
 }
