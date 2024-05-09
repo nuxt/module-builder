@@ -37,7 +37,7 @@
     "defu": "^6.1.4",
     "mlly": "^1.7.0",
     "pathe": "^1.1.2",
-    "pkg-types": "^1.1.0",
+    "pkg-types": "^1.1.1",
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
