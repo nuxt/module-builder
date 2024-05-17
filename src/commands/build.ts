@@ -241,17 +241,17 @@ async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig
 
 function resolveTSCompilerExtends(extended, from) {
   // see https://github.com/dominikg/tsconfck/issues/149
-	if (extended === '..') extended = '../tsconfig.json'
-	const req = createRequire(from)
+  if (extended === '..') extended = '../tsconfig.json'
+  const req = createRequire(from)
 
   let error
-	try {
-		return req.resolve(extended)
+  try {
+    return req.resolve(extended)
 	} catch (e) {
     error = e
   }
 
-	if (extended[0] !== '.' && !isAbsolute(extended)) {
+  if (extended[0] !== '.' && !isAbsolute(extended)) {
     return req.resolve(`${extended}/tsconfig.json`)
 	}
 
