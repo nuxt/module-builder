@@ -247,13 +247,13 @@ function resolveTSCompilerExtends(extended, from) {
   let error
   try {
     return req.resolve(extended)
-	} catch (e) {
+  } catch (e) {
     error = e
   }
 
   if (extended[0] !== '.' && !isAbsolute(extended)) {
     return req.resolve(`${extended}/tsconfig.json`)
-	}
+  }
 
   throw error
 }
