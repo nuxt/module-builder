@@ -1,6 +1,7 @@
 import { existsSync, promises as fsp } from 'node:fs'
+import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
-import { dirname, resolve } from 'pathe'
+import { isAbsolute, resolve } from 'pathe'
 import { readPackageJSON, readTSConfig } from 'pkg-types'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
@@ -235,5 +236,24 @@ async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig
   }
 
   const files = Array.isArray(config.extends) ? config.extends : config.extends ? [config.extends] : []
-  return defu(config.compilerOptions, ...await Promise.all(files.map(file => loadTSCompilerOptions(dirname(resolve(path, file))))))
+  return defu(config.compilerOptions, ...await Promise.all(files.map(file => loadTSCompilerOptions(resolveTSCompilerExtends(file, path)))))
+}
+
+function resolveTSCompilerExtends(extended, from) {
+  // see https://github.com/dominikg/tsconfck/issues/149
+	if (extended === '..') extended = '../tsconfig.json'
+	const req = createRequire(from)
+
+  let error
+	try {
+		return req.resolve(extended)
+	} catch (e) {
+    error = e
+  }
+
+	if (extended[0] !== '.' && !isAbsolute(extended)) {
+    return req.resolve(`${extended}/tsconfig.json`)
+	}
+
+  throw error
 }
