@@ -6,6 +6,9 @@ export default defineNuxtConfig({
     api: '',
   },
   hooks: {
-    'my-module:init'() {},
+    'my-module:init'(sharedType) {
+      // @ts-expect-error invalid assignment
+      const b: number = sharedType
+    },
   },
 })
