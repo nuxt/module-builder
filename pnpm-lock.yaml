@@ -40,6 +40,9 @@ importers:
       unbuild:
         specifier: ^2.0.0
         version: 2.0.0(typescript@5.4.5)(vue-tsc@2.0.19(typescript@5.4.5))
+      untyped:
+        specifier: ^1.4.2
+        version: 1.4.2
     devDependencies:
       '@nuxt/eslint-config':
         specifier: ^0.3.13
