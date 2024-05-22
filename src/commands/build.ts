@@ -73,6 +73,7 @@ export default defineCommand({
         cjsBridge: true,
       },
       externals: [
+        /dist\/runtime\//,
         '@nuxt/schema',
         '@nuxt/schema-nightly',
         '@nuxt/schema-edge',
