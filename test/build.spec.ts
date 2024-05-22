@@ -5,6 +5,7 @@ import { execaCommand } from 'execa'
 import { readPackageJSON } from 'pkg-types'
 import { join } from 'pathe'
 import { version } from '../package.json'
+import { findStaticImports } from 'mlly'
 
 describe('module builder', () => {
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
@@ -94,6 +95,12 @@ describe('module builder', () => {
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
     expect(pluginDts).toMatchFileSnapshot('__snapshots__/plugin.d.ts')
+  })
+
+  it('should correctly add extensions to imports from runtime/ directory', async () => {
+    const moduleDts = await readFile(join(distDir, 'module.d.ts'), 'utf-8')
+    const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
+    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.mjs';"`)
   })
 
   // TODO: https://github.com/nuxt/module-builder/issues/239

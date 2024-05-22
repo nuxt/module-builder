@@ -35,6 +35,7 @@
     "citty": "^0.1.6",
     "consola": "^3.2.3",
     "defu": "^6.1.4",
+    "magic-regexp": "^0.8.0",
     "mlly": "^1.7.0",
     "pathe": "^1.1.2",
     "pkg-types": "^1.1.1",

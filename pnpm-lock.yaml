@@ -22,6 +22,9 @@ importers:
       defu:
         specifier: ^6.1.4
         version: 6.1.4
+      magic-regexp:
+        specifier: ^0.8.0
+        version: 0.8.0
       mlly:
         specifier: ^1.7.0
         version: 1.7.0
@@ -3000,6 +3003,9 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
+  magic-regexp@0.8.0:
+    resolution: {integrity: sha512-lOSLWdE156csDYwCTIGiAymOLN7Epu/TU5e/oAnISZfU6qP+pgjkE+xbVjVn3yLPKN8n1G2yIAYTAM5KRk6/ow==}
+
   magic-string-ast@0.5.0:
     resolution: {integrity: sha512-mxjxZ5zoR4+ybulZ7Z5qdZUTdAfiKJ1Il80kN/I4jWsHTTqNKZ9KsBa3Jepo+3U09I04qiyC2+7MZD8v4rJOoA==}
     engines: {node: '>=16.14.0'}
@@ -4398,6 +4404,9 @@ packages:
   type-fest@3.13.1:
     resolution: {integrity: sha512-tLq3bSNx+xSpwvAJnzrK0Ep5CLNWjvFTOp71URMaAEWBfRb9nnJiBoUe0tF8bI4ZFO3omgBR6NvnbzVUT3Ly4g==}
     engines: {node: '>=14.16'}
+
+  type-level-regexp@0.1.17:
+    resolution: {integrity: sha512-wTk4DH3cxwk196uGLK/E9pE45aLfeKJacKmcEgEOA/q5dnPGNxXt0cfYdFxb57L+sEpf1oJH4Dnx/pnRcku9jg==}
 
   typescript@5.4.5:
     resolution: {integrity: sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==}
@@ -8637,6 +8646,16 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
+  magic-regexp@0.8.0:
+    dependencies:
+      estree-walker: 3.0.3
+      magic-string: 0.30.10
+      mlly: 1.7.0
+      regexp-tree: 0.1.27
+      type-level-regexp: 0.1.17
+      ufo: 1.5.3
+      unplugin: 1.10.1
+
   magic-string-ast@0.5.0:
     dependencies:
       magic-string: 0.30.10
@@ -10327,6 +10346,8 @@ snapshots:
   type-fest@0.8.1: {}
 
   type-fest@3.13.1: {}
+
+  type-level-regexp@0.1.17: {}
 
   typescript@5.4.5: {}
 
