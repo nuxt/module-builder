@@ -8,7 +8,7 @@ export default defineNuxtConfig({
   hooks: {
     'my-module:init'(sharedType) {
       // @ts-expect-error invalid assignment
-      const b: number = sharedType
+      const _b: number = sharedType
     },
   },
 })
