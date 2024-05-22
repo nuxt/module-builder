@@ -10,7 +10,7 @@ export interface ModuleOptions {
 }
 
 export interface ModuleHooks {
-  'my-module:init': () => void
+  'my-module:init': (sharedType: SharedTypeFromRuntime) => void
 }
 
 export interface ModuleRuntimeHooks {
