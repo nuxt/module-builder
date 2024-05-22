@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.6.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.5.5...v0.6.0)
+
+### 🚀 Enhancements
+
+- Generate `runtime/` dts based on nuxt `tsconfig` options ([#255](https://github.com/nuxt/module-builder/pull/255))
+- Add builder versions to `module.json` ([f8567a3](https://github.com/nuxt/module-builder/commit/f8567a3))
+- Support transforming `jsx` ([4841f2e](https://github.com/nuxt/module-builder/commit/4841f2e))
+
+### 🩹 Fixes
+
+- ⚠️  Remove support for deprecated `RuntimeModuleHooks` interface ([#228](https://github.com/nuxt/module-builder/pull/228))
+- Add `-nightly` versions to externals ([0a88a87](https://github.com/nuxt/module-builder/commit/0a88a87))
+- Ignore exporting type if it is not defined ([c308cc5](https://github.com/nuxt/module-builder/commit/c308cc5))
+- Mark `runtime/` directory as external ([7a68e1e](https://github.com/nuxt/module-builder/commit/7a68e1e))
+
+### 🏡 Chore
+
+- **release:** V0.5.5 ([f158ffa](https://github.com/nuxt/module-builder/commit/f158ffa))
+- Dedupe kit/schema/vue versions ([aa0a710](https://github.com/nuxt/module-builder/commit/aa0a710))
+- Add root `dev:prepare` command ([c308a68](https://github.com/nuxt/module-builder/commit/c308a68))
+- Migrate to eslint v9 ([#250](https://github.com/nuxt/module-builder/pull/250))
+- Improve internal type safety and enable strict mode ([78aa088](https://github.com/nuxt/module-builder/commit/78aa088))
+- Tweak tsconfig settings ([404aae7](https://github.com/nuxt/module-builder/commit/404aae7))
+- Add more type annotations ([ba0614b](https://github.com/nuxt/module-builder/commit/ba0614b))
+
+### ✅ Tests
+
+- Update type testing step ([#256](https://github.com/nuxt/module-builder/pull/256))
+- Add inline snapshots for `runtime/` transforms ([#257](https://github.com/nuxt/module-builder/pull/257))
+- Update snapshot ([a39c183](https://github.com/nuxt/module-builder/commit/a39c183))
+
+### 🎨 Styles
+
+- Lint ([c15fd92](https://github.com/nuxt/module-builder/commit/c15fd92))
+- Lint ([3b805ec](https://github.com/nuxt/module-builder/commit/3b805ec))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Remove support for deprecated `RuntimeModuleHooks` interface ([#228](https://github.com/nuxt/module-builder/pull/228))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.5.5
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.4...v0.5.5)

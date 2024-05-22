@@ -100,6 +100,7 @@ A minimum `package.json` should look like this:
   "version": "1.0.0",
   "exports": {
     ".": {
+      "types": "./dist/types.d.ts",
       "import": "./dist/module.mjs",
       "require": "./dist/module.cjs"
     }

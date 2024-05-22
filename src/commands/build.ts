@@ -1,15 +1,21 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { dirname, resolve } from 'pathe'
-import { readTSConfig } from 'pkg-types'
+import { basename, dirname, join, resolve } from 'pathe'
+import { filename } from 'pathe/utils'
+import { readPackageJSON } from 'pkg-types'
+import { parse } from 'tsconfck'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
+import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
-import { findExports } from 'mlly'
-import { resolveSchema, generateTypes, InputObject } from 'untyped'
+import { findExports, resolvePath } from 'mlly'
+import { resolveSchema, generateTypes } from 'untyped'
+import type { InputObject } from 'untyped'
 import { defineCommand } from 'citty'
 import { loadNuxt } from '@nuxt/kit'
+
+import { name, version } from '../../package.json'
 
 export default defineCommand({
   meta: {
@@ -50,7 +56,17 @@ export default defineCommand({
       outDir,
       entries: [
         'src/module',
-        { input: 'src/runtime/', outDir: `${outDir}/runtime`, ext: 'mjs' },
+        {
+          input: 'src/runtime/',
+          outDir: `${outDir}/runtime`,
+          addRelativeDeclarationExtensions: true,
+          ext: 'js',
+          esbuild: {
+            jsxImportSource: 'vue',
+            jsx: 'automatic',
+            jsxFactory: 'h',
+          },
+        },
       ],
       rollup: {
         esbuild: {
@@ -60,6 +76,7 @@ export default defineCommand({
         cjsBridge: true,
       },
       externals: [
+        /dist\/runtime\//,
         '@nuxt/schema',
         '@nuxt/schema-nightly',
         '@nuxt/schema-edge',
@@ -74,9 +91,45 @@ export default defineCommand({
         'vue-demi',
       ],
       hooks: {
-        async 'mkdist:entry:options'(_ctx, _entry, options) {
+        async 'mkdist:entry:options'(_ctx, entry, options) {
           options.typescript = defu(options.typescript, {
-            compilerOptions: await loadTSCompilerOptions(cwd),
+            compilerOptions: await loadTSCompilerOptions(entry.input),
+          })
+        },
+        async 'rollup:options'(ctx, options) {
+          options.plugins ||= []
+          if (!Array.isArray(options.plugins))
+            options.plugins = [options.plugins]
+
+          const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
+
+          const runtimeDirs = runtimeEntries.map(entry => basename(entry.input))
+          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and('/'))
+
+          // Add extension for imports of runtime files in build
+          options.plugins.unshift({
+            name: 'nuxt-module-builder:runtime-externals',
+            async resolveId(id, importer) {
+              if (!RUNTIME_RE.test(id))
+                return
+
+              const resolved = await this.resolve(id, importer, { skipSelf: true })
+              if (!resolved)
+                return
+
+              for (const entry of runtimeEntries) {
+                if (!resolved.id.includes(entry.input))
+                  continue
+
+                const distFile = await resolvePath(join(dirname(resolved.id.replace(entry.input, entry.outDir!)), filename(resolved.id)))
+                if (distFile) {
+                  return {
+                    external: true,
+                    id: distFile,
+                  }
+                }
+              }
+            },
           })
         },
         async 'rollup:done'(ctx) {
@@ -106,6 +159,12 @@ export default defineCommand({
             if (!moduleMeta.version) {
               moduleMeta.version = ctx.pkg.version
             }
+          }
+
+          // Add module builder metadata
+          moduleMeta.builder = {
+            [name]: version,
+            unbuild: await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
           }
 
           // Write meta
@@ -143,7 +202,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   const typeExports = findExports(
     // Replace `export { type Foo }` with `export { Foo }`
     moduleTypes
-      .replace(/export\s*{.*?}/sg, match =>
+      .replace(/export\s*\{.*?\}/gs, match =>
         match.replace(/\btype\b/g, ''),
       ),
   )
@@ -218,19 +277,19 @@ module.exports.getMeta = () => Promise.resolve(_meta)
 }
 
 async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
-  const config = await readTSConfig(path).catch(() => {})
+  const config = await parse(path)
+  const resolvedCompilerOptions = config?.tsconfig.compilerOptions || {}
 
-  if (!config) return []
+  // TODO: this should probably be ported to tsconfck?
+  for (const { tsconfig, tsconfigFile } of config.extended || []) {
+    for (const alias in tsconfig.compilerOptions?.paths || {}) {
+      resolvedCompilerOptions.paths[alias] = resolvedCompilerOptions.paths[alias].map((p: string) => {
+        if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
 
-  config.compilerOptions ||= {}
-  for (const alias in config.compilerOptions.paths || {}) {
-    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p: string) => {
-      if (!/^\.{1,2}(\/|$)/.test(p)) return p
-
-      return resolve(path, p)
-    })
+        return resolve(dirname(tsconfigFile), p)
+      })
+    }
   }
 
-  const files = Array.isArray(config.extends) ? config.extends : config.extends ? [config.extends] : []
-  return defu(config.compilerOptions, ...await Promise.all(files.map(file => loadTSCompilerOptions(dirname(resolve(path, file))))))
+  return resolvedCompilerOptions
 }
