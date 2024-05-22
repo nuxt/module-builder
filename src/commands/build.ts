@@ -1,13 +1,15 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { dirname, resolve } from 'pathe'
+import { basename, dirname, join, resolve } from 'pathe'
+import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
+import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
-import { findExports } from 'mlly'
+import { findExports, resolvePath } from 'mlly'
 import { defineCommand } from 'citty'
 
 import { name, version } from '../../package.json'
@@ -71,7 +73,6 @@ export default defineCommand({
         cjsBridge: true,
       },
       externals: [
-        /src\/runtime/,
         '@nuxt/schema',
         '@nuxt/schema-nightly',
         '@nuxt/schema-edge',
@@ -91,8 +92,44 @@ export default defineCommand({
             compilerOptions: await loadTSCompilerOptions(entry.input),
           })
         },
+        async 'rollup:options'(ctx, options) {
+          options.plugins ||= []
+          if (!Array.isArray(options.plugins))
+            options.plugins = [options.plugins]
+
+          const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
+
+          const runtimeDirs = runtimeEntries.map(entry => basename(entry.input))
+          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and('/'))
+
+          // Add extension for imports of runtime files in build
+          options.plugins.unshift({
+            name: 'nuxt-module-builder:runtime-externals',
+            async resolveId(id, importer) {
+              if (!RUNTIME_RE.test(id))
+                return
+
+              const resolved = await this.resolve(id, importer, { skipSelf: true })
+              if (!resolved)
+                return
+
+              for (const entry of runtimeEntries) {
+                if (!resolved.id.includes(entry.input))
+                  continue
+
+                const distFile = await resolvePath(join(dirname(resolved.id.replace(entry.input, entry.outDir!)), filename(resolved.id)))
+                if (distFile) {
+                  return {
+                    external: true,
+                    id: distFile,
+                  }
+                }
+              }
+            },
+          })
+        },
         async 'rollup:done'(ctx) {
-        // Generate CommonJS stub
+          // Generate CommonJS stub
           await writeCJSStub(ctx.options.outDir)
 
           // Load module meta
