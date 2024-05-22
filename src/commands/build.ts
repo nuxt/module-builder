@@ -94,7 +94,7 @@ export default defineCommand({
         async 'rollup:options'(ctx, options) {
           options.plugins ||= []
           if (!Array.isArray(options.plugins))
-          options.plugins = [options.plugins]
+            options.plugins = [options.plugins]
 
           const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
 

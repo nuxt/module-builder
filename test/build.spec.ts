@@ -4,8 +4,8 @@ import { beforeAll, describe, it, expect } from 'vitest'
 import { execaCommand } from 'execa'
 import { readPackageJSON } from 'pkg-types'
 import { join } from 'pathe'
-import { version } from '../package.json'
 import { findStaticImports } from 'mlly'
+import { version } from '../package.json'
 
 describe('module builder', () => {
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
