@@ -1,7 +1,8 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, resolve } from 'pathe'
-import { readPackageJSON, readTSConfig } from 'pkg-types'
+import { readPackageJSON } from 'pkg-types'
+import { parse } from 'tsconfck'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
 import { consola } from 'consola'
@@ -84,9 +85,9 @@ export default defineCommand({
         'vue-demi',
       ],
       hooks: {
-        async 'mkdist:entry:options'(_ctx, _entry, options) {
+        async 'mkdist:entry:options'(_ctx, entry, options) {
           options.typescript = defu(options.typescript, {
-            compilerOptions: await loadTSCompilerOptions(cwd),
+            compilerOptions: await loadTSCompilerOptions(entry.input),
           })
         },
         async 'rollup:done'(ctx) {
@@ -221,19 +222,19 @@ module.exports.getMeta = () => Promise.resolve(_meta)
 }
 
 async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
-  const config = await readTSConfig(path).catch(() => {})
+  const config = await parse(path)
+  const resolvedCompilerOptions = config?.tsconfig.compilerOptions || {}
 
-  if (!config) return []
+  // TODO: this should probably be ported to tsconfck?
+  for (const { tsconfig, tsconfigFile } of config.extended || []) {
+    for (const alias in tsconfig.compilerOptions?.paths || {}) {
+      resolvedCompilerOptions.paths[alias] = resolvedCompilerOptions.paths[alias].map((p: string) => {
+        if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
 
-  config.compilerOptions ||= {}
-  for (const alias in config.compilerOptions.paths || {}) {
-    config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p: string) => {
-      if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
-
-      return resolve(path, p)
-    })
+        return resolve(dirname(tsconfigFile), p)
+      })
+    }
   }
 
-  const files = Array.isArray(config.extends) ? config.extends : config.extends ? [config.extends] : []
-  return defu(config.compilerOptions, ...await Promise.all(files.map(file => loadTSCompilerOptions(dirname(resolve(path, file))))))
+  return resolvedCompilerOptions
 }
