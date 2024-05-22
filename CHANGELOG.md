@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.7.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.6.0...v0.7.0)
+
+### 🚀 Enhancements
+
+- Auto generate module options from schema meta ([#33](https://github.com/nuxt/module-builder/pull/33))
+
+### 🩹 Fixes
+
+- Use `tsconfck` to resolve tsconfig `compilerOptions` ([#274](https://github.com/nuxt/module-builder/pull/274))
+- ⚠️  Use `.js` extension for files in `runtime/` directory ([dbd05bb](https://github.com/nuxt/module-builder/commit/dbd05bb))
+- Resolve full path to runtime externals ([#275](https://github.com/nuxt/module-builder/pull/275))
+- Include `dist/runtime` in externals list ([0946c04](https://github.com/nuxt/module-builder/commit/0946c04))
+
+### 📖 Documentation
+
+- Add `types` condition to export subpath ([#265](https://github.com/nuxt/module-builder/pull/265))
+
+### 🏡 Chore
+
+- **release:** V0.6.0 ([f56195e](https://github.com/nuxt/module-builder/commit/f56195e))
+- Fix lint issue ([0fe04e8](https://github.com/nuxt/module-builder/commit/0fe04e8))
+
+### ✅ Tests
+
+- Add additional test for validity of types shared from runtime ([afc4374](https://github.com/nuxt/module-builder/commit/afc4374))
+
+### 🤖 CI
+
+- Adds reproduction workflow ([0dc73bb](https://github.com/nuxt/module-builder/commit/0dc73bb))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Use `.js` extension for files in `runtime/` directory ([dbd05bb](https://github.com/nuxt/module-builder/commit/dbd05bb))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+- Ricardo Gobbo De Souza ([@ricardogobbosouza](http://github.com/ricardogobbosouza))
+- Rgehbt ([@Gehbt](http://github.com/Gehbt))
+
 ## v0.6.0
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.5.5...v0.6.0)
