@@ -149,7 +149,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta) {
   const typeExports = findExports(
     // Replace `export { type Foo }` with `export { Foo }`
     moduleTypes
-      .replace(/export\s*{.*?}/sg, match =>
+      .replace(/export\s*\{.*?\}/gs, match =>
         match.replace(/\btype\b/g, ''),
       ),
   )
@@ -228,7 +228,7 @@ async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig
   config.compilerOptions ||= {}
   for (const alias in config.compilerOptions.paths || {}) {
     config.compilerOptions.paths[alias] = config.compilerOptions.paths[alias].map((p: string) => {
-      if (!/^\.{1,2}(\/|$)/.test(p)) return p
+      if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
 
       return resolve(path, p)
     })
