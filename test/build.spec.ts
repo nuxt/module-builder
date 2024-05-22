@@ -38,7 +38,7 @@ describe('module builder', () => {
     expect(runtime).toMatchInlineSnapshot(`
       [
         "plugin.d.ts",
-        "plugin.mjs",
+        "plugin.js",
       ]
     `)
   })
@@ -109,10 +109,10 @@ describe('module builder', () => {
 
   it('should handle JSX correctly', async () => {
     const [component, declaration] = await Promise.all([
-      readFile(join(distDir, 'runtime/components/JsxComponent.mjs'), 'utf-8'),
+      readFile(join(distDir, 'runtime/components/JsxComponent.js'), 'utf-8'),
       readFile(join(distDir, 'runtime/components/JsxComponent.d.ts'), 'utf-8'),
     ])
-    expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.mjs')
+    expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.js')
     expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
   })
 })

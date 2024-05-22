@@ -54,7 +54,8 @@ export default defineCommand({
         {
           input: 'src/runtime/',
           outDir: `${outDir}/runtime`,
-          ext: 'mjs',
+          addRelativeDeclarationExtensions: true,
+          ext: 'js',
           esbuild: {
             jsxImportSource: 'vue',
             jsx: 'automatic',
