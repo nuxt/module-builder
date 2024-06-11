@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.7.1
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.7.0...v0.7.1)
+
+### 🩹 Fixes
+
+- **build:** Declare `ModuleOptions` in correct place ([#283](https://github.com/nuxt/module-builder/pull/283))
+
+### 📖 Documentation
+
+- Update path for runtime js files ([#282](https://github.com/nuxt/module-builder/pull/282))
+
+### ❤️ Contributors
+
+- Adam DeHaven ([@adamdehaven](http://github.com/adamdehaven))
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.7.0
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.6.0...v0.7.0)
