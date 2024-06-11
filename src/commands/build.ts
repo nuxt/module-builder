@@ -211,16 +211,20 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   const appShims: string[] = []
   const schemaShims: string[] = []
   const moduleImports: string[] = []
+  const moduleDeclarations: string[] = []
 
   const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
 
-  if (meta.configKey && hasTypeExport('ModuleOptions')) {
-    moduleImports.push('ModuleOptions')
+  if (meta.configKey) {
     schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
     schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
-  }
-  else if (meta.configKey) {
-    schemaShims.push(`  ${generateTypes(await resolveSchema(await getOptions() as InputObject), { interfaceName: 'ModuleOptions' })}`)
+
+    if (hasTypeExport('ModuleOptions')) {
+      moduleImports.push('ModuleOptions')
+    }
+    else {
+      moduleDeclarations.push(`  ${generateTypes(await resolveSchema(await getOptions() as InputObject), { interfaceName: 'ModuleOptions' })}`)
+    }
   }
   if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
@@ -250,6 +254,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   const dtsContents = `
 import type { ${moduleImports.join(', ')} } from './module'
 
+${moduleDeclarations.join('\n')}
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
