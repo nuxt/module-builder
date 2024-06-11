@@ -131,7 +131,7 @@ Module builder generates dist files in `dist/` directory:
 - `module.cjs`: ESM proxy to allow require module in CommonJS context
 - `types.d.ts`: Exported types in addition to shims for `nuxt.config` auto completion.
 - `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
-  - Javascript and `.ts` files will be transformed to `.mjs` with extracted types on `.d.ts` file with same name (files in `/runtime/**/*.ts` will be transformed into `.js`)
+  - Javascript and `.ts` files will be transformed to `.js` with extracted types on `.d.ts` file with same name
   - `.vue` files will be transformed with extracted `.d.ts` file
   - Other files will be copied as is
 
