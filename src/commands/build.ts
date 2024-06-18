@@ -217,7 +217,7 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   if (!hasTypeExport('ModuleOptions')) {
     schemaImports.push('NuxtModule')
     moduleImports.push('default as Module')
-    moduleExports.push(`export type ModuleOptions = Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
+    moduleExports.push(`export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
   }
 
   if (hasTypeExport('ModuleHooks')) {
