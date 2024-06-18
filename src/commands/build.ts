@@ -10,8 +10,6 @@ import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath } from 'mlly'
-import { resolveSchema, generateTypes } from 'untyped'
-import type { InputObject } from 'untyped'
 import { defineCommand } from 'citty'
 import { loadNuxt } from '@nuxt/kit'
 

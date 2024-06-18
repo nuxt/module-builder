@@ -40,8 +40,7 @@
     "pathe": "^1.1.2",
     "pkg-types": "^1.1.1",
     "tsconfck": "^3.1.0",
-    "unbuild": "^2.0.0",
-    "untyped": "^1.4.2"
+    "unbuild": "^2.0.0"
   },
   "peerDependencies": {
     "@nuxt/kit": "^3.12.1",

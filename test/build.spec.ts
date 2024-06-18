@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { beforeAll, describe, it, expect, afterAll } from 'vitest'
+import { beforeAll, describe, it, expect } from 'vitest'
 import { execaCommand } from 'execa'
 import { readPackageJSON } from 'pkg-types'
 import { dirname, join } from 'pathe'
@@ -18,14 +18,14 @@ describe('module builder', () => {
     // Prepare second root directory without type export
     await mkdir(dirname(secondRootDir), { recursive: true })
     await rm(secondRootDir, { force: true, recursive: true })
-    await cp(rootDir, secondRootDir, { recursive: true})
+    await cp(rootDir, secondRootDir, { recursive: true })
     const moduleSrc = join(secondRootDir, 'src/module.ts')
     const contents = await readFile(moduleSrc, 'utf-8').then(r => r.replace('export interface ModuleOptions', 'interface ModuleOptions'))
     await writeFile(moduleSrc, contents)
 
     await Promise.all([
       execaCommand('pnpm dev:prepare', { cwd: rootDir }).then(() => execaCommand('pnpm prepack', { cwd: rootDir })),
-      execaCommand('pnpm dev:prepare', { cwd: secondRootDir }).then(() => execaCommand('pnpm prepack', { cwd: secondRootDir }))
+      execaCommand('pnpm dev:prepare', { cwd: secondRootDir }).then(() => execaCommand('pnpm prepack', { cwd: secondRootDir })),
     ])
   }, 120 * 1000)
 
