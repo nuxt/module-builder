@@ -77,7 +77,8 @@ describe('module builder', () => {
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
-      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'"
+      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'
+      "
     `)
   })
 
@@ -104,9 +105,10 @@ describe('module builder', () => {
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
-      export type ModuleOptions = Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
+      export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
 
-      export type { ModuleHooks, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'"
+      export type { ModuleHooks, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'
+      "
     `)
   })
 
