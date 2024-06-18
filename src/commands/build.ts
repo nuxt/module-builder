@@ -255,7 +255,7 @@ ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n'
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from './module'` : ''}
-`.trim().replace(/[\n\r]{3,}/g, '\n\n')
+`.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
   if (!existsSync(dtsFileMts)) {
