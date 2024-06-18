@@ -186,11 +186,11 @@ async function writeTypes(distDir: string) {
   // Read generated module types
   const moduleTypesFile = resolve(distDir, 'module.d.ts')
   const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
-  const typeExports = findExports(
+  const moduleReExports = findExports(
     // Replace `export { type Foo }` with `export { Foo }`
     moduleTypes
       .replace(/export\s*\{.*?\}/gs, match =>
-        match.replace(/\btype\b/g, ''),
+        match.replace(/\b(type|interface)\b/g, ''),
       ),
   )
   const isStub = moduleTypes.includes('export *')
@@ -201,7 +201,7 @@ async function writeTypes(distDir: string) {
   const schemaImports: string[] = []
   const moduleExports: string[] = []
 
-  const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
+  const hasTypeExport = (name: string) => isStub || moduleReExports.find(exp => exp.names.includes(name))
 
   if (!hasTypeExport('ModuleOptions')) {
     schemaImports.push('NuxtModule')
@@ -243,7 +243,7 @@ ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from './module'` : ''}
+${moduleReExports[0] ? `\nexport { ${moduleReExports[0].names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from './module'` : ''}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
