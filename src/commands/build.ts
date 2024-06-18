@@ -8,10 +8,9 @@ import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
 import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
-import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
+import type { NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath } from 'mlly'
 import { defineCommand } from 'citty'
-import { loadNuxt } from '@nuxt/kit'
 
 import { name, version } from '../../package.json'
 
@@ -170,24 +169,14 @@ export default defineCommand({
           await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
 
           // Generate types
-          await writeTypes(ctx.options.outDir, moduleMeta, async () => {
-            const nuxt = await loadNuxt({
-              cwd,
-              overrides: {
-                modules: [resolve(cwd, './src/module')],
-              },
-            })
-            const moduleOptions = await moduleFn.getOptions?.({}, nuxt) || {}
-            await nuxt.close()
-            return moduleOptions
-          })
+          await writeTypes(ctx.options.outDir)
         },
       },
     })
   },
 })
 
-async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => Promise<Record<string, unknown>>) {
+async function writeTypes(distDir: string) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
