@@ -10,3 +10,4 @@ package-lock.json
 .output
 .idea/
 example/playground/.nuxtrc
+.temp*

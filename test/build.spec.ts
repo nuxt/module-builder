@@ -1,20 +1,32 @@
 import { fileURLToPath } from 'node:url'
-import { readFile, readdir } from 'node:fs/promises'
-import { beforeAll, describe, it, expect } from 'vitest'
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { beforeAll, describe, it, expect, afterAll } from 'vitest'
 import { execaCommand } from 'execa'
 import { readPackageJSON } from 'pkg-types'
-import { join } from 'pathe'
+import { dirname, join } from 'pathe'
 import { findStaticImports } from 'mlly'
 import { version } from '../package.json'
 
 describe('module builder', () => {
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
+  const secondRootDir = rootDir.replace('example', '.temp-example-without-options')
   const distDir = join(rootDir, 'dist')
+  const secondDistDir = join(secondRootDir, 'dist')
   const runtimeDir = join(distDir, 'runtime')
 
   beforeAll(async () => {
-    await execaCommand('pnpm dev:prepare', { cwd: rootDir })
-    await execaCommand('pnpm prepack', { cwd: rootDir })
+    // Prepare second root directory without type export
+    await mkdir(dirname(secondRootDir), { recursive: true })
+    await rm(secondRootDir, { force: true, recursive: true })
+    await cp(rootDir, secondRootDir, { recursive: true})
+    const moduleSrc = join(secondRootDir, 'src/module.ts')
+    const contents = await readFile(moduleSrc, 'utf-8').then(r => r.replace('export interface ModuleOptions', 'interface ModuleOptions'))
+    await writeFile(moduleSrc, contents)
+
+    await Promise.all([
+      execaCommand('pnpm dev:prepare', { cwd: rootDir }).then(() => execaCommand('pnpm prepack', { cwd: rootDir })),
+      execaCommand('pnpm dev:prepare', { cwd: secondRootDir }).then(() => execaCommand('pnpm prepack', { cwd: secondRootDir }))
+    ])
   }, 120 * 1000)
 
   it('should generate all files', async () => {
@@ -47,33 +59,54 @@ describe('module builder', () => {
   it('should write types to output directory', async () => {
     const types = await readFile(join(distDir, 'types.d.ts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
-      "
-      import type { ModuleOptions, ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
-
+      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
 
       declare module '#app' {
         interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
       }
 
       declare module '@nuxt/schema' {
-        interface NuxtConfig { ['myModule']?: Partial<ModuleOptions> }
-        interface NuxtOptions { ['myModule']?: ModuleOptions }
         interface NuxtHooks extends ModuleHooks {}
         interface RuntimeConfig extends ModuleRuntimeConfig {}
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
       declare module 'nuxt/schema' {
-        interface NuxtConfig { ['myModule']?: Partial<ModuleOptions> }
-        interface NuxtOptions { ['myModule']?: ModuleOptions }
         interface NuxtHooks extends ModuleHooks {}
         interface RuntimeConfig extends ModuleRuntimeConfig {}
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
+      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'"
+    `)
+  })
 
-      export type { ModuleHooks, ModuleOptions, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'
-      "
+  it('should generate types when no ModuleOptions are exported', async () => {
+    const types = await readFile(join(secondDistDir, 'types.d.ts'), 'utf-8')
+    expect(types).toMatchInlineSnapshot(`
+      "import type { NuxtModule } from '@nuxt/schema'
+
+      import type { default as Module, ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
+
+      declare module '#app' {
+        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
+      }
+
+      declare module '@nuxt/schema' {
+        interface NuxtHooks extends ModuleHooks {}
+        interface RuntimeConfig extends ModuleRuntimeConfig {}
+        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
+      }
+
+      declare module 'nuxt/schema' {
+        interface NuxtHooks extends ModuleHooks {}
+        interface RuntimeConfig extends ModuleRuntimeConfig {}
+        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
+      }
+
+      export type ModuleOptions = Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
+
+      export type { ModuleHooks, ModulePublicRuntimeConfig, ModuleRuntimeConfig, ModuleRuntimeHooks, default } from './module'"
     `)
   })
 

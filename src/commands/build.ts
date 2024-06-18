@@ -211,21 +211,17 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   const appShims: string[] = []
   const schemaShims: string[] = []
   const moduleImports: string[] = []
-  const moduleDeclarations: string[] = []
+  const schemaImports: string[] = []
+  const moduleExports: string[] = []
 
   const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
 
-  if (meta.configKey) {
-    schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
-    schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
-
-    if (hasTypeExport('ModuleOptions')) {
-      moduleImports.push('ModuleOptions')
-    }
-    else {
-      moduleDeclarations.push(`  ${generateTypes(await resolveSchema(await getOptions() as InputObject), { interfaceName: 'ModuleOptions' })}`)
-    }
+  if (!hasTypeExport('ModuleOptions')) {
+    schemaImports.push('NuxtModule')
+    moduleImports.push('default as Module')
+    moduleExports.push(`export type ModuleOptions = Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
   }
+
   if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
@@ -252,14 +248,16 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   }
 
   const dtsContents = `
+  ${schemaImports.length ? `import type { ${schemaImports.join(', ')} } from '@nuxt/schema'` : ''}
+
 import type { ${moduleImports.join(', ')} } from './module'
 
-${moduleDeclarations.join('\n')}
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
+${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from './module'` : ''}
-`
+`.trim().replace(/[\n\r]{3,}/g, '\n\n')
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
   if (!existsSync(dtsFileMts)) {
