@@ -8,12 +8,9 @@ import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
 import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
-import type { ModuleMeta, NuxtModule } from '@nuxt/schema'
+import type { NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath } from 'mlly'
-import { resolveSchema, generateTypes } from 'untyped'
-import type { InputObject } from 'untyped'
 import { defineCommand } from 'citty'
-import { loadNuxt } from '@nuxt/kit'
 
 import { name, version } from '../../package.json'
 
@@ -172,24 +169,14 @@ export default defineCommand({
           await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
 
           // Generate types
-          await writeTypes(ctx.options.outDir, moduleMeta, async () => {
-            const nuxt = await loadNuxt({
-              cwd,
-              overrides: {
-                modules: [resolve(cwd, './src/module')],
-              },
-            })
-            const moduleOptions = await moduleFn.getOptions?.({}, nuxt) || {}
-            await nuxt.close()
-            return moduleOptions
-          })
+          await writeTypes(ctx.options.outDir)
         },
       },
     })
   },
 })
 
-async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => Promise<Record<string, unknown>>) {
+async function writeTypes(distDir: string) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
@@ -211,21 +198,17 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   const appShims: string[] = []
   const schemaShims: string[] = []
   const moduleImports: string[] = []
-  const moduleDeclarations: string[] = []
+  const schemaImports: string[] = []
+  const moduleExports: string[] = []
 
   const hasTypeExport = (name: string) => isStub || typeExports.find(exp => exp.names.includes(name))
 
-  if (meta.configKey) {
-    schemaShims.push(`  interface NuxtConfig { ['${meta.configKey}']?: Partial<ModuleOptions> }`)
-    schemaShims.push(`  interface NuxtOptions { ['${meta.configKey}']?: ModuleOptions }`)
-
-    if (hasTypeExport('ModuleOptions')) {
-      moduleImports.push('ModuleOptions')
-    }
-    else {
-      moduleDeclarations.push(`  ${generateTypes(await resolveSchema(await getOptions() as InputObject), { interfaceName: 'ModuleOptions' })}`)
-    }
+  if (!hasTypeExport('ModuleOptions')) {
+    schemaImports.push('NuxtModule')
+    moduleImports.push('default as Module')
+    moduleExports.push(`export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
   }
+
   if (hasTypeExport('ModuleHooks')) {
     moduleImports.push('ModuleHooks')
     schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
@@ -252,14 +235,16 @@ async function writeTypes(distDir: string, meta: ModuleMeta, getOptions: () => P
   }
 
   const dtsContents = `
+  ${schemaImports.length ? `import type { ${schemaImports.join(', ')} } from '@nuxt/schema'` : ''}
+
 import type { ${moduleImports.join(', ')} } from './module'
 
-${moduleDeclarations.join('\n')}
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
+${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${typeExports[0] ? `\nexport type { ${typeExports[0].names.join(', ')} } from './module'` : ''}
-`
+`.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
   if (!existsSync(dtsFileMts)) {
