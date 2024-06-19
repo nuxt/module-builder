@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.8.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.7.1...v0.8.0)
+
+### 🩹 Fixes
+
+- ⚠️  Do not augment nuxt options inside module entry ([#295](https://github.com/nuxt/module-builder/pull/295))
+- **build:** Do not export default as a type ([d29337c](https://github.com/nuxt/module-builder/commit/d29337c))
+- **build:** Only generate `import type` statement if required ([190bff4](https://github.com/nuxt/module-builder/commit/190bff4))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️  Do not augment nuxt options inside module entry ([#295](https://github.com/nuxt/module-builder/pull/295))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.7.1
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.7.0...v0.7.1)
