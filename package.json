@@ -39,7 +39,7 @@
     "mlly": "^1.7.1",
     "pathe": "^1.1.2",
     "pkg-types": "^1.1.1",
-    "tsconfck": "^3.1.0",
+    "tsconfck": "^3.1.1",
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
@@ -50,7 +50,7 @@
     "@nuxt/eslint-config": "^0.3.13",
     "@nuxt/kit": "^3.12.2",
     "@nuxt/schema": "^3.12.2",
-    "@types/node": "^20.14.8",
+    "@types/node": "^20.14.9",
     "@vitest/coverage-v8": "^1.6.0",
     "changelogen": "^0.5.5",
     "eslint": "^9.5.0",
@@ -59,12 +59,12 @@
     "nuxt": "^3.12.2",
     "typescript": "^5.5.2",
     "vitest": "^1.6.0",
-    "vue": "^3.4.30",
+    "vue": "^3.4.31",
     "vue-tsc": "^2.0.22"
   },
   "resolutions": {
     "@nuxt/kit": "^3.12.2",
     "@nuxt/schema": "^3.12.2",
-    "vue": "^3.4.30"
+    "vue": "^3.4.31"
   }
 }
