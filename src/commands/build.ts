@@ -10,6 +10,7 @@ import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath } from 'mlly'
+import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
 
 import { name, version } from '../../package.json'
@@ -169,31 +170,32 @@ export default defineCommand({
           await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
 
           // Generate types
-          await writeTypes(ctx.options.outDir)
+          await writeTypes(ctx.options.outDir, ctx.options.stub)
         },
       },
     })
   },
 })
 
-async function writeTypes(distDir: string) {
+async function writeTypes(distDir: string, isStub: boolean) {
   const dtsFile = resolve(distDir, 'types.d.ts')
   const dtsFileMts = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
     return
   }
 
-  // Read generated module types
-  const moduleTypesFile = resolve(distDir, 'module.d.ts')
-  const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
-  const moduleReExports = findExports(
-    // Replace `export { type Foo }` with `export { Foo }`
-    moduleTypes
-      .replace(/export\s*\{.*?\}/gs, match =>
-        match.replace(/\b(type|interface)\b/g, ''),
-      ),
-  )
-  const isStub = moduleTypes.includes('export *')
+  const moduleReExports: ESMExport[] = []
+  if (!isStub) {
+    // Read generated module types
+    const moduleTypesFile = resolve(distDir, 'module.d.ts')
+    const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
+    const normalisedModuleTypes = moduleTypes
+      // Replace `export { type Foo }` with `export { Foo }`
+      .replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
+    for (const e of findExports(normalisedModuleTypes)) {
+      moduleReExports.push(e)
+    }
+  }
 
   const appShims: string[] = []
   const schemaShims: string[] = []
@@ -243,6 +245,7 @@ ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
+${isStub ? 'export * from "./module"' : ''}
 ${moduleReExports[0] ? `\nexport { ${moduleReExports[0].names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from './module'` : ''}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
