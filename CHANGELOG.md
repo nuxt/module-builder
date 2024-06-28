@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.8.1
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.8.0...v0.8.1)
+
+### 🩹 Fixes
+
+- **build:** Export all types in stub mode ([6b1970d](https://github.com/nuxt/module-builder/commit/6b1970d))
+
+### 🏡 Chore
+
+- Add @danielroe to code owners ([c39cc75](https://github.com/nuxt/module-builder/commit/c39cc75))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.8.0
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.7.1...v0.8.0)
