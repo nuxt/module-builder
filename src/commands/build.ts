@@ -217,9 +217,8 @@ async function writeTypes(distDir: string, isStub: boolean) {
   }
 
   if (hasTypeExport('ModuleRuntimeHooks')) {
-    const runtimeHooksInterfaces: string[] = ['ModuleRuntimeHooks']
-    moduleImports.push(...runtimeHooksInterfaces)
-    appShims.push(`  interface RuntimeNuxtHooks extends ${runtimeHooksInterfaces.join(', ')} {}`)
+    moduleImports.push('ModuleRuntimeHooks')
+    appShims.push(`  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}`)
   }
 
   if (hasTypeExport('ModuleRuntimeConfig')) {
