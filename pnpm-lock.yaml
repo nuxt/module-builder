@@ -54,7 +54,7 @@ importers:
         specifier: ^20.14.10
         version: 20.14.10
       '@vitest/coverage-v8':
-        specifier: ^2.0.0
+        specifier: ^2.0.1
         version: 2.0.1(vitest@2.0.1(@types/node@20.14.10)(terser@5.31.1))
       changelogen:
         specifier: ^0.5.5
@@ -75,7 +75,7 @@ importers:
         specifier: ^5.5.3
         version: 5.5.3
       vitest:
-        specifier: ^2.0.0
+        specifier: ^2.0.1
         version: 2.0.1(@types/node@20.14.10)(terser@5.31.1)
       vue:
         specifier: ^3.4.31
@@ -101,7 +101,7 @@ importers:
         version: 20.14.10
       nuxt:
         specifier: ^3.12.3
-        version: 3.12.3(@parcel/watcher@2.4.1)(@types/node@20.14.10)(eslint@9.6.0)(ioredis@5.4.1)(magicast@0.3.4)(optionator@0.9.4)(rollup@4.18.1)(terser@5.31.1)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(terser@5.31.1))(vue-tsc@2.0.26(typescript@5.5.3))
+        version: 3.12.3(@parcel/watcher@2.4.1)(@types/node@20.14.10)(eslint@9.6.0)(ioredis@5.4.1)(magicast@0.3.4)(optionator@0.9.4)(rollup@4.18.1)(terser@5.31.1)(typescript@5.5.3)(vue-tsc@2.0.26(typescript@5.5.3))
 
   example/playground:
     dependencies:
@@ -110,7 +110,7 @@ importers:
         version: link:..
       nuxt:
         specifier: latest
-        version: 3.12.3(@parcel/watcher@2.4.1)(@types/node@20.14.10)(eslint@9.6.0)(ioredis@5.4.1)(magicast@0.3.4)(optionator@0.9.4)(rollup@4.18.1)(terser@5.31.1)(typescript@5.5.3)(vue-tsc@2.0.26(typescript@5.5.3))
+        version: 3.12.3(@parcel/watcher@2.4.1)(@types/node@20.14.10)(eslint@9.6.0)(ioredis@5.4.1)(magicast@0.3.4)(optionator@0.9.4)(rollup@4.18.1)(terser@5.31.1)(typescript@5.5.3)(vite@5.3.3(@types/node@20.14.10)(terser@5.31.1))(vue-tsc@2.0.26(typescript@5.5.3))
     devDependencies:
       typescript:
         specifier: ^5.5.3
