@@ -47,24 +47,24 @@
     "nuxi": "^3.12.0"
   },
   "devDependencies": {
-    "@nuxt/eslint-config": "^0.3.13",
+    "@nuxt/eslint-config": "^0.5.0",
     "@nuxt/kit": "^3.12.4",
     "@nuxt/schema": "^3.12.4",
-    "@types/node": "^20.14.11",
-    "@vitest/coverage-v8": "^2.0.3",
+    "@types/node": "^20.14.14",
+    "@vitest/coverage-v8": "^2.0.5",
     "changelogen": "^0.5.5",
-    "eslint": "^9.7.0",
+    "eslint": "^9.8.0",
     "jiti": "^1.21.6",
     "nuxi": "^3.12.0",
     "nuxt": "^3.12.4",
-    "typescript": "^5.5.3",
-    "vitest": "^2.0.3",
-    "vue": "^3.4.33",
-    "vue-tsc": "^2.0.28"
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "vue": "^3.4.35",
+    "vue-tsc": "^2.0.29"
   },
   "resolutions": {
     "@nuxt/kit": "^3.12.4",
     "@nuxt/schema": "^3.12.4",
-    "vue": "^3.4.33"
+    "vue": "^3.4.35"
   }
 }
