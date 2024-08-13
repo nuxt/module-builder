@@ -25,6 +25,7 @@ export default defineCommand({
 
     return runCommand('prepare', [cwd], {
       overrides: {
+        compatibilityDate: '2024-04-03',
         typescript: {
           builder: 'shared',
         },
