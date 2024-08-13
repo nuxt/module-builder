@@ -203,7 +203,7 @@ async function writeTypes(distDir: string, isStub: boolean) {
   const schemaImports: string[] = []
   const moduleExports: string[] = []
 
-  const hasTypeExport = (name: string) => isStub || moduleReExports.find(exp => exp.names.includes(name))
+  const hasTypeExport = (name: string) => isStub || moduleReExports.find(exp => exp.names?.includes(name))
 
   if (!hasTypeExport('ModuleOptions')) {
     schemaImports.push('NuxtModule')
