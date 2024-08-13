@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.8.2
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.8.1...v0.8.2)
+
+### 🔥 Performance
+
+- Removed unnecessary hasTypeExport check ([#310](https://github.com/nuxt/module-builder/pull/310))
+
+### 🩹 Fixes
+
+- **prepare:** Override `compatibilityDate` ([b9b27c3](https://github.com/nuxt/module-builder/commit/b9b27c3))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+- Matt ([@matt-clegg](http://github.com/matt-clegg))
+
 ## v0.8.1
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.8.0...v0.8.1)
