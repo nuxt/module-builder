@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.8.3
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.8.2...v0.8.3)
+
+### 🩹 Fixes
+
+- **build:** Handle missing named type exports ([#331](https://github.com/nuxt/module-builder/pull/331))
+
+### ❤️ Contributors
+
+- Tobias Diez <code@tobiasdiez.com>
+
 ## v0.8.2
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.8.1...v0.8.2)
