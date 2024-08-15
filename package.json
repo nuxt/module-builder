@@ -30,7 +30,7 @@
     "test": "pnpm vitest",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@9.7.0",
+  "packageManager": "pnpm@9.7.1",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
@@ -59,12 +59,12 @@
     "nuxt": "^3.12.4",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5",
-    "vue": "^3.4.37",
+    "vue": "^3.4.38",
     "vue-tsc": "^2.0.29"
   },
   "resolutions": {
     "@nuxt/kit": "^3.12.4",
     "@nuxt/schema": "^3.12.4",
-    "vue": "^3.4.37"
+    "vue": "^3.4.38"
   }
 }
