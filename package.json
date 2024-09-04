@@ -43,28 +43,28 @@
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.13.0",
+    "@nuxt/kit": "^3.13.1",
     "nuxi": "^3.13.1"
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.5.5",
-    "@nuxt/kit": "^3.13.0",
-    "@nuxt/schema": "^3.13.0",
-    "@types/node": "^20.16.3",
+    "@nuxt/kit": "^3.13.1",
+    "@nuxt/schema": "^3.13.1",
+    "@types/node": "^20.16.4",
     "@vitest/coverage-v8": "^2.0.5",
     "changelogen": "^0.5.5",
     "eslint": "^9.9.1",
     "jiti": "^1.21.6",
     "nuxi": "^3.13.1",
-    "nuxt": "^3.13.0",
+    "nuxt": "^3.13.1",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5",
-    "vue": "^3.4.38",
+    "vue": "^3.5.1",
     "vue-tsc": "^2.1.4"
   },
   "resolutions": {
-    "@nuxt/kit": "^3.13.0",
-    "@nuxt/schema": "^3.13.0",
-    "vue": "^3.4.38"
+    "@nuxt/kit": "^3.13.1",
+    "@nuxt/schema": "^3.13.1",
+    "vue": "^3.5.1"
   }
 }
