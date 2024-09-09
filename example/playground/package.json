@@ -12,6 +12,6 @@
   },
   "devDependencies": {
     "typescript": "^5.5.4",
-    "vue-tsc": "^2.1.4"
+    "vue-tsc": "^2.1.6"
   }
 }
