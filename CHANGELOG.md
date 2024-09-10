@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v0.8.4
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.8.3...v0.8.4)
+
+### 🩹 Fixes
+
+- Remove `nuxt/schema` augment ([2a20ed0](https://github.com/nuxt/module-builder/commit/2a20ed0))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](http://github.com/danielroe))
+
 ## v0.8.3
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.8.2...v0.8.3)
