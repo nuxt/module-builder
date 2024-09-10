@@ -71,12 +71,6 @@ describe('module builder', () => {
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
-      declare module 'nuxt/schema' {
-        interface NuxtHooks extends ModuleHooks {}
-        interface RuntimeConfig extends ModuleRuntimeConfig {}
-        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
-      }
-
       export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module'
       "
     `)
@@ -94,12 +88,6 @@ describe('module builder', () => {
       }
 
       declare module '@nuxt/schema' {
-        interface NuxtHooks extends ModuleHooks {}
-        interface RuntimeConfig extends ModuleRuntimeConfig {}
-        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
-      }
-
-      declare module 'nuxt/schema' {
         interface NuxtHooks extends ModuleHooks {}
         interface RuntimeConfig extends ModuleRuntimeConfig {}
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}

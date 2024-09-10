@@ -237,7 +237,6 @@ ${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './mo
 
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
-${schemaShims.length ? `declare module 'nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${isStub ? 'export * from "./module"' : ''}
 ${moduleReExports[0] ? `\nexport { ${moduleReExports[0].names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from './module'` : ''}
