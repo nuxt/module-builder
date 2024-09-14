@@ -111,7 +111,7 @@ A minimum `package.json` should look like this:
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt-module-build"
+    "prepack": "nuxt-module-build build"
   },
   "dependencies": {
     "@nuxt/kit": "npm:@nuxt/kit-edge@latest"
