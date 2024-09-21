@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
-import { execaCommand } from 'execa'
+import { exec } from 'tinyexec'
 import { readPackageJSON } from 'pkg-types'
 import { dirname, join } from 'pathe'
 import { findStaticImports } from 'mlly'
@@ -24,8 +24,8 @@ describe('module builder', () => {
     await writeFile(moduleSrc, contents)
 
     await Promise.all([
-      execaCommand('pnpm dev:prepare', { cwd: rootDir }).then(() => execaCommand('pnpm prepack', { cwd: rootDir })),
-      execaCommand('pnpm dev:prepare', { cwd: secondRootDir }).then(() => execaCommand('pnpm prepack', { cwd: secondRootDir })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir } })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: secondRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: secondRootDir } })),
     ])
   }, 120 * 1000)
 
