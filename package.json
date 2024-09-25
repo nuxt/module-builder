@@ -44,18 +44,18 @@
   },
   "peerDependencies": {
     "@nuxt/kit": "^3.13.2",
-    "nuxi": "^3.13.2"
+    "nuxi": "^3.14.0"
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.5.7",
     "@nuxt/kit": "^3.13.2",
     "@nuxt/schema": "^3.13.2",
-    "@types/node": "^20.16.8",
+    "@types/node": "^20.16.9",
     "@vitest/coverage-v8": "^2.1.1",
     "changelogen": "^0.5.7",
     "eslint": "^9.11.1",
     "jiti": "^2.0.0",
-    "nuxi": "^3.13.2",
+    "nuxi": "^3.14.0",
     "nuxt": "^3.13.2",
     "tinyexec": "^0.3.0",
     "typescript": "^5.6.2",
