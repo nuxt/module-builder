@@ -60,12 +60,12 @@
     "tinyexec": "^0.3.0",
     "typescript": "^5.6.2",
     "vitest": "^2.1.2",
-    "vue": "^3.5.10",
+    "vue": "^3.5.11",
     "vue-tsc": "^2.1.6"
   },
   "resolutions": {
     "@nuxt/kit": "^3.13.2",
     "@nuxt/schema": "^3.13.2",
-    "vue": "^3.5.10"
+    "vue": "^3.5.11"
   }
 }
