@@ -148,10 +148,10 @@ Module builder generates dist files in `dist/` directory:
 
 <!-- Badges -->
 [npm-version-src]: https://img.shields.io/npm/v/@nuxt/module-builder/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
-[npm-version-href]: https://npm.chart.dev/@nuxt/module-builder
+[npm-version-href]: https://npmjs.com/package/@nuxt/module-builder
 
-[npm-downloads-src]: https:
-[npm-downloads-href]: https://npmjs.com/package/@nuxt/module-builder
+[npm-downloads-src]: https://img.shields.io/npm/dt/@nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-downloads-href]: https://npm.chart.dev/@nuxt/module-builder
 
 [license-src]: https://img.shields.io/github/license/nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
 [license-href]: https://github.com/nuxt/module-builder/blob/main/LICENSE
