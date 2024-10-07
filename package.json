@@ -50,7 +50,7 @@
     "@nuxt/eslint-config": "^0.5.7",
     "@nuxt/kit": "^3.13.2",
     "@nuxt/schema": "^3.13.2",
-    "@types/node": "^20.16.10",
+    "@types/node": "^20.16.11",
     "@vitest/coverage-v8": "^2.1.2",
     "changelogen": "^0.5.7",
     "eslint": "^9.12.0",
