@@ -1,6 +1,6 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, dirname, join, resolve } from 'pathe'
+import { basename, dirname, join, normalize, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
@@ -102,7 +102,7 @@ export default defineCommand({
           const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
 
           const runtimeDirs = runtimeEntries.map(entry => basename(entry.input))
-          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and('/'))
+          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and(anyOf('/', '\\')))
 
           // Add extension for imports of runtime files in build
           options.plugins.unshift({
@@ -115,11 +115,12 @@ export default defineCommand({
               if (!resolved)
                 return
 
+              const normalizedId = normalize(resolved.id)
               for (const entry of runtimeEntries) {
-                if (!resolved.id.includes(entry.input))
+                if (!normalizedId.includes(entry.input))
                   continue
 
-                const distFile = await resolvePath(join(dirname(resolved.id.replace(entry.input, entry.outDir!)), filename(resolved.id)))
+                const distFile = await resolvePath(join(dirname(normalizedId.replace(entry.input, entry.outDir!)), filename(normalizedId)))
                 if (distFile) {
                   return {
                     external: true,
