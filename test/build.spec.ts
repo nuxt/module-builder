@@ -124,6 +124,7 @@ describe('module builder', () => {
   it('should correctly add extensions to imports from runtime/ directory', async () => {
     const moduleDts = await readFile(join(distDir, 'module.d.ts'), 'utf-8')
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
+    console.log({ moduleDts, staticImports: findStaticImports(moduleDts) })
     expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';"`)
   })
 
