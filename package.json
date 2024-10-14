@@ -27,7 +27,7 @@
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
-    "test": "pnpm vitest",
+    "test": "pnpm vitest --coverage",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
   "packageManager": "pnpm@9.12.1",
