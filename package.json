@@ -50,7 +50,7 @@
     "@nuxt/eslint-config": "^0.6.1",
     "@nuxt/kit": "^3.13.2",
     "@nuxt/schema": "^3.13.2",
-    "@types/node": "^22.8.2",
+    "@types/node": "^22.8.5",
     "@vitest/coverage-v8": "^2.1.4",
     "changelogen": "^0.5.7",
     "eslint": "^9.13.0",
@@ -61,7 +61,7 @@
     "typescript": "^5.6.3",
     "vitest": "^2.1.4",
     "vue": "^3.5.12",
-    "vue-tsc": "^2.1.8"
+    "vue-tsc": "^2.1.10"
   },
   "resolutions": {
     "@nuxt/kit": "^3.13.2",
