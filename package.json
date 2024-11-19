@@ -47,25 +47,25 @@
     "nuxi": "^3.15.0"
   },
   "devDependencies": {
-    "@nuxt/eslint-config": "^0.6.1",
+    "@nuxt/eslint-config": "^0.7.1",
     "@nuxt/kit": "^3.14.159",
     "@nuxt/schema": "^3.14.159",
     "@types/node": "^22.9.0",
     "@vitest/coverage-v8": "^2.1.5",
     "changelogen": "^0.5.7",
-    "eslint": "^9.14.0",
+    "eslint": "^9.15.0",
     "jiti": "^2.4.0",
     "nuxi": "^3.15.0",
     "nuxt": "^3.14.159",
     "tinyexec": "^0.3.1",
     "typescript": "^5.6.3",
     "vitest": "^2.1.5",
-    "vue": "^3.5.12",
+    "vue": "^3.5.13",
     "vue-tsc": "^2.1.10"
   },
   "resolutions": {
     "@nuxt/kit": "^3.14.159",
     "@nuxt/schema": "^3.14.159",
-    "vue": "^3.5.12"
+    "vue": "^3.5.13"
   }
 }
