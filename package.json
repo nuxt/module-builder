@@ -43,17 +43,10 @@
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
-    "@nuxt/kit": "^3.14.1592",
     "nuxi": "^3.15.0"
-  },
-  "peerDependenciesMeta": {
-    "nuxi": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.7.1",
-    "@nuxt/kit": "^3.14.1592",
     "@nuxt/schema": "^3.14.1592",
     "@types/node": "^22.9.1",
     "@vitest/coverage-v8": "^2.1.5",
