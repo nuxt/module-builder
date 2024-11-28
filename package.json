@@ -43,7 +43,7 @@
     "unbuild": "^2.0.0"
   },
   "peerDependencies": {
-    "nuxi": "^3.15.0"
+    "nuxi": "^3.16.0"
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.7.1",
@@ -53,7 +53,7 @@
     "changelogen": "^0.5.7",
     "eslint": "^9.15.0",
     "jiti": "^2.4.0",
-    "nuxi": "^3.15.0",
+    "nuxi": "^3.16.0",
     "nuxt": "^3.14.1592",
     "tinyexec": "^0.3.1",
     "typescript": "^5.6.3",
