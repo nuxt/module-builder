@@ -64,8 +64,8 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       nuxi:
-        specifier: ^3.15.0
-        version: 3.15.0
+        specifier: ^3.16.0
+        version: 3.16.0
       nuxt:
         specifier: ^3.14.1592
         version: 3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@3.29.5)(terser@5.36.0)(typescript@5.6.3)(vite@6.0.0(@types/node@22.10.0)(jiti@2.4.0)(terser@5.36.0)(yaml@2.6.1))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1)
@@ -102,7 +102,7 @@ importers:
         version: 22.10.0
       nuxt:
         specifier: ^3.14.1592
-        version: 3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.27.4)(terser@5.36.0)(typescript@5.6.3)(vite@5.4.11(@types/node@22.10.0)(terser@5.36.0))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1)
+        version: 3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.27.4)(terser@5.36.0)(typescript@5.6.3)(vite@6.0.0(@types/node@22.10.0)(jiti@2.4.0)(terser@5.36.0)(yaml@2.6.1))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1)
 
   example/playground:
     dependencies:
@@ -111,7 +111,7 @@ importers:
         version: link:..
       nuxt:
         specifier: latest
-        version: 3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.27.4)(terser@5.36.0)(typescript@5.6.3)(vite@6.0.0(@types/node@22.10.0)(jiti@2.4.0)(terser@5.36.0)(yaml@2.6.1))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1)
+        version: 3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.27.4)(terser@5.36.0)(typescript@5.6.3)(vite@5.4.11(@types/node@22.10.0)(terser@5.36.0))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1)
     devDependencies:
       typescript:
         specifier: ~5.6.3
@@ -2979,6 +2979,11 @@ packages:
 
   nuxi@3.15.0:
     resolution: {integrity: sha512-ZVu45nuDrdb7nzKW2kLGY/N1vvFYLLbUVX6gUYw4BApKGGu4+GktTR5o48dGVgMYX9A8chaugl7TL9ZYmwC9Mg==}
+    engines: {node: ^16.10.0 || >=18.0.0}
+    hasBin: true
+
+  nuxi@3.16.0:
+    resolution: {integrity: sha512-t9m4zTq44R0/icuzQXJHEyPRM3YbgTPMpytyb6YW2LOL/3mwZ3Bmte1FIlCoigzDvxBJRbcchZGc689+Syyu8w==}
     engines: {node: ^16.10.0 || >=18.0.0}
     hasBin: true
 
@@ -7748,6 +7753,8 @@ snapshots:
       boolbase: 1.0.0
 
   nuxi@3.15.0: {}
+
+  nuxi@3.16.0: {}
 
   nuxt@3.14.1592(@parcel/watcher@2.5.0)(@types/node@22.10.0)(eslint@9.15.0(jiti@2.4.0))(ioredis@5.4.1)(magicast@0.3.5)(optionator@0.9.4)(rollup@3.29.5)(terser@5.36.0)(typescript@5.6.3)(vite@6.0.0(@types/node@22.10.0)(jiti@2.4.0)(terser@5.36.0)(yaml@2.6.1))(vue-tsc@2.1.10(typescript@5.6.3))(yaml@2.6.1):
     dependencies:
