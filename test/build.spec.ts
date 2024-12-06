@@ -118,7 +118,7 @@ describe('module builder', () => {
 
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
-    expect(pluginDts).toMatchFileSnapshot('__snapshots__/plugin.d.ts')
+    await expect(pluginDts).toMatchFileSnapshot('__snapshots__/plugin.d.ts')
   })
 
   it('should correctly add extensions to imports from runtime/ directory', async () => {
@@ -130,12 +130,12 @@ describe('module builder', () => {
   // TODO: https://github.com/nuxt/module-builder/issues/239
   it('should generate components correctly', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
-    expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
+    await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
   })
 
   it('should generate wrapped composables', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
-    expect(componentFile).toMatchFileSnapshot('__snapshots__/useWrappedFetch.d.ts')
+    await expect(componentFile).toMatchFileSnapshot('__snapshots__/useWrappedFetch.d.ts')
   })
 
   it('should handle JSX correctly', async () => {
@@ -143,7 +143,7 @@ describe('module builder', () => {
       readFile(join(distDir, 'runtime/components/JsxComponent.js'), 'utf-8'),
       readFile(join(distDir, 'runtime/components/JsxComponent.d.ts'), 'utf-8'),
     ])
-    expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.js')
-    expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
+    await expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.js')
+    await expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
   })
 })
