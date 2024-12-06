@@ -31,13 +31,13 @@
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.13.2"
+    "@nuxt/kit": "^3.14.1592"
   },
   "devDependencies": {
     "@nuxt/module-builder": "workspace:*",
-    "@nuxt/schema": "^3.13.2",
-    "@types/node": "^20.16.13",
-    "nuxt": "^3.13.2"
+    "@nuxt/schema": "^3.14.1592",
+    "@types/node": "^22.9.1",
+    "nuxt": "^3.14.1592"
   },
   "build": {
     "entries": [
