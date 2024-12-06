@@ -3,8 +3,8 @@
   "name": "my-module-playground",
   "scripts": {
     "test:types": "pnpm test:types:bundler && pnpm test:types:node10",
-    "test:types:bundler": "echo typescript.tsConfig.compilerOptions.moduleResolution=bundler > .nuxtrc && nuxt prepare && vue-tsc --noEmit",
-    "test:types:node10": "echo typescript.tsConfig.compilerOptions.moduleResolution=node10 > .nuxtrc && nuxt prepare && vue-tsc --noEmit"
+    "test:types:bundler": "MODULE_RESOLUTION=bundler node scripts/prepare.mjs",
+    "test:types:node10": "MODULE_RESOLUTION=node10 node scripts/prepare.mjs"
   },
   "dependencies": {
     "my-module": "workspace:*",
