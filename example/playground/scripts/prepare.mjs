@@ -1,5 +1,5 @@
-import { writeFileSync } from 'fs'
-import { execSync } from 'child_process'
+import { writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 
 const MODULE_RESOLUTION = process.env.MODULE_RESOLUTION
 
