@@ -130,7 +130,7 @@ describe('module builder', () => {
   // TODO: https://github.com/nuxt/module-builder/issues/239
   it('should generate components correctly', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
-    expect(componentFile).toMatchFileSnapshot('__snapshots__/TestMe.vue')
+    expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
   })
 
   it('should generate wrapped composables', async () => {
