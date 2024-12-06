@@ -30,7 +30,7 @@
     "test": "pnpm vitest --coverage",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@9.14.2",
+  "packageManager": "pnpm@9.14.4",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.2.3",
@@ -46,18 +46,18 @@
     "nuxi": "^3.16.0"
   },
   "devDependencies": {
-    "@nuxt/eslint-config": "^0.7.1",
+    "@nuxt/eslint-config": "^0.7.2",
     "@nuxt/schema": "^3.14.1592",
-    "@types/node": "^22.9.1",
-    "@vitest/coverage-v8": "^2.1.5",
+    "@types/node": "^22.10.1",
+    "@vitest/coverage-v8": "^2.1.8",
     "changelogen": "^0.5.7",
-    "eslint": "^9.15.0",
-    "jiti": "^2.4.0",
+    "eslint": "^9.16.0",
+    "jiti": "^2.4.1",
     "nuxi": "^3.16.0",
     "nuxt": "^3.14.1592",
     "tinyexec": "^0.3.1",
-    "typescript": "^5.6.3",
-    "vitest": "^2.1.5",
+    "typescript": "~5.6.3",
+    "vitest": "^2.1.8",
     "vue": "^3.5.13",
     "vue-tsc": "^2.1.10"
   },
