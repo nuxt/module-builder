@@ -120,7 +120,7 @@ export default defineCommand({
                 if (!normalizedId.includes(entry.input))
                   continue
 
-                const distFile = await resolvePath(join(dirname(normalizedId.replace(entry.input, entry.outDir!)), filename(normalizedId)))
+                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir!)), filename(normalizedId)))
                 if (distFile) {
                   return {
                     external: true,
