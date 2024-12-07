@@ -122,6 +122,20 @@ A minimum `package.json` should look like this:
 }
 ```
 
+### `build.config.ts` (optional)
+
+Module builder is essentially a preset for [unjs/unbuild](https://github.com/unjs/unbuild), check out the [build command](./src/commands/build.ts#L51) for reference.
+
+To customize/extend the unbuild configuration you can add a `build.config.ts` in the root of your project:
+
+```ts
+import { defineBuildConfig } from 'unbuild'
+
+export default defineBuildConfig({
+  // set additional configuration or customize using hooks
+})
+```
+
 ## Dist files
 
 Module builder generates dist files in `dist/` directory:
