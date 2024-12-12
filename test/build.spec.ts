@@ -127,10 +127,21 @@ describe('module builder', () => {
     expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';"`)
   })
 
-  // TODO: https://github.com/nuxt/module-builder/issues/239
   it('should generate components correctly', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
     await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
+
+    const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMe.vue.d.ts'), 'utf-8')
+    await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue.d.ts')
+  })
+
+  it('should generate components with <script setup> correctly', async () => {
+    const componentFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue'), 'utf-8')
+    await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue')
+
+    // TODO: https://github.com/nuxt/module-builder/issues/239
+    // const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue.d.ts'), 'utf-8')
+    // await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue.d.ts')
   })
 
   it('should generate wrapped composables', async () => {
