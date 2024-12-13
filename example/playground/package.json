@@ -2,9 +2,7 @@
   "private": true,
   "name": "my-module-playground",
   "scripts": {
-    "test:types": "pnpm test:types:bundler && pnpm test:types:node10",
-    "test:types:bundler": "MODULE_RESOLUTION=bundler node scripts/prepare.mjs",
-    "test:types:node10": "MODULE_RESOLUTION=node10 node scripts/prepare.mjs"
+    "test:types": "nuxt prepare && vue-tsc --noEmit"
   },
   "dependencies": {
     "my-module": "workspace:*",
