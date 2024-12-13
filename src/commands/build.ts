@@ -171,11 +171,18 @@ export default defineCommand({
           await writeTypes(ctx.options.outDir, ctx.options.stub)
         },
         async 'build:done'(ctx) {
-          const pkg = await readPackageJSON(cwd).catch(() => null)
+          const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
+          if (logs.filter(l => l.match(/\.d\.ts/)).length > 0) {
+            consola.warn(`\`@nuxt/module-builder\` no longer supports Node10 TypeScript module resolution and will no longer generate \`.d.ts\` declaration files. You can update these paths to use the \`.d.mts\` extension instead.`)
+          }
+
+          if (logs.filter(l => l.match(/module\.cjs/)).length > 0) {
+            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`module.cjs\` as this is not required for Nuxt v3+. You can safely remove replace this with \`module.mjs\` in your \`package.json\`.`)
+          }
+
+          const pkg = await readPackageJSON(cwd)
           if (pkg?.types && !existsSync(resolve(cwd, pkg.types))) {
-            const dtsFile = resolve(ctx.options.outDir, 'types.d.mts')
-            const pointer = existsSync(dtsFile) ? `update it to point to \`${relative(cwd, dtsFile)}\`, ` : ''
-            consola.warn(`Please remove the \`types\` field from package.json, ${pointer}or generate \`${pkg.types}\` yourself. \`@nuxt/module-builder\` no longer supports Node10 TypeScript module resolution.`)
+            consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution.`)
           }
         },
       },
