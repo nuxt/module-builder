@@ -1,6 +1,6 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, dirname, join, normalize, resolve } from 'pathe'
+import { basename, dirname, join, normalize, relative, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
@@ -169,6 +169,14 @@ export default defineCommand({
 
           // Generate types
           await writeTypes(ctx.options.outDir, ctx.options.stub)
+        },
+        async 'build:done'(ctx) {
+          const pkg = await readPackageJSON(cwd).catch(() => null)
+          if (pkg?.types && !existsSync(resolve(cwd, pkg.types))) {
+            const dtsFile = resolve(ctx.options.outDir, 'types.d.mts')
+            const pointer = existsSync(dtsFile) ? `update it to point to \`${relative(cwd, dtsFile)}\`, ` : ''
+            consola.warn(`Please remove the \`types\` field from package.json, ${pointer}or generate \`${pkg.types}\` yourself. \`@nuxt/module-builder\` no longer supports Node10 TypeScript module resolution.`)
+          }
         },
       },
     })
