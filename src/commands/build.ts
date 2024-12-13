@@ -6,6 +6,7 @@ import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
 import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
+import { createJiti } from 'jiti'
 import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
@@ -45,10 +46,11 @@ export default defineCommand({
 
     const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
 
+    const jiti = createJiti(cwd)
     const outDir = context.args.outDir || 'dist'
 
     await build(cwd, false, {
-      declaration: true,
+      declaration: 'node16',
       sourcemap: context.args.sourcemap,
       stub: context.args.stub,
       outDir,
@@ -71,7 +73,7 @@ export default defineCommand({
           target: 'esnext',
         },
         emitCJS: false,
-        cjsBridge: true,
+        cjsBridge: false,
       },
       externals: [
         /dist[\\/]runtime[\\/]/,
@@ -132,14 +134,9 @@ export default defineCommand({
           })
         },
         async 'rollup:done'(ctx) {
-          // Generate CommonJS stub
-          await writeCJSStub(ctx.options.outDir)
-
           // Load module meta
           const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-          const moduleFn: NuxtModule<Record<string, unknown>> = await import(
-            pathToFileURL(moduleEntryPath).toString()
-          ).then(r => r.default || r).catch((err) => {
+          const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(pathToFileURL(moduleEntryPath).toString(), { default: true }).catch((err) => {
             consola.error(err)
             consola.error('Cannot load module. Please check dist:', moduleEntryPath)
             return null
@@ -179,8 +176,7 @@ export default defineCommand({
 })
 
 async function writeTypes(distDir: string, isStub: boolean) {
-  const dtsFile = resolve(distDir, 'types.d.ts')
-  const dtsFileMts = resolve(distDir, 'types.d.mts')
+  const dtsFile = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
     return
   }
@@ -188,7 +184,7 @@ async function writeTypes(distDir: string, isStub: boolean) {
   const moduleReExports: ESMExport[] = []
   if (!isStub) {
     // Read generated module types
-    const moduleTypesFile = resolve(distDir, 'module.d.ts')
+    const moduleTypesFile = resolve(distDir, 'module.d.mts')
     const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
     const normalisedModuleTypes = moduleTypes
       // Replace `export { type Foo }` with `export { Foo }`
@@ -234,33 +230,16 @@ async function writeTypes(distDir: string, isStub: boolean) {
   const dtsContents = `
   ${schemaImports.length ? `import type { ${schemaImports.join(', ')} } from '@nuxt/schema'` : ''}
 
-${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './module'` : ''}
+${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './module.mjs'` : ''}
 
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${isStub ? 'export * from "./module"' : ''}
-${moduleReExports[0] ? `\nexport { ${moduleReExports[0].names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from './module'` : ''}
+${isStub ? 'export * from "./module.mjs"' : ''}
+${moduleReExports[0] ? `\nexport { ${moduleReExports[0].names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from './module.mjs'` : ''}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
-  if (!existsSync(dtsFileMts)) {
-    await fsp.writeFile(dtsFileMts, dtsContents.replace(/\.\/module/g, './module.js'), 'utf8')
-  }
-}
-
-async function writeCJSStub(distDir: string) {
-  const cjsStubFile = resolve(distDir, 'module.cjs')
-  if (existsSync(cjsStubFile)) {
-    return
-  }
-  const cjsStub = `module.exports = function(...args) {
-  return import('./module.mjs').then(m => m.default.call(this, ...args))
-}
-const _meta = module.exports.meta = require('./module.json')
-module.exports.getMeta = () => Promise.resolve(_meta)
-`
-  await fsp.writeFile(cjsStubFile, cjsStub, 'utf8')
 }
 
 async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {

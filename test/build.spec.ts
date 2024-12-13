@@ -33,16 +33,12 @@ describe('module builder', () => {
     const files = await readdir(distDir)
     expect(files).toMatchInlineSnapshot(`
       [
-        "module.cjs",
         "module.d.mts",
-        "module.d.ts",
         "module.json",
         "module.mjs",
         "runtime",
         "types.d.mts",
-        "types.d.ts",
         "utils.d.mts",
-        "utils.d.ts",
         "utils.mjs",
       ]
     `)
@@ -57,9 +53,9 @@ describe('module builder', () => {
   })
 
   it('should write types to output directory', async () => {
-    const types = await readFile(join(distDir, 'types.d.ts'), 'utf-8')
+    const types = await readFile(join(distDir, 'types.d.mts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
-      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
+      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
 
       declare module '#app' {
         interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
@@ -71,17 +67,17 @@ describe('module builder', () => {
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
-      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module'
+      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
       "
     `)
   })
 
   it('should generate types when no ModuleOptions are exported', async () => {
-    const types = await readFile(join(secondDistDir, 'types.d.ts'), 'utf-8')
+    const types = await readFile(join(secondDistDir, 'types.d.mts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
       "import type { NuxtModule } from '@nuxt/schema'
 
-      import type { default as Module, ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module'
+      import type { default as Module, ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
 
       declare module '#app' {
         interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
@@ -95,7 +91,7 @@ describe('module builder', () => {
 
       export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
 
-      export { type ModuleHooks, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module'
+      export { type ModuleHooks, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
       "
     `)
   })
@@ -122,7 +118,7 @@ describe('module builder', () => {
   })
 
   it('should correctly add extensions to imports from runtime/ directory', async () => {
-    const moduleDts = await readFile(join(distDir, 'module.d.ts'), 'utf-8')
+    const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
     expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';"`)
   })
