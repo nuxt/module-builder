@@ -1,6 +1,6 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, dirname, join, normalize, relative, resolve } from 'pathe'
+import { basename, dirname, join, normalize, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
