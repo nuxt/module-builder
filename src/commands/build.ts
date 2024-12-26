@@ -13,6 +13,7 @@ import type { NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath } from 'mlly'
 import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
+import { convertCompilerOptionsFromJson } from 'typescript'
 
 import { name, version } from '../../package.json'
 
@@ -83,6 +84,8 @@ export default defineCommand({
         '@nuxt/kit',
         '@nuxt/kit-nightly',
         '@nuxt/kit-edge',
+        '#app',
+        '#app/nuxt',
         'nuxt',
         'nuxt-nightly',
         'nuxt-edge',
@@ -97,6 +100,14 @@ export default defineCommand({
           })
         },
         async 'rollup:options'(ctx, options) {
+          const [entry] = ctx.buildEntries
+          const mergedCompilerOptions = defu({
+            noEmit: false,
+            paths: {
+              '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
+            },
+          }, ctx.options.rollup.dts.compilerOptions, await loadTSCompilerOptions(entry!.path))
+          ctx.options.rollup.dts.compilerOptions = convertCompilerOptionsFromJson(mergedCompilerOptions, entry!.path).options
           options.plugins ||= []
           if (!Array.isArray(options.plugins))
             options.plugins = [options.plugins]
