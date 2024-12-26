@@ -33,7 +33,7 @@
   "packageManager": "pnpm@9.15.1",
   "dependencies": {
     "citty": "^0.1.6",
-    "consola": "^3.3.2",
+    "consola": "^3.3.3",
     "defu": "^6.1.4",
     "jiti": "^2.4.2",
     "magic-regexp": "^0.8.0",
