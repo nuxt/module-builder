@@ -65,8 +65,8 @@ importers:
         specifier: ^9.17.0
         version: 9.17.0(jiti@2.4.2)
       nuxi:
-        specifier: ^3.17.2
-        version: 3.17.2
+        specifier: ^3.18.2
+        version: 3.18.2
       nuxt:
         specifier: ^3.15.1
         version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.17.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.29.2)(terser@5.37.0)(typescript@5.7.2)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.2))(yaml@2.7.0)
@@ -2781,6 +2781,11 @@ packages:
     engines: {node: ^16.10.0 || >=18.0.0}
     hasBin: true
 
+  nuxi@3.18.2:
+    resolution: {integrity: sha512-JKpbXJ5suXSBJxPvosw8eqdJOniNs6RUmi91aaRQG4jmKcDCZgbZIPUBBJNdllCIcrE0jQQO40BfFLxnzx8Ipg==}
+    engines: {node: ^16.10.0 || >=18.0.0}
+    hasBin: true
+
   nuxt@3.15.1:
     resolution: {integrity: sha512-8sKgqjhu5JoaVv89TnBW5S0jvsXRrEWGF+CguYUPK+6sRAtNcJAwcWxd4pEmURYQ2D0jjdfgr/VyH0i9CdhkBQ==}
     engines: {node: ^18.20.5 || ^20.9.0 || >=22.0.0}
@@ -3280,6 +3285,7 @@ packages:
   rollup-plugin-visualizer@5.13.1:
     resolution: {integrity: sha512-vMg8i6BprL8aFm9DKvL2c8AwS8324EgymYQo9o6E26wgVvwMhsJxS37aNL6ZsU7X9iAcMYwdME7gItLfG5fwJg==}
     engines: {node: '>=18'}
+    deprecated: Contains unintended breaking changes
     hasBin: true
     peerDependencies:
       rolldown: 1.x
@@ -7131,6 +7137,8 @@ snapshots:
       boolbase: 1.0.0
 
   nuxi@3.17.2: {}
+
+  nuxi@3.18.2: {}
 
   nuxt@3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.17.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.29.2)(terser@5.37.0)(typescript@5.7.2)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.2))(yaml@2.7.0):
     dependencies:
