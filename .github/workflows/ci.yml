@@ -28,5 +28,5 @@ jobs:
       - run: pnpm build
       - run: pnpm example:build
       - run: pnpm test:types
-      - run: npx publint
+      - run: pnpm publint
         working-directory: example
