@@ -29,4 +29,5 @@ jobs:
       - run: pnpm example:build
       - run: pnpm test:types
       - run: pnpm publint
+        if: matrix.os == 'ubuntu-latest'
         working-directory: example
