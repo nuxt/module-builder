@@ -9,6 +9,28 @@ on:
       - main
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - run: corepack enable
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 📦 Install dependencies
+        run: pnpm install
+
+      - name: 🔠 Lint project
+        run: pnpm lint
+
+      - name: 💪 Check published types
+        run: pnpm test:attw
+
+      - name: 📦 Check `package.json`
+        run: pnpm test:publint
+
   ci:
     strategy:
       matrix:
@@ -17,17 +39,24 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - run: corepack enable
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 18
-          cache: 'pnpm'
-      - run: pnpm install
+          cache: pnpm
+
+      - name: 📦 Install dependencies
+        run: pnpm install
+
       - run: pnpm dev:prepare
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
-      - run: pnpm example:build
-      - run: pnpm test:types
-      - run: pnpm publint
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: example
+
+      - name: 🧪 Test project
+        run: pnpm test
+
+      - name: 🛠 Build project
+        run: pnpm build
+
+      - name: 🛠 Build project (example)
+        run: pnpm example:build
+
+      - name: 💪 Type check
+        run: pnpm test:types

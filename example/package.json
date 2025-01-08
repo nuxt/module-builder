@@ -13,9 +13,8 @@
   "main": "dist/module.mjs",
   "typesVersions": {
     "*": {
-      "*": [
-        "./dist/*",
-        "./*"
+      "utils": [
+        "./dist/utils.d.mts"
       ]
     }
   },
