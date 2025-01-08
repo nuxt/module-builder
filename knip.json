@@ -4,6 +4,11 @@
     "test/__snapshots__/**"
   ],
   "workspaces": {
+    ".": {
+      "ignoreDependencies": [
+        "@nuxt/module-builder"
+      ]
+    },
     "example": {
       "entry": [
         "src/module.ts",
