@@ -22,10 +22,10 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt build-module build",
+    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "nuxt build-module build --stub && nuxt build-module prepare",
+    "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare",
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {

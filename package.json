@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "dev:prepare": "unbuild --stub && pnpm i && pnpm -r dev:prepare",
+    "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
     "example:build": "nuxt build-module build ./example",
     "lint": "eslint .",
     "prepack": "pnpm build",
@@ -87,10 +87,5 @@
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
-  },
-  "pnpm": {
-    "patchedDependencies": {
-      "nuxi": "patches/nuxi.patch"
-    }
   }
 }
