@@ -22,10 +22,10 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt build-module build",
+    "prepack": "jiti ../src/cli.ts build",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "nuxt build-module build --stub && nuxt build-module prepare",
+    "dev:prepare": "jiti ../src/cli.ts build --stub && jiti ../src/cli.ts prepare",
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {
