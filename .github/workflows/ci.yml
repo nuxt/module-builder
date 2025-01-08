@@ -22,6 +22,8 @@ jobs:
       - name: 📦 Install dependencies
         run: pnpm install
 
+      - run: pnpm dev:prepare
+
       - name: 🔠 Lint project
         run: pnpm lint
 
