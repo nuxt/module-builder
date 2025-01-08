@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "build": "unbuild",
-    "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
+    "dev:prepare": "unbuild --stub && pnpm i && pnpm -r dev:prepare",
     "example:build": "pnpm nuxt-module-build build ./example",
     "lint": "eslint .",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
