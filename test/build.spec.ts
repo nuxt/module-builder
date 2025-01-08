@@ -24,8 +24,8 @@ describe('module builder', () => {
     await writeFile(moduleSrc, contents)
 
     await Promise.all([
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir } })),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: secondRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: secondRootDir } })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir } }).then(() => exec('pnpm', ['prepack'], { throwOnError: true, nodeOptions: { cwd: rootDir } })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: secondRootDir } }).then(() => exec('pnpm', ['prepack'], { throwOnError: true, nodeOptions: { cwd: secondRootDir } })),
     ])
   }, 120 * 1000)
 
