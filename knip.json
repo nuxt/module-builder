@@ -16,7 +16,8 @@
         "src/runtime/**"
       ],
       "ignoreDependencies": [
-        "@nuxt/module-builder"
+        "@nuxt/module-builder",
+        "@nuxt/schema"
       ]
     },
     "example/playground": {

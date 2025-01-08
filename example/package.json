@@ -33,6 +33,7 @@
   },
   "devDependencies": {
     "@nuxt/module-builder": "latest",
+    "@nuxt/schema": "^3.15.1",
     "nuxt": "^3.15.1"
   },
   "build": {
