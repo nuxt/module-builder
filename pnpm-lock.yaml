@@ -12,6 +12,11 @@ overrides:
   vue: ^3.5.13
   vue-tsc: ^2.2.0
 
+patchedDependencies:
+  nuxi:
+    hash: b6nqyjucyrcfyxtc6svabr2aly
+    path: patches/nuxi.patch
+
 importers:
 
   .:
@@ -79,7 +84,7 @@ importers:
         version: 5.41.1(@types/node@22.10.5)(typescript@5.7.2)
       nuxi:
         specifier: ^3.18.2
-        version: 3.19.1
+        version: 3.19.1(patch_hash=b6nqyjucyrcfyxtc6svabr2aly)
       nuxt:
         specifier: ^3.15.1
         version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.17.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.29.2)(terser@5.37.0)(typescript@5.7.2)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.2))(yaml@2.7.0)
@@ -7679,7 +7684,7 @@ snapshots:
     dependencies:
       boolbase: 1.0.0
 
-  nuxi@3.19.1: {}
+  nuxi@3.19.1(patch_hash=b6nqyjucyrcfyxtc6svabr2aly): {}
 
   nuxt@3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.17.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.29.2)(terser@5.37.0)(typescript@5.7.2)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.2))(yaml@2.7.0):
     dependencies:
@@ -7719,7 +7724,7 @@ snapshots:
       mlly: 1.7.3
       nanotar: 0.1.1
       nitropack: 2.10.4(typescript@5.7.2)
-      nuxi: 3.19.1
+      nuxi: 3.19.1(patch_hash=b6nqyjucyrcfyxtc6svabr2aly)
       nypm: 0.4.1
       ofetch: 1.4.1
       ohash: 1.1.4
@@ -7840,7 +7845,7 @@ snapshots:
       mlly: 1.7.3
       nanotar: 0.1.1
       nitropack: 2.10.4(typescript@5.7.2)
-      nuxi: 3.19.1
+      nuxi: 3.19.1(patch_hash=b6nqyjucyrcfyxtc6svabr2aly)
       nypm: 0.4.1
       ofetch: 1.4.1
       ohash: 1.1.4

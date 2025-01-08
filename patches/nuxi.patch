@@ -1,0 +1,12 @@
+diff --git a/dist/shared/nuxi.BVSKcfmX.mjs b/dist/shared/nuxi.BVSKcfmX.mjs
+index 700741eeced6516694a6355d215f28d6011ccdaf..398de8f3e72f82e753f496287c9711b40f279f50 100644
+--- a/dist/shared/nuxi.BVSKcfmX.mjs
++++ b/dist/shared/nuxi.BVSKcfmX.mjs
+@@ -2166,6 +2166,7 @@ const main = defineCommand({
+       const cwd = resolve(ctx.args.cwd);
+       try {
+         const { x } = await import('../chunks/main.mjs');
++        console.log(ctx, ctx.rawArgs)
+         await x(`nuxt-${ctx.args.command}`, ctx.rawArgs.slice(1), {
+           nodeOptions: { stdio: "inherit", cwd },
+           throwOnError: true

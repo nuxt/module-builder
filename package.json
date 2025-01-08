@@ -60,8 +60,8 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.17.2",
     "@nuxt/eslint-config": "^0.7.4",
-    "@nuxt/schema": "^3.15.1",
     "@nuxt/module-builder": "latest",
+    "@nuxt/schema": "^3.15.1",
     "@types/node": "^22.10.5",
     "@vitest/coverage-v8": "^2.1.8",
     "changelogen": "^0.5.7",
@@ -87,5 +87,10 @@
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "nuxi": "patches/nuxi.patch"
+    }
   }
 }
