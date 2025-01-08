@@ -73,6 +73,7 @@ describe('module builder', () => {
   })
 
   it('should generate types when no ModuleOptions are exported', async () => {
+    console.log(await readdir(secondDistDir))
     const types = await readFile(join(secondDistDir, 'types.d.mts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
       "import type { NuxtModule } from '@nuxt/schema'
