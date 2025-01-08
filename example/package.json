@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "prepack": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build",
+    "prepack": "jiti ../src/cli.ts build",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
     "dev:prepare": "JITI_ESM_RESOLVE=1 jiti ../src/cli.ts build --stub && JITI_ESM_RESOLVE=1 jiti ../src/cli.ts prepare",
