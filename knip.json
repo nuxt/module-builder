@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": [
+    "test/__snapshots__/**"
+  ],
+  "workspaces": {
+    "example": {
+      "entry": [
+        "src/module.ts",
+        "src/utils.ts",
+        "src/runtime/**"
+      ],
+      "ignoreDependencies": [
+        "@nuxt/module-builder"
+      ]
+    },
+    "example/playground": {
+      "entry": [
+        "providers/custom/index.ts",
+        "{components,layouts,pages,plugins,server}/**",
+        "{app,error}.vue",
+        "layers/**",
+        "*.ts"
+      ],
+      "ignoreDependencies": [
+        "my-module"
+      ]
+    }
+  }
+}
