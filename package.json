@@ -29,8 +29,9 @@
   "scripts": {
     "build": "unbuild",
     "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
-    "example:build": "nuxt build-module build ./example",
+    "example:build": "pnpm nuxt-module-build build ./example",
     "lint": "eslint .",
+    "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm vitest --coverage",
@@ -60,7 +61,6 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.17.2",
     "@nuxt/eslint-config": "^0.7.4",
-    "@nuxt/module-builder": "latest",
     "@nuxt/schema": "^3.15.1",
     "@types/node": "^22.10.5",
     "@vitest/coverage-v8": "^2.1.8",
