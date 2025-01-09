@@ -75,7 +75,7 @@ importers:
         specifier: ^5.42.0
         version: 5.42.0(@types/node@22.10.5)(typescript@5.7.3)
       nuxi:
-        specifier: ^3.18.2
+        specifier: ^3.19.1
         version: 3.19.1
       nuxt:
         specifier: ^3.15.1

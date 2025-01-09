@@ -55,7 +55,7 @@
     "unbuild": "^3.2.0"
   },
   "peerDependencies": {
-    "nuxi": "^3.18.2",
+    "nuxi": "^3.19.1",
     "typescript": "^5.7.3"
   },
   "devDependencies": {
@@ -68,7 +68,7 @@
     "eslint": "^9.17.0",
     "installed-check": "^9.3.0",
     "knip": "^5.42.0",
-    "nuxi": "^3.18.2",
+    "nuxi": "^3.19.1",
     "nuxt": "^3.15.1",
     "publint": "^0.3.0",
     "tinyexec": "^0.3.2",
