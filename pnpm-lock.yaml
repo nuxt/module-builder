@@ -32,7 +32,7 @@ importers:
         specifier: ^0.8.0
         version: 0.8.0
       mlly:
-        specifier: ^1.7.3
+        specifier: ^1.7.4
         version: 1.7.4
       pathe:
         specifier: ^2.0.1
@@ -44,12 +44,12 @@ importers:
         specifier: ^3.1.4
         version: 3.1.4(typescript@5.7.3)
       unbuild:
-        specifier: ^3.2.0
+        specifier: ^3.3.0
         version: 3.3.0(typescript@5.7.3)(vue-tsc@2.2.0(typescript@5.7.3))(vue@3.5.13(typescript@5.7.3))
     devDependencies:
       '@arethetypeswrong/cli':
-        specifier: ^0.17.2
-        version: 0.17.2
+        specifier: ^0.17.3
+        version: 0.17.3
       '@nuxt/eslint-config':
         specifier: ^0.7.5
         version: 0.7.5(@vue/compiler-sfc@3.5.13)(eslint@9.18.0(jiti@2.4.2))(typescript@5.7.3)
@@ -110,7 +110,7 @@ importers:
         version: link:..
       nuxt:
         specifier: ^3.15.1
-        version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.18.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.30.1)(terser@5.37.0)(typescript@5.7.3)(vite@6.0.7(@types/node@22.10.5)(jiti@2.4.2)(terser@5.37.0)(yaml@2.7.0))(vue-tsc@2.2.0(typescript@5.7.3))(yaml@2.7.0)
+        version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.18.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.30.1)(terser@5.37.0)(typescript@5.7.3)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.3))(yaml@2.7.0)
 
   example/playground:
     dependencies:
@@ -119,7 +119,7 @@ importers:
         version: link:..
       nuxt:
         specifier: latest
-        version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.18.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.30.1)(terser@5.37.0)(typescript@5.7.3)(vite@5.4.11(@types/node@22.10.5)(terser@5.37.0))(vue-tsc@2.2.0(typescript@5.7.3))(yaml@2.7.0)
+        version: 3.15.1(@parcel/watcher@2.5.0)(@types/node@22.10.5)(db0@0.2.1)(eslint@9.18.0(jiti@2.4.2))(ioredis@5.4.2)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.30.1)(terser@5.37.0)(typescript@5.7.3)(vite@6.0.7(@types/node@22.10.5)(jiti@2.4.2)(terser@5.37.0)(yaml@2.7.0))(vue-tsc@2.2.0(typescript@5.7.3))(yaml@2.7.0)
     devDependencies:
       typescript:
         specifier: ~5.7.3
@@ -143,13 +143,13 @@ packages:
   '@antfu/utils@0.7.10':
     resolution: {integrity: sha512-+562v9k4aI80m1+VuMHehNJWLOFjBnXn3tdOitzD0il5b7smkSBal4+a3oKiQTbrwMmN/TBUMDvbdoWDehgOww==}
 
-  '@arethetypeswrong/cli@0.17.2':
-    resolution: {integrity: sha512-/u2VcQJ8PKc4hcao/vXnHrYLEI/sQqKarbHi+NEIfvdymaW5o62XOCXy2yvalQa/vR+AAD/QNEgAUzHo5f7hrw==}
+  '@arethetypeswrong/cli@0.17.3':
+    resolution: {integrity: sha512-wI9ZSTweunmzHboSyYtWRFpba9fM9mpX1g7EUoRr+86zHSd7NR7svb6EmJD2hv1V+SoisB2fERu6EQGGEfQ8oQ==}
     engines: {node: '>=18'}
     hasBin: true
 
-  '@arethetypeswrong/core@0.17.2':
-    resolution: {integrity: sha512-JYeLgS4rQ2l3gHCabaka3atsEyskfpx+WqUbo+6l8LApILJgr0/XDb7KNC9Ovevp4iPVF2Q73oshpgOKJ3uDRQ==}
+  '@arethetypeswrong/core@0.17.3':
+    resolution: {integrity: sha512-2TB7O5JmC7UX7QHRGGftxRVQjV4Ce6oOIDGIDDERyT9dQ8lK/tRGfFubzO80rWeXm/gSrA8jirlXSWSE1i5ynQ==}
     engines: {node: '>=18'}
 
   '@babel/code-frame@7.26.2':
@@ -4444,9 +4444,9 @@ snapshots:
 
   '@antfu/utils@0.7.10': {}
 
-  '@arethetypeswrong/cli@0.17.2':
+  '@arethetypeswrong/cli@0.17.3':
     dependencies:
-      '@arethetypeswrong/core': 0.17.2
+      '@arethetypeswrong/core': 0.17.3
       chalk: 4.1.2
       cli-table3: 0.6.5
       commander: 10.0.1
@@ -4454,7 +4454,7 @@ snapshots:
       marked-terminal: 7.2.1(marked@9.1.6)
       semver: 7.6.3
 
-  '@arethetypeswrong/core@0.17.2':
+  '@arethetypeswrong/core@0.17.3':
     dependencies:
       '@andrewbranch/untar.js': 1.0.3
       cjs-module-lexer: 1.4.1
