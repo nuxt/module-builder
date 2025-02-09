@@ -1,6 +1,6 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, dirname, join, normalize, resolve } from 'pathe'
+import { basename, dirname, extname, join, normalize, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
@@ -135,10 +135,11 @@ export default defineCommand({
 
               const normalizedId = normalize(resolved.id)
               for (const entry of runtimeEntries) {
-                if (!normalizedId.includes(entry.input))
+                if (!entry.outDir || !normalizedId.includes(entry.input))
                   continue
 
-                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir!)), filename(normalizedId)!))
+                const name = filename(normalizedId) || basename(normalizedId, extname(normalizedId))
+                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir)), name))
                 if (distFile) {
                   return {
                     external: true,
