@@ -41,7 +41,7 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@10.2.1",
+  "packageManager": "pnpm@10.3.0",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.4.0",
@@ -67,7 +67,7 @@
     "changelogen": "^0.5.7",
     "eslint": "^9.20.0",
     "installed-check": "^9.3.0",
-    "knip": "^5.43.6",
+    "knip": "^5.44.0",
     "nuxi": "^3.21.1",
     "nuxt": "^3.15.4",
     "publint": "^0.3.4",
