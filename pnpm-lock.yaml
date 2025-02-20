@@ -10,7 +10,7 @@ overrides:
   '@nuxt/schema': ^3.15.4
   typescript: ~5.7.3
   vue: ^3.5.13
-  vue-tsc: ^2.2.0
+  vue-tsc: ^2.2.2
 
 importers:
 
@@ -51,10 +51,10 @@ importers:
         specifier: ^0.17.3
         version: 0.17.3
       '@nuxt/cli':
-        specifier: ^3.22.1
+        specifier: ^3.22.2
         version: 3.22.2(magicast@0.3.5)
       '@nuxt/eslint-config':
-        specifier: ^1.0.1
+        specifier: ^1.1.0
         version: 1.1.0(@vue/compiler-sfc@3.5.13)(eslint@9.20.1(jiti@2.4.2))(typescript@5.7.3)
       '@nuxt/schema':
         specifier: ^3.15.4
@@ -63,7 +63,7 @@ importers:
         specifier: ^22.13.4
         version: 22.13.4
       '@vitest/coverage-v8':
-        specifier: ^3.0.5
+        specifier: ^3.0.6
         version: 3.0.6(vitest@3.0.6(@types/node@22.13.4)(jiti@2.4.2)(terser@5.39.0)(yaml@2.7.0))
       changelogen:
         specifier: ^0.5.7
@@ -75,13 +75,13 @@ importers:
         specifier: ^9.3.0
         version: 9.3.0
       knip:
-        specifier: ^5.44.1
+        specifier: ^5.44.4
         version: 5.44.4(@types/node@22.13.4)(typescript@5.7.3)
       nuxt:
         specifier: ^3.15.4
         version: 3.15.4(@parcel/watcher@2.5.1)(@types/node@22.13.4)(db0@0.2.4)(eslint@9.20.1(jiti@2.4.2))(ioredis@5.5.0)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.34.8)(terser@5.39.0)(typescript@5.7.3)(vite@6.1.1(@types/node@22.13.4)(jiti@2.4.2)(terser@5.39.0)(yaml@2.7.0))(vue-tsc@2.2.2(typescript@5.7.3))(yaml@2.7.0)
       publint:
-        specifier: ^0.3.5
+        specifier: ^0.3.6
         version: 0.3.6
       tinyexec:
         specifier: ^0.3.2
@@ -90,13 +90,13 @@ importers:
         specifier: ~5.7.3
         version: 5.7.3
       vitest:
-        specifier: ^3.0.5
+        specifier: ^3.0.6
         version: 3.0.6(@types/node@22.13.4)(jiti@2.4.2)(terser@5.39.0)(yaml@2.7.0)
       vue:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.7.3)
       vue-tsc:
-        specifier: ^2.2.0
+        specifier: ^2.2.2
         version: 2.2.2(typescript@5.7.3)
 
   example:
@@ -125,7 +125,7 @@ importers:
         specifier: ~5.7.3
         version: 5.7.3
       vue-tsc:
-        specifier: ^2.2.0
+        specifier: ^2.2.2
         version: 2.2.2(typescript@5.7.3)
 
 packages:
@@ -2732,7 +2732,7 @@ packages:
       sass: ^1.83.0
       typescript: ~5.7.3
       vue: ^3.5.13
-      vue-tsc: ^2.2.0
+      vue-tsc: ^2.2.2
     peerDependenciesMeta:
       sass:
         optional: true
@@ -3973,7 +3973,7 @@ packages:
       vite: '>=2.0.0'
       vls: '*'
       vti: '*'
-      vue-tsc: ^2.2.0
+      vue-tsc: ^2.2.2
     peerDependenciesMeta:
       '@biomejs/biome':
         optional: true
