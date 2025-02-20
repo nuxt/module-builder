@@ -19,7 +19,7 @@ export default defineCommand({
     },
   },
   async run(context) {
-    const { runCommand } = await import('nuxi')
+    const { runCommand } = await import('@nuxt/cli')
 
     const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
 
