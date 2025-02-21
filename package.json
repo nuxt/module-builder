@@ -59,7 +59,7 @@
     "typescript": "^5.7.3"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.17.3",
+    "@arethetypeswrong/cli": "^0.17.4",
     "@nuxt/cli": "^3.22.2",
     "@nuxt/eslint-config": "^1.1.0",
     "@nuxt/schema": "^3.15.4",
