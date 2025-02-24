@@ -10,7 +10,7 @@ overrides:
   '@nuxt/schema': ^3.15.4
   typescript: ~5.7.3
   vue: ^3.5.13
-  vue-tsc: ^2.2.2
+  vue-tsc: ^2.2.4
 
 importers:
 
@@ -75,7 +75,7 @@ importers:
         specifier: ^9.3.0
         version: 9.3.0
       knip:
-        specifier: ^5.44.4
+        specifier: ^5.44.5
         version: 5.44.5(@types/node@22.13.5)(typescript@5.7.3)
       nuxt:
         specifier: ^3.15.4
@@ -96,7 +96,7 @@ importers:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.7.3)
       vue-tsc:
-        specifier: ^2.2.2
+        specifier: ^2.2.4
         version: 2.2.4(typescript@5.7.3)
 
   example:
@@ -125,7 +125,7 @@ importers:
         specifier: ~5.7.3
         version: 5.7.3
       vue-tsc:
-        specifier: ^2.2.2
+        specifier: ^2.2.4
         version: 2.2.4(typescript@5.7.3)
 
 packages:
@@ -2738,7 +2738,7 @@ packages:
       sass: ^1.83.0
       typescript: ~5.7.3
       vue: ^3.5.13
-      vue-tsc: ^2.2.2
+      vue-tsc: ^2.2.4
     peerDependenciesMeta:
       sass:
         optional: true
@@ -3979,7 +3979,7 @@ packages:
       vite: '>=2.0.0'
       vls: '*'
       vti: '*'
-      vue-tsc: ^2.2.2
+      vue-tsc: ^2.2.4
     peerDependenciesMeta:
       '@biomejs/biome':
         optional: true

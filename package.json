@@ -68,14 +68,14 @@
     "changelogen": "^0.5.7",
     "eslint": "^9.21.0",
     "installed-check": "^9.3.0",
-    "knip": "^5.44.4",
+    "knip": "^5.44.5",
     "nuxt": "^3.15.4",
     "publint": "^0.3.6",
     "tinyexec": "^0.3.2",
     "typescript": "~5.7.3",
     "vitest": "^3.0.6",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.2"
+    "vue-tsc": "^2.2.4"
   },
   "resolutions": {
     "@nuxt/kit": "^3.15.4",
@@ -83,7 +83,7 @@
     "@nuxt/schema": "^3.15.4",
     "typescript": "~5.7.3",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.2"
+    "vue-tsc": "^2.2.4"
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
