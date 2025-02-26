@@ -41,7 +41,7 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@10.5.0",
+  "packageManager": "pnpm@10.5.1",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.4.0",
@@ -52,7 +52,7 @@
     "pathe": "^2.0.3",
     "pkg-types": "^2.0.0",
     "tsconfck": "^3.1.5",
-    "unbuild": "^3.3.1"
+    "unbuild": "^3.4.1"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.22.2",
@@ -65,7 +65,7 @@
     "@nuxt/schema": "^3.15.4",
     "@types/node": "^22.13.5",
     "@vitest/coverage-v8": "^3.0.7",
-    "changelogen": "^0.5.7",
+    "changelogen": "^0.6.0",
     "eslint": "^9.21.0",
     "installed-check": "^9.3.0",
     "knip": "^5.45.0",
