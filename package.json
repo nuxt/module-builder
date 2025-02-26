@@ -52,7 +52,7 @@
     "pathe": "^2.0.3",
     "pkg-types": "^2.0.0",
     "tsconfck": "^3.1.5",
-    "unbuild": "^3.4.1"
+    "unbuild": "^3.4.2"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.22.2",
