@@ -70,7 +70,7 @@
     "installed-check": "^9.3.0",
     "knip": "^5.45.0",
     "nuxt": "^3.15.4",
-    "publint": "^0.3.6",
+    "publint": "^0.3.7",
     "tinyexec": "^0.3.2",
     "typescript": "~5.7.3",
     "vitest": "^3.0.7",
