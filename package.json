@@ -50,7 +50,7 @@
     "magic-regexp": "^0.8.0",
     "mlly": "^1.7.4",
     "pathe": "^2.0.3",
-    "pkg-types": "^2.0.0",
+    "pkg-types": "^2.0.1",
     "tsconfck": "^3.1.5",
     "unbuild": "^3.5.0"
   },
@@ -75,7 +75,7 @@
     "typescript": "~5.8.2",
     "vitest": "^3.0.7",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.4"
+    "vue-tsc": "^2.2.6"
   },
   "resolutions": {
     "@nuxt/kit": "^3.15.4",
@@ -83,7 +83,7 @@
     "@nuxt/schema": "^3.15.4",
     "typescript": "~5.8.2",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.4"
+    "vue-tsc": "^2.2.6"
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
