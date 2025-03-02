@@ -75,7 +75,7 @@
     "typescript": "~5.8.2",
     "vitest": "^3.0.7",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.6"
+    "vue-tsc": "^2.2.8"
   },
   "resolutions": {
     "@nuxt/kit": "^3.15.4",
@@ -83,7 +83,7 @@
     "@nuxt/schema": "^3.15.4",
     "typescript": "~5.8.2",
     "vue": "^3.5.13",
-    "vue-tsc": "^2.2.6"
+    "vue-tsc": "^2.2.8"
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
