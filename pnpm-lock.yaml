@@ -51,7 +51,7 @@ importers:
         specifier: ^0.17.4
         version: 0.17.4
       '@nuxt/cli':
-        specifier: ^3.22.2
+        specifier: ^3.22.3
         version: 3.22.3(magicast@0.3.5)
       '@nuxt/eslint-config':
         specifier: ^1.1.0

@@ -55,12 +55,12 @@
     "unbuild": "^3.5.0"
   },
   "peerDependencies": {
-    "@nuxt/cli": "^3.22.2",
+    "@nuxt/cli": "^3.22.3",
     "typescript": "^5.8.2"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.17.4",
-    "@nuxt/cli": "^3.22.2",
+    "@nuxt/cli": "^3.22.3",
     "@nuxt/eslint-config": "^1.1.0",
     "@nuxt/schema": "^3.15.4",
     "@types/node": "^22.13.8",
