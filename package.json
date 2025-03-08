@@ -61,7 +61,7 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.17.4",
     "@nuxt/cli": "^3.22.5",
-    "@nuxt/eslint-config": "^1.1.0",
+    "@nuxt/eslint-config": "^1.2.0",
     "@nuxt/schema": "^3.15.4",
     "@types/node": "^22.13.10",
     "@vitest/coverage-v8": "^3.0.8",
