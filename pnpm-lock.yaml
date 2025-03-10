@@ -5,9 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@nuxt/kit': ^3.15.4
+  '@nuxt/kit': ^3.16.0
   '@nuxt/module-builder': workspace:*
-  '@nuxt/schema': ^3.15.4
+  '@nuxt/schema': ^3.16.0
   typescript: ~5.8.2
   vue: ^3.5.13
   vue-tsc: ^2.2.8
@@ -57,7 +57,7 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0(@vue/compiler-sfc@3.5.13)(eslint@9.22.0(jiti@2.4.2))(typescript@5.8.2)
       '@nuxt/schema':
-        specifier: ^3.15.4
+        specifier: ^3.16.0
         version: 3.16.0
       '@types/node':
         specifier: ^22.13.10
@@ -78,7 +78,7 @@ importers:
         specifier: ^5.45.0
         version: 5.45.0(@types/node@22.13.10)(typescript@5.8.2)
       nuxt:
-        specifier: ^3.15.4
+        specifier: ^3.16.0
         version: 3.16.0(@parcel/watcher@2.5.1)(@types/node@22.13.10)(db0@0.3.1)(eslint@9.22.0(jiti@2.4.2))(ioredis@5.6.0)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.35.0)(terser@5.39.0)(typescript@5.8.2)(vite@6.2.1(@types/node@22.13.10)(jiti@2.4.2)(terser@5.39.0)(yaml@2.7.0))(vue-tsc@2.2.8(typescript@5.8.2))(yaml@2.7.0)
       publint:
         specifier: ^0.3.9
@@ -102,14 +102,14 @@ importers:
   example:
     dependencies:
       '@nuxt/kit':
-        specifier: ^3.15.4
+        specifier: ^3.16.0
         version: 3.16.0(magicast@0.3.5)
     devDependencies:
       '@nuxt/module-builder':
         specifier: workspace:*
         version: link:..
       nuxt:
-        specifier: ^3.15.4
+        specifier: ^3.16.0
         version: 3.16.0(@parcel/watcher@2.5.1)(@types/node@22.13.10)(db0@0.3.1)(eslint@9.22.0(jiti@2.4.2))(ioredis@5.6.0)(magicast@0.3.5)(optionator@0.9.4)(rollup@4.35.0)(terser@5.39.0)(typescript@5.8.2)(vite@6.2.1(@types/node@22.13.10)(jiti@2.4.2)(terser@5.39.0)(yaml@2.7.0))(vue-tsc@2.2.8(typescript@5.8.2))(yaml@2.7.0)
 
   example/playground:
