@@ -44,7 +44,7 @@
   "packageManager": "pnpm@10.6.4",
   "dependencies": {
     "citty": "^0.1.6",
-    "consola": "^3.4.1",
+    "consola": "^3.4.2",
     "defu": "^6.1.4",
     "jiti": "^2.4.2",
     "magic-regexp": "^0.8.0",
