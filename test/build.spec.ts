@@ -55,19 +55,13 @@ describe('module builder', () => {
   it('should write types to output directory', async () => {
     const types = await readFile(join(distDir, 'types.d.mts'), 'utf-8')
     expect(types).toMatchInlineSnapshot(`
-      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
+      "import type { NuxtModule } from '@nuxt/schema'
 
-      declare module '#app' {
-        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
-      }
+      import type { default as Module } from './module.mjs'
 
-      declare module '@nuxt/schema' {
-        interface NuxtHooks extends ModuleHooks {}
-        interface RuntimeConfig extends ModuleRuntimeConfig {}
-        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
-      }
+      export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
 
-      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
+      export { default } from './module.mjs'
       "
     `)
   })
@@ -77,21 +71,11 @@ describe('module builder', () => {
     expect(types).toMatchInlineSnapshot(`
       "import type { NuxtModule } from '@nuxt/schema'
 
-      import type { default as Module, ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
-
-      declare module '#app' {
-        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
-      }
-
-      declare module '@nuxt/schema' {
-        interface NuxtHooks extends ModuleHooks {}
-        interface RuntimeConfig extends ModuleRuntimeConfig {}
-        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
-      }
+      import type { default as Module } from './module.mjs'
 
       export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
 
-      export { type ModuleHooks, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
+      export { default } from './module.mjs'
       "
     `)
   })

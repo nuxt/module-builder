@@ -1,1 +1,1 @@
-export declare const useWrappedFetch: () => import("nuxt/app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
+export declare const useWrappedFetch: () => import("#app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
