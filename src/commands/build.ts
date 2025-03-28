@@ -10,7 +10,7 @@ import { createJiti } from 'jiti'
 import { anyOf, createRegExp } from 'magic-regexp'
 import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
-import { findExports, resolvePath } from 'mlly'
+import { findExports, resolvePath, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
 import { convertCompilerOptionsFromJson } from 'typescript'
@@ -223,6 +223,9 @@ async function writeTypes(distDir: string, isStub: boolean) {
       .replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
     for (const e of findExports(normalisedModuleTypes)) {
       moduleReExports.push(e)
+    }
+    for (const i of findTypeExports(normalisedModuleTypes)) {
+      moduleReExports.push(i)
     }
   }
 
