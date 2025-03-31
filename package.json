@@ -68,7 +68,7 @@
     "changelogen": "^0.6.1",
     "eslint": "^9.23.0",
     "installed-check": "^9.3.0",
-    "knip": "^5.46.3",
+    "knip": "^5.46.4",
     "nuxt": "^3.16.1",
     "publint": "^0.3.9",
     "tinyexec": "^1.0.1",
