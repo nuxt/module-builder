@@ -1,3 +1,6 @@
 packages:
-  - "example"
-  - "example/playground"
+  - example
+  - example/playground
+ignoredBuiltDependencies:
+  - '@parcel/watcher'
+  - esbuild
