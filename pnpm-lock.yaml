@@ -84,8 +84,8 @@ importers:
         specifier: ^0.0.42
         version: 0.0.42
       publint:
-        specifier: ^0.3.9
-        version: 0.3.9
+        specifier: ^0.3.10
+        version: 0.3.10
       tinyexec:
         specifier: ^1.0.1
         version: 1.0.1
@@ -3506,8 +3506,8 @@ packages:
   protocols@2.0.2:
     resolution: {integrity: sha512-hHVTzba3wboROl0/aWRRG9dMytgH6ow//STBZh43l/wQgmMhYhOFi0EHWAPtoCz9IAUymsyP0TSBHkhgMEGNnQ==}
 
-  publint@0.3.9:
-    resolution: {integrity: sha512-irTwfRfYW38vomkxxoiZQtFtUOQKpz5m0p9Z60z4xpXrl1KmvSrX1OMARvnnolB5usOXeNfvLj6d/W3rwXKfBQ==}
+  publint@0.3.10:
+    resolution: {integrity: sha512-xl9X9x0iyOURsAD7IPQJAQ5TgGpozs5K8KUtqzQBSxJqtKH74ReeCpjr2jw9MFOsY9q/EbXSJNkSFM2mgyu38g==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -8205,10 +8205,10 @@ snapshots:
 
   protocols@2.0.2: {}
 
-  publint@0.3.9:
+  publint@0.3.10:
     dependencies:
       '@publint/pack': 0.1.2
-      package-manager-detector: 0.2.11
+      package-manager-detector: 1.1.0
       picocolors: 1.1.1
       sade: 1.8.1
 
