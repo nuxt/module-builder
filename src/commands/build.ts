@@ -271,7 +271,8 @@ ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${isStub ? 'export * from "./module.mjs"' : ''}
-${moduleReExports.map(e => `\nexport { ${e.names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from '${e.specifier || './module.mjs'}'`).join('\n')}
+${moduleReExports.filter(e => e.type === 'named' || e.type === 'default').map(e => `\nexport { ${e.names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from '${e.specifier || './module.mjs'}'`).join('\n')}
+${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
