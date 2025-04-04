@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v1.0.0
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v1.0.0-alpha.3...v1.0.0)
+
+### 🏡 Chore
+
+- Bump `vue-sfc-transformer` version ([3cd9cd4](https://github.com/nuxt/module-builder/commit/3cd9cd4))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](https://github.com/danielroe))
+
 ## v0.8.4
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.8.3...v0.8.4)
