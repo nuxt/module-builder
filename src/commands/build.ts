@@ -190,7 +190,7 @@ export default defineCommand({
         async 'build:done'(ctx) {
           const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
           if (logs.filter(l => l.match(/\.d\.ts/)).length > 0) {
-            consola.warn(`\`@nuxt/module-builder\` no longer supports Node10 TypeScript module resolution and will no longer generate \`.d.ts\` declaration files. You can update these paths to use the \`.d.mts\` extension instead.`)
+            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`.d.ts\` declaration files. You can update these paths to use the \`.d.mts\` extension instead.`)
           }
 
           if (logs.filter(l => l.match(/module\.cjs/)).length > 0) {
@@ -199,7 +199,7 @@ export default defineCommand({
 
           const pkg = await readPackageJSON(cwd)
           if (pkg?.types && !existsSync(resolve(cwd, pkg.types))) {
-            consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution.`)
+            consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
           }
         },
       },
