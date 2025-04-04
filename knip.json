@@ -6,7 +6,8 @@
   "workspaces": {
     ".": {
       "ignoreDependencies": [
-        "@nuxt/module-builder"
+        "mkdist",
+        "vue-sfc-transformer"
       ]
     },
     "example": {
