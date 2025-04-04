@@ -1,6 +1,6 @@
 {
   "name": "@nuxt/module-builder",
-  "version": "0.8.4",
+  "version": "1.0.0-alpha.2",
   "repository": "nuxt/module-builder",
   "description": "Complete solution for building Nuxt modules",
   "license": "MIT",
