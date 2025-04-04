@@ -48,11 +48,13 @@
     "defu": "^6.1.4",
     "jiti": "^2.4.2",
     "magic-regexp": "^0.8.0",
+    "mkdist": "^2.3.0",
     "mlly": "^1.7.4",
     "pathe": "^2.0.3",
     "pkg-types": "^2.1.0",
     "tsconfck": "^3.1.5",
-    "unbuild": "^3.5.0"
+    "unbuild": "^3.5.0",
+    "vue-sfc-transformer": "^0.1.2"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.24.1",
