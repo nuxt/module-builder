@@ -58,7 +58,7 @@
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.24.1",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.17.4",
@@ -75,7 +75,7 @@
     "pkg-pr-new": "^0.0.42",
     "publint": "^0.3.10",
     "tinyexec": "^1.0.1",
-    "typescript": "~5.8.2",
+    "typescript": "~5.8.3",
     "vitest": "^3.1.1",
     "vue": "^3.5.13",
     "vue-tsc": "^2.2.8"
@@ -84,7 +84,7 @@
     "@nuxt/kit": "^3.16.2",
     "@nuxt/module-builder": "workspace:*",
     "@nuxt/schema": "^3.16.2",
-    "typescript": "~5.8.2",
+    "typescript": "~5.8.3",
     "vue": "^3.5.13",
     "vue-tsc": "^2.2.8"
   },
