@@ -4,15 +4,75 @@ All notable changes to this project will be documented in this file. See [standa
 
 ## v1.0.0
 
-[compare changes](https://github.com/nuxt/module-builder/compare/v1.0.0-alpha.3...v1.0.0)
+[compare changes](https://github.com/nuxt/module-builder/compare/v0.8.4...v1.0.0)
+
+### 🚀 Enhancements
+
+- ⚠️ Upgrade to unbuild v3 ([#447](https://github.com/nuxt/module-builder/pull/447))
+- ⚠️ Remove support for node10 resolution + cjs ([#448](https://github.com/nuxt/module-builder/pull/448))
+- build: Ignore test + story files in runtime/ directory ([#480](https://github.com/nuxt/module-builder/pull/480))
+- Add support for type exports in module re-exports ([#563](https://github.com/nuxt/module-builder/pull/563))
+
+### 🩹 Fixes
+
+- Mark nuxi as optional peerDep ([29a42ae](https://github.com/nuxt/module-builder/commit/29a42ae))
+- Drop @nuxt/kit peer dependency & remove optionality for nuxi ([5936063](https://github.com/nuxt/module-builder/commit/5936063))
+- build: Handle windows path names ([#399](https://github.com/nuxt/module-builder/pull/399))
+- build: Apply resolved tsconfig to dts ([#462](https://github.com/nuxt/module-builder/pull/462))
+- Handle node10 resolution + add attw test ([7309198](https://github.com/nuxt/module-builder/commit/7309198))
+- Update warnings ([6291cbe](https://github.com/nuxt/module-builder/commit/6291cbe))
+- Support more than one line of type exports ([0c0020f](https://github.com/nuxt/module-builder/commit/0c0020f))
+- Split re-exports across multiple lines ([7154a89](https://github.com/nuxt/module-builder/commit/7154a89))
+- Support star exports ([8966047](https://github.com/nuxt/module-builder/commit/8966047))
+
+### 📖 Documentation
+
+- Update example build script ([#359](https://github.com/nuxt/module-builder/pull/359))
+- Update link to downloads count badge (9804e9e)([b9b27c3](https://github.com/nuxt/module-builder/commit/b9b27c3))
+- Describe configuring unbuild ([#440](https://github.com/nuxt/module-builder/pull/440))
 
 ### 🏡 Chore
 
+- Use tinyexec in test suite ([7ff8ef1](https://github.com/nuxt/module-builder/commit/7ff8ef1))
+- Fix links ([2e57eb2](https://github.com/nuxt/module-builder/commit/3cd9cd4))
+- Pin typescript until issue with vue-tsc is resolved ([994135d](https://github.com/nuxt/module-builder/commit/994135d))
+- Bump vue-tsc ([e8cb0ef](https://github.com/nuxt/module-builder/commit/e8cb0ef))
+- Bump nuxi version ([5b1f00e](https://github.com/nuxt/module-builder/commit/5b1f00e))
+- Add publint to dev dependencies ([7281ae3](https://github.com/nuxt/module-builder/commit/7281ae3))
+- Set node versions and enable knip ([1a17c0c](https://github.com/nuxt/module-builder/commit/1a17c0c))
+- Stub module before stubbing playground ([b3a513b](https://github.com/nuxt/module-builder/commit/b3a513b))
+- Run install command to relink binaries ([932729e](https://github.com/nuxt/module-builder/commit/932729e))
+- Update command and add builder to workspace ([#482](https://github.com/nuxt/module-builder/pull/482))
+- Add type assertion ([14d7788](https://github.com/nuxt/module-builder/commit/14d7788))
+- Add more type-safe solution + fallback ([66d4231](https://github.com/nuxt/module-builder/commit/66d4231))
+- Add pkg.pr.new for nightly/pr builds ([#573](https://github.com/nuxt/module-builder/pull/573))
+- Bump to latest mkdist and add vue-sfc-transformer ([673152a](https://github.com/nuxt/module-builder/commit/673152a))
+- Update knip config ([c9a28a0](https://github.com/nuxt/module-builder/commit/c9a28a0))
 - Bump `vue-sfc-transformer` version ([3cd9cd4](https://github.com/nuxt/module-builder/commit/3cd9cd4))
+- release: V1.0.0 (b0655d3)([3cd9cd4](https://github.com/nuxt/module-builder/commit/3cd9cd4))
+
+### ✅ Tests
+
+- Await file snapshot assertions ([16930b4](https://github.com/nuxt/module-builder/commit/16930b4))
+- Assert current vue snapshot behaviour ([#444](https://github.com/nuxt/module-builder/pull/444))
+- Update snapshots ([847d150](https://github.com/nuxt/module-builder/commit/847d150))
+
+### 🤖 CI
+
+- Don't run publint on windows ([330f412](https://github.com/nuxt/module-builder/commit/330f412))
+- Prepare environment in lint step ([5f0f88f](https://github.com/nuxt/module-builder/commit/5f0f88f))
+- Force latest corepack ([9d74ce4](https://github.com/nuxt/module-builder/commit/9d74ce4))
+
+#### ⚠️ Breaking Changes
+
+- ⚠️ Upgrade to unbuild v3 ([#447](https://github.com/nuxt/module-builder/pull/447))
+- ⚠️ Remove support for node10 resolution + cjs ([#448](https://github.com/nuxt/module-builder/pull/448))
 
 ### ❤️ Contributors
 
 - Daniel Roe ([@danielroe](https://github.com/danielroe))
+- Dev ([@productdevbook])(https://github.com/productdevbook)
+- Bobbie Goede ([@BobbieGoede])(https://github.com/BobbieGoede)
 
 ## v0.8.4
 
