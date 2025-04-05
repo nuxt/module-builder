@@ -13,7 +13,6 @@
 - Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
 - Automated build config using last module spec
 - Typescript and ESM support
-- Auto generated CommonJS stubs
 - Auto generated types and shims for `@nuxt/schema`
 
 We recommend to checkout the [Nuxt modules author guide](https://nuxt.com/docs/guide/going-further/modules) before starting with the module-builder.
@@ -21,15 +20,15 @@ We recommend to checkout the [Nuxt modules author guide](https://nuxt.com/docs/g
 ## Requirements
 
 For a user to use a module generated from module-builder, it's recommended they have:
-- Node.js >= 16.x. _Latest Node LTS preferred_
-- Nuxt 3 or Nuxt Bridge. _Nuxt 2 is functional but not advised_
+- Node.js >= 18.x. _Latest Node LTS preferred_
+- Nuxt 3+.
 
 ## Quick start
 
 Get started with our [module starter](https://github.com/nuxt/starter/tree/module):
 
 ```bash
-npx nuxi init -t module my-module
+npm create nuxt -- -t module my-module
 ```
 
 ## Project structure
@@ -100,13 +99,18 @@ A minimum `package.json` should look like this:
   "version": "1.0.0",
   "exports": {
     ".": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/module.mjs",
-      "require": "./dist/module.cjs"
+      "types": "./dist/types.d.mts",
+      "import": "./dist/module.mjs"
     }
   },
-  "main": "./dist/module.cjs",
-  "types": "./dist/types.d.ts",
+  "main": "./dist/module.mjs",
+  "typesVersions": {
+    "*": {
+      ".": [
+        "./dist/types.d.mts"
+      ]
+    }
+  },
   "files": [
     "dist"
   ],
@@ -114,7 +118,7 @@ A minimum `package.json` should look like this:
     "prepack": "nuxt-module-build build"
   },
   "dependencies": {
-    "@nuxt/kit": "npm:@nuxt/kit-edge@latest"
+    "@nuxt/kit": "latest"
   },
   "devDependencies": {
     "@nuxt/module-builder": "latest"
@@ -142,8 +146,7 @@ Module builder generates dist files in `dist/` directory:
 
 - `module.mjs`: Module entrypoint build from `src/module`
 - `module.json`: Module meta extracted from `module.mjs` + `package.json`
-- `module.cjs`: ESM proxy to allow require module in CommonJS context
-- `types.d.ts`: Exported types in addition to shims for `nuxt.config` auto completion.
+- `types.d.mts`: Exported types in addition to shims for `nuxt.config` auto completion.
 - `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
   - Javascript and `.ts` files will be transformed to `.js` with extracted types on `.d.ts` file with same name
   - `.vue` files will be transformed with extracted `.d.ts` file
