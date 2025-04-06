@@ -70,7 +70,7 @@
     "changelogen": "^0.6.1",
     "eslint": "^9.24.0",
     "installed-check": "^9.3.0",
-    "knip": "^5.46.5",
+    "knip": "^5.47.0",
     "nuxt": "^3.16.2",
     "pkg-pr-new": "^0.0.42",
     "publint": "^0.3.10",
