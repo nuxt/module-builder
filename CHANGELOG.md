@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v1.0.1
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v1.0.0...v1.0.1)
+
+### 📖 Documentation
+
+- Add full v1 release notes ([#581](https://github.com/nuxt/module-builder/pull/581), [#582](https://github.com/nuxt/module-builder/pull/582))
+- Update to latest recommendations ([6b30cde](https://github.com/nuxt/module-builder/commit/6b30cde))
+
+### ❤️ Contributors
+
+- Daniel Roe ([@danielroe](https://github.com/danielroe))
+- Connor Pearson ([@cjpearson](https://github.com/cjpearson))
+
 ## v1.0.0
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v0.8.4...v1.0.0)
