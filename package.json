@@ -72,6 +72,7 @@
     "installed-check": "^9.3.0",
     "knip": "^5.50.5",
     "nuxt": "^3.16.2",
+    "ofetch": "^1.4.1",
     "pkg-pr-new": "^0.0.42",
     "publint": "^0.3.12",
     "tinyexec": "^1.0.1",
