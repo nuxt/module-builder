@@ -80,6 +80,7 @@ export default defineCommand({
         },
         emitCJS: false,
         cjsBridge: false,
+        commonjs: false,
       },
       externals: [
         /dist[\\/]runtime[\\/]/,
