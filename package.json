@@ -68,7 +68,7 @@
     "@types/node": "^22.14.1",
     "@vitest/coverage-v8": "^3.1.2",
     "changelogen": "^0.6.1",
-    "eslint": "^9.25.0",
+    "eslint": "^9.25.1",
     "installed-check": "^9.3.0",
     "knip": "^5.50.5",
     "nuxt": "^3.16.2",
