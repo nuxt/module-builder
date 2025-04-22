@@ -54,7 +54,7 @@
     "pkg-types": "^2.1.0",
     "tsconfck": "^3.1.5",
     "unbuild": "^3.5.0",
-    "vue-sfc-transformer": "^0.1.11"
+    "vue-sfc-transformer": "^0.1.12"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.25.0",
