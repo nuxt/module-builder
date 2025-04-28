@@ -1,6 +1,8 @@
 packages:
   - example
   - example/playground
+
 ignoredBuiltDependencies:
   - '@parcel/watcher'
   - esbuild
+  - unrs-resolver
