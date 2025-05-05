@@ -75,13 +75,13 @@ importers:
         specifier: ^0.6.1
         version: 0.6.1(magicast@0.3.5)
       eslint:
-        specifier: ^9.25.1
+        specifier: ^9.26.0
         version: 9.26.0(jiti@2.4.2)
       installed-check:
         specifier: ^9.3.0
         version: 9.3.0
       knip:
-        specifier: ^5.50.5
+        specifier: ^5.53.0
         version: 5.53.0(@types/node@22.15.3)(typescript@5.8.3)
       nuxt:
         specifier: ^3.17.1
