@@ -17,6 +17,11 @@ export default defineCommand({
       description: 'Root directory',
       required: false,
     },
+    autoImport: {
+      type: 'boolean',
+      description: 'Enable auto import',
+      default: false,
+    },
   },
   async run(context) {
     const { runCommand } = await import('@nuxt/cli')
@@ -30,7 +35,7 @@ export default defineCommand({
           builder: 'shared',
         },
         imports: {
-          autoImport: false,
+          autoImport: context.args.autoImport,
         },
         modules: [
           resolve(cwd, './src/module'),
