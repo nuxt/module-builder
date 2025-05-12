@@ -73,7 +73,7 @@
     "knip": "^5.55.1",
     "nuxt": "^3.17.3",
     "ofetch": "^1.4.1",
-    "pkg-pr-new": "^0.0.43",
+    "pkg-pr-new": "^0.0.44",
     "publint": "^0.3.12",
     "tinyexec": "^1.0.1",
     "typescript": "~5.8.3",
