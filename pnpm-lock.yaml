@@ -9,7 +9,7 @@ overrides:
   '@nuxt/module-builder': workspace:*
   '@nuxt/schema': ^3.17.3
   typescript: ~5.8.3
-  vue: ^3.5.13
+  vue: ^3.5.14
   vue-tsc: ^2.2.10
 
 importers:
@@ -60,13 +60,13 @@ importers:
         specifier: ^3.25.1
         version: 3.25.1(magicast@0.3.5)
       '@nuxt/eslint-config':
-        specifier: ^1.3.1
+        specifier: ^1.4.0
         version: 1.4.0(@vue/compiler-sfc@3.5.14)(eslint@9.27.0(jiti@2.4.2))(typescript@5.8.3)
       '@nuxt/schema':
         specifier: ^3.17.3
         version: 3.17.3
       '@types/node':
-        specifier: ^22.15.17
+        specifier: ^22.15.19
         version: 22.15.19
       '@vitest/coverage-v8':
         specifier: ^3.1.3
@@ -75,13 +75,13 @@ importers:
         specifier: ^0.6.1
         version: 0.6.1(magicast@0.3.5)
       eslint:
-        specifier: ^9.26.0
+        specifier: ^9.27.0
         version: 9.27.0(jiti@2.4.2)
       installed-check:
         specifier: ^9.3.0
         version: 9.3.0
       knip:
-        specifier: ^5.55.1
+        specifier: ^5.56.0
         version: 5.56.0(@types/node@22.15.19)(typescript@5.8.3)
       nuxt:
         specifier: ^3.17.3
@@ -90,8 +90,8 @@ importers:
         specifier: ^1.4.1
         version: 1.4.1
       pkg-pr-new:
-        specifier: ^0.0.44
-        version: 0.0.44
+        specifier: ^0.0.50
+        version: 0.0.50
       publint:
         specifier: ^0.3.12
         version: 0.3.12
@@ -105,7 +105,7 @@ importers:
         specifier: ^3.1.3
         version: 3.1.3(@types/node@22.15.19)(jiti@2.4.2)(terser@5.39.2)(yaml@2.8.0)
       vue:
-        specifier: ^3.5.13
+        specifier: ^3.5.14
         version: 3.5.14(typescript@5.8.3)
       vue-tsc:
         specifier: ^2.2.10
@@ -714,7 +714,7 @@ packages:
     resolution: {integrity: sha512-WK1ESdzbJGRwLGz6s+oyVwM3Ore4V/eYMyquUYsdckFC0rTOnRlV88jdGf0D8Yav0DkrNrG5nZEkL8k+zuXlwQ==}
     engines: {node: ^18.12.0 || ^20.9.0 || >=22.0.0}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@octokit/action@6.1.0':
     resolution: {integrity: sha512-lo+nHx8kAV86bxvOVOI3vFjX3gXPd/L7guAUbvs3pUvnR2KC+R7yjBkA1uACt4gYhs4LcWP3AXSGQzsbeN2XXw==}
@@ -1334,7 +1334,7 @@ packages:
   '@unhead/vue@2.0.9':
     resolution: {integrity: sha512-0t8YXVXvEgXkXhCb22hqPrsgun3Jqul/ZvydgBY0SlEfEbC1ioL15/1QuJwBFG3us6OnSewjbDagg4Jh478g8g==}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@unrs/resolver-binding-darwin-arm64@1.7.2':
     resolution: {integrity: sha512-vxtBno4xvowwNmO/ASL0Y45TpHqmNkAaDtz4Jqb+clmcVSSl8XCG/PNFFkGsXXXS6AMjP+ja/TtNCFFa1QwLRg==}
@@ -1436,14 +1436,14 @@ packages:
     engines: {node: ^18.0.0 || >=20.0.0}
     peerDependencies:
       vite: ^5.0.0 || ^6.0.0
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@vitejs/plugin-vue@5.2.4':
     resolution: {integrity: sha512-7Yx/SXSOcQq5HiiV3orevHUFn+pmMB4cgbEkDYgnkUWb0WfeQ/wa2yFv6D5ICiCQOVpjA7vYDXrC7AGO8yjDHA==}
     engines: {node: ^18.0.0 || >=20.0.0}
     peerDependencies:
       vite: ^5.0.0 || ^6.0.0
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@vitest/coverage-v8@3.1.3':
     resolution: {integrity: sha512-cj76U5gXCl3g88KSnf80kof6+6w+K4BjOflCl7t6yRJPDuCrHtVu0SgNYOUARJOL5TI8RScDbm5x4s1/P9bvpw==}
@@ -1508,7 +1508,7 @@ packages:
     resolution: {integrity: sha512-Pn/AWMTjoMYuquepLZP813BIcq8DTZiNCoaceuNlvaYuOTd8DqBZWc5u0uOMQZMInwME1mdSmmBAcTluiV9Jtg==}
     engines: {node: '>=16.14.0'}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
     peerDependenciesMeta:
       vue:
         optional: true
@@ -1550,7 +1550,7 @@ packages:
   '@vue/devtools-core@7.7.6':
     resolution: {integrity: sha512-ghVX3zjKPtSHu94Xs03giRIeIWlb9M+gvDRVpIZ/cRIxKHdW6HE/sm1PT3rUYS3aV92CazirT93ne+7IOvGUWg==}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@vue/devtools-kit@7.7.6':
     resolution: {integrity: sha512-geu7ds7tem2Y7Wz+WgbnbZ6T5eadOvozHZ23Atk/8tksHMFOFylKi1xgGlQlVn0wlkEf4hu+vd5ctj1G4kFtwA==}
@@ -1578,7 +1578,7 @@ packages:
   '@vue/server-renderer@3.5.14':
     resolution: {integrity: sha512-Rf/ISLqokIvcySIYnv3tNWq40PLpNLDLSJwwVWzG6MNtyIhfbcrAxo5ZL9nARJhqjZyWWa40oRb2IDuejeuv6w==}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   '@vue/shared@3.5.14':
     resolution: {integrity: sha512-oXTwNxVfc9EtP1zzXAlSlgARLXNC84frFYkS0HHz0h3E4WZSP9sywqjqzGCP9Y34M8ipNmd380pVgmMuwELDyQ==}
@@ -3366,7 +3366,7 @@ packages:
     peerDependencies:
       sass: ^1.85.0
       typescript: ~5.8.3
-      vue: ^3.5.13
+      vue: ^3.5.14
       vue-sfc-transformer: ^0.1.1
       vue-tsc: ^2.2.10
     peerDependenciesMeta:
@@ -3752,8 +3752,8 @@ packages:
     resolution: {integrity: sha512-M7BAV6Rlcy5u+m6oPhAPFgJTzAioX/6B0DxyvDlo9l8+T3nLKbrczg2WLUyzd45L8RqfUMyGPzekbMvX2Ldkwg==}
     engines: {node: '>=12'}
 
-  pkg-pr-new@0.0.44:
-    resolution: {integrity: sha512-6WVyYfJ/p2cZZCOL2T6ZKSMeEYo+ItvYS0ZbTMlL9I3AWJ63bABHRvfhH9LadyvdQPYGKPCbph5N7trDUmkatQ==}
+  pkg-pr-new@0.0.50:
+    resolution: {integrity: sha512-wwIE4s+M39AcAnls7N1xxJyw7uYw15pzF94i54byvfSL6OOQjhyo9MAsSCUfcZZXplNKpYy70qW7rDXtOW35zw==}
     hasBin: true
 
   pkg-types@1.3.1:
@@ -4838,7 +4838,7 @@ packages:
     resolution: {integrity: sha512-+fN6oo0//dwZP9Ax9gRKeUroCqpQ43P57qlWgL0ljCIxAs+Rpqn/L4anIPZPgjDPga5dZH+ZJsshbF0PNJbm3Q==}
     peerDependencies:
       vite: ^6.0.0
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   vite@6.3.5:
     resolution: {integrity: sha512-cZn6NDFE7wdTpINgs++ZJ4N49W2vRp8LCKrn3Ob1kYNtOo21vfDoaV5GzBfLU4MovSAB8uNRm4jgzVQZ+mBzPQ==}
@@ -4926,7 +4926,7 @@ packages:
   vue-router@4.5.1:
     resolution: {integrity: sha512-ogAF3P97NPm8fJsE4by9dwSYtDwXIY1nFY9T6DyQnGHd1E2Da94w9JIolpe42LJGIl0DwOHBi8TcRPlPGwbTtw==}
     peerDependencies:
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   vue-sfc-transformer@0.1.15:
     resolution: {integrity: sha512-AbsrNzwF7GKWDswlwrHuQXWtWRrkVhCIvKlfU7aniC2d1Uea921Gcr4m2p/OQhhWWFsu2FqXYCXF6mki31e65A==}
@@ -4934,7 +4934,7 @@ packages:
     peerDependencies:
       '@vue/compiler-core': ^3.5.13
       esbuild: '*'
-      vue: ^3.5.13
+      vue: ^3.5.14
 
   vue-tsc@2.2.10:
     resolution: {integrity: sha512-jWZ1xSaNbabEV3whpIDMbjVSVawjAyW+x1n3JeGQo7S0uv2n9F/JMgWW90tGWNFRKya4YwKMZgCtr0vRAM7DeQ==}
@@ -9239,7 +9239,7 @@ snapshots:
 
   picomatch@4.0.2: {}
 
-  pkg-pr-new@0.0.44:
+  pkg-pr-new@0.0.50:
     dependencies:
       '@jsdevtools/ez-spawn': 3.0.4
       '@octokit/action': 6.1.0
