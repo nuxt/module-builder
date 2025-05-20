@@ -29,11 +29,11 @@
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@nuxt/kit": "^3.17.3"
+    "@nuxt/kit": "^3.17.4"
   },
   "devDependencies": {
     "@nuxt/module-builder": "latest",
-    "nuxt": "^3.17.3"
+    "nuxt": "^3.17.4"
   },
   "build": {
     "entries": [
