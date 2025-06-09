@@ -61,12 +61,12 @@
     "typescript": "^5.8.3"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.1",
+    "@arethetypeswrong/cli": "^0.18.2",
     "@nuxt/cli": "^3.25.1",
     "@nuxt/eslint-config": "^1.4.1",
     "@nuxt/schema": "^3.17.5",
     "@types/node": "^22.15.30",
-    "@vitest/coverage-v8": "^3.2.2",
+    "@vitest/coverage-v8": "^3.2.3",
     "changelogen": "^0.6.1",
     "eslint": "^9.28.0",
     "installed-check": "^9.3.0",
@@ -77,7 +77,7 @@
     "publint": "^0.3.12",
     "tinyexec": "^1.0.1",
     "typescript": "~5.8.3",
-    "vitest": "^3.2.2",
+    "vitest": "^3.2.3",
     "vue": "^3.5.16",
     "vue-tsc": "^2.2.10"
   },
