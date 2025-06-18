@@ -5,6 +5,8 @@ import { exec } from 'tinyexec'
 import { readPackageJSON } from 'pkg-types'
 import { dirname, join } from 'pathe'
 import { findStaticImports } from 'mlly'
+import { version as nuxtVersion } from 'nuxt/package.json'
+import { satisfies } from 'semver'
 import { version } from '../package.json'
 
 describe('module builder', () => {
@@ -145,7 +147,18 @@ describe('module builder', () => {
 
   it('should generate wrapped composables', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
-    await expect(componentFile).toMatchFileSnapshot('__snapshots__/useWrappedFetch.d.ts')
+    if (satisfies(nuxtVersion, '^3')) {
+      expect(componentFile).toMatchInlineSnapshot(`
+        "export declare const useWrappedFetch: () => import("nuxt/app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
+        "
+      `)
+    }
+    else {
+      expect(componentFile).toMatchInlineSnapshot(`
+        "export declare const useWrappedFetch: () => import("nuxt/app").AsyncData<unknown, import("ofetch").FetchError<any> | undefined>;
+        "
+      `)
+    }
   })
 
   it('should handle JSX correctly', async () => {
