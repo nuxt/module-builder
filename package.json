@@ -75,6 +75,7 @@
     "ofetch": "^1.4.1",
     "pkg-pr-new": "^0.0.51",
     "publint": "^0.3.12",
+    "semver": "^7.7.2",
     "tinyexec": "^1.0.1",
     "typescript": "~5.8.3",
     "vitest": "^3.2.3",

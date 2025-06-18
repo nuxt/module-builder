@@ -95,6 +95,9 @@ importers:
       publint:
         specifier: ^0.3.12
         version: 0.3.12
+      semver:
+        specifier: ^7.7.2
+        version: 7.7.2
       tinyexec:
         specifier: ^1.0.1
         version: 1.0.1
