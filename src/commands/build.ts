@@ -151,8 +151,15 @@ export default defineCommand({
           })
         },
         async 'rollup:done'(ctx) {
-          // Load module meta
           const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
+
+          if (ctx.options.stub) {
+            // Replace relative import path with a resolved absolute path
+            const contents = await fsp.readFile(moduleEntryPath, 'utf8')
+            await fsp.writeFile(moduleEntryPath, contents.replace(/(?<=from\s")([^"]+)/g, m => resolve(ctx.options.outDir, m)), 'utf-8')
+          }
+
+          // Load module meta
           const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(pathToFileURL(moduleEntryPath).toString(), { default: true }).catch((err) => {
             consola.error(err)
             consola.error('Cannot load module. Please check dist:', moduleEntryPath)
