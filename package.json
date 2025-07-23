@@ -30,6 +30,7 @@
     "build": "unbuild",
     "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
     "example:build": "pnpm nuxt-module-build build ./example",
+    "example:stub": "pnpm nuxt-module-build build --stub ./example",
     "lint": "eslint .",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
