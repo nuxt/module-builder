@@ -30,6 +30,7 @@
     "build": "unbuild",
     "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
     "example:build": "pnpm nuxt-module-build build ./example",
+    "example:stub": "pnpm nuxt-module-build build --stub ./example",
     "lint": "eslint .",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
@@ -53,7 +54,7 @@
     "pathe": "^2.0.3",
     "pkg-types": "^2.2.0",
     "tsconfck": "^3.1.6",
-    "unbuild": "^3.5.0",
+    "unbuild": "^3.6.0",
     "vue-sfc-transformer": "^0.1.16"
   },
   "peerDependencies": {

@@ -54,6 +54,7 @@ export default defineCommand({
       declaration: 'node16',
       sourcemap: context.args.sourcemap,
       stub: context.args.stub,
+      stubOptions: { absoluteJitiPath: true },
       outDir,
       entries: [
         'src/module',

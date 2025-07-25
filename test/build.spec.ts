@@ -149,7 +149,7 @@ describe('module builder', () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
     if (satisfies(nuxtVersion, '^3')) {
       expect(componentFile).toMatchInlineSnapshot(`
-        "export declare const useWrappedFetch: () => import("nuxt/app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
+        "export declare const useWrappedFetch: () => import("#app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
         "
       `)
     }
