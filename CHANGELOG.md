@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## v1.0.2
+
+[compare changes](https://github.com/nuxt/module-builder/compare/v1.0.1...v1.0.2)
+
+### 🩹 Fixes
+
+- Use absolute path for jiti stub ([#648](https://github.com/nuxt/module-builder/pull/648))
+
+### 🏡 Chore
+
+- Add explicit semver dep ([ddb5a65](https://github.com/nuxt/module-builder/commit/ddb5a65))
+- Add semver types ([50e3f6b](https://github.com/nuxt/module-builder/commit/50e3f6b))
+
+### ✅ Tests
+
+- Add snapshots for v3 + v4 wrapped fetch ([270779b](https://github.com/nuxt/module-builder/commit/270779b))
+
+### 🤖 CI
+
+- Remove forced corepack installation ([9be288b](https://github.com/nuxt/module-builder/commit/9be288b))
+- Run tests on node 20 ([97e3f47](https://github.com/nuxt/module-builder/commit/97e3f47))
+
+### ❤️ Contributors
+
+- Bobbie Goede <bobbiegoede@gmail.com>
+- Daniel Roe ([@danielroe](https://github.com/danielroe))
+
 ## v1.0.1
 
 [compare changes](https://github.com/nuxt/module-builder/compare/v1.0.0...v1.0.1)
