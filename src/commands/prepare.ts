@@ -1,6 +1,7 @@
 import type { NuxtConfig } from '@nuxt/schema'
 import { defineCommand } from 'citty'
 import { resolve } from 'pathe'
+import { readPackageJSON } from 'pkg-types'
 
 export default defineCommand({
   meta: {
@@ -20,11 +21,13 @@ export default defineCommand({
   },
   async run(context) {
     const { runCommand } = await import('@nuxt/cli')
+    const moduleName = await readPackageJSON(context.args.rootDir, { try: true }).then(r => r.name)
 
     const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
 
     return runCommand('prepare', [cwd], {
       overrides: {
+        alias: moduleName ? { [moduleName]: resolve(cwd, './src/module') } : {},
         compatibilityDate: '2024-04-03',
         typescript: {
           builder: 'shared',
