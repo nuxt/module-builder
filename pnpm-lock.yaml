@@ -57,16 +57,16 @@ importers:
         specifier: ^0.18.2
         version: 0.18.2
       '@nuxt/cli':
-        specifier: ^3.27.0
+        specifier: ^3.28.0
         version: 3.28.0(magicast@0.3.5)
       '@nuxt/eslint-config':
-        specifier: ^1.7.1
+        specifier: ^1.8.0
         version: 1.8.0(@typescript-eslint/utils@8.39.0(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2))(@vue/compiler-sfc@3.5.18)(eslint@9.33.0(jiti@2.5.1))(typescript@5.9.2)
       '@nuxt/schema':
         specifier: ^4.0.3
         version: 4.0.3
       '@types/node':
-        specifier: ^22.17.0
+        specifier: ^22.17.1
         version: 22.17.1
       '@types/semver':
         specifier: ^7.7.0
@@ -78,7 +78,7 @@ importers:
         specifier: ^0.6.2
         version: 0.6.2(magicast@0.3.5)
       eslint:
-        specifier: ^9.32.0
+        specifier: ^9.33.0
         version: 9.33.0(jiti@2.5.1)
       installed-check:
         specifier: ^9.3.0
