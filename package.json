@@ -54,7 +54,7 @@
     "pathe": "^2.0.3",
     "pkg-types": "^2.2.0",
     "tsconfck": "^3.1.6",
-    "unbuild": "^3.6.0",
+    "unbuild": "^3.6.1",
     "vue-sfc-transformer": "^0.1.16"
   },
   "peerDependencies": {
@@ -64,9 +64,9 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@nuxt/cli": "^3.28.0",
-    "@nuxt/eslint-config": "^1.8.0",
+    "@nuxt/eslint-config": "^1.9.0",
     "@nuxt/schema": "^4.0.3",
-    "@types/node": "^22.17.1",
+    "@types/node": "^22.17.2",
     "@types/semver": "^7.7.0",
     "@vitest/coverage-v8": "^3.2.4",
     "changelogen": "^0.6.2",
@@ -75,7 +75,7 @@
     "knip": "^5.62.0",
     "nuxt": "^4.0.3",
     "ofetch": "^1.4.1",
-    "pkg-pr-new": "^0.0.54",
+    "pkg-pr-new": "^0.0.55",
     "publint": "^0.3.12",
     "semver": "^7.7.2",
     "tinyexec": "^1.0.1",
