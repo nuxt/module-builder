@@ -143,6 +143,9 @@ describe('module builder', () => {
 
     const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue.d.ts'), 'utf-8')
     await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue.d.ts')
+
+    const componentDeclarationFile2 = await readFile(join(distDir, 'runtime/components/TestMeSetup.d.vue.ts'), 'utf-8')
+    await expect(componentDeclarationFile2.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.d.vue.ts')
   })
 
   it('should generate wrapped composables', async () => {

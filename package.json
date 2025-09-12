@@ -42,20 +42,20 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@10.14.0",
+  "packageManager": "pnpm@10.15.1",
   "dependencies": {
     "citty": "^0.1.6",
     "consola": "^3.4.2",
     "defu": "^6.1.4",
     "jiti": "^2.5.1",
     "magic-regexp": "^0.10.0",
-    "mkdist": "^2.3.0",
-    "mlly": "^1.7.4",
+    "mkdist": "^2.4.1",
+    "mlly": "^1.8.0",
     "pathe": "^2.0.3",
-    "pkg-types": "^2.2.0",
+    "pkg-types": "^2.3.0",
     "tsconfck": "^3.1.6",
     "unbuild": "^3.6.1",
-    "vue-sfc-transformer": "^0.1.16"
+    "vue-sfc-transformer": "^0.1.17"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.28.0",
@@ -65,32 +65,32 @@
     "@arethetypeswrong/cli": "^0.18.2",
     "@nuxt/cli": "^3.28.0",
     "@nuxt/eslint-config": "^1.9.0",
-    "@nuxt/schema": "^4.0.3",
-    "@types/node": "^22.17.2",
-    "@types/semver": "^7.7.0",
+    "@nuxt/schema": "^4.1.1",
+    "@types/node": "^22.18.1",
+    "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "^3.2.4",
     "changelogen": "^0.6.2",
-    "eslint": "^9.33.0",
+    "eslint": "^9.35.0",
     "installed-check": "^9.3.0",
-    "knip": "^5.62.0",
-    "nuxt": "^4.0.3",
+    "knip": "^5.63.1",
+    "nuxt": "^4.1.1",
     "ofetch": "^1.4.1",
-    "pkg-pr-new": "^0.0.55",
+    "pkg-pr-new": "^0.0.59",
     "publint": "^0.3.12",
     "semver": "^7.7.2",
     "tinyexec": "^1.0.1",
     "typescript": "~5.9.2",
     "vitest": "^3.2.4",
-    "vue": "^3.5.18",
-    "vue-tsc": "^3.0.5"
+    "vue": "^3.5.21",
+    "vue-tsc": "^3.0.7"
   },
   "resolutions": {
-    "@nuxt/kit": "^4.0.3",
+    "@nuxt/kit": "^4.1.1",
     "@nuxt/module-builder": "workspace:*",
-    "@nuxt/schema": "^4.0.3",
+    "@nuxt/schema": "^4.1.1",
     "typescript": "~5.9.2",
-    "vue": "^3.5.18",
-    "vue-tsc": "^3.0.5"
+    "vue": "^3.5.21",
+    "vue-tsc": "^3.0.7"
   },
   "engines": {
     "node": "^18.0.0 || >=20.0.0"
