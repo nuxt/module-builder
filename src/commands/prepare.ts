@@ -1,7 +1,7 @@
 import type { NuxtConfig } from '@nuxt/schema'
 import { defineCommand } from 'citty'
 import { resolve } from 'pathe'
-import { resolveCwd, sharedArgs } from './_shared'
+import { resolveCwdArg, sharedArgs } from './_shared'
 
 export default defineCommand({
   meta: {
@@ -14,7 +14,7 @@ export default defineCommand({
   async run(context) {
     const { runCommand } = await import('@nuxt/cli')
 
-    const cwd = resolveCwd(context.args)
+    const cwd = resolve(resolveCwdArg(context.args))
 
     return runCommand('prepare', [cwd], {
       overrides: {

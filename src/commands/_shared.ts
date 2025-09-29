@@ -16,4 +16,4 @@ export const sharedArgs = {
   },
 } as const satisfies Record<string, ArgDef>
 
-export const resolveCwd = (args: { cwd?: string, rootDir?: string }) => args.cwd || args.rootDir || '.'
+export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }) => args.cwd || args.rootDir || '.'

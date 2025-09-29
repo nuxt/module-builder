@@ -16,7 +16,7 @@ import { defineCommand } from 'citty'
 import { convertCompilerOptionsFromJson } from 'typescript'
 
 import { name, version } from '../../package.json'
-import { resolveCwd, sharedArgs } from './_shared'
+import { resolveCwdArg, sharedArgs } from './_shared'
 
 export default defineCommand({
   meta: {
@@ -44,7 +44,7 @@ export default defineCommand({
   async run(context) {
     const { build } = await import('unbuild')
 
-    const cwd = resolveCwd(context.args)
+    const cwd = resolve(resolveCwdArg(context.args))
 
     const jiti = createJiti(cwd)
 
