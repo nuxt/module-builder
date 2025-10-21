@@ -16,6 +16,7 @@ import { defineCommand } from 'citty'
 import { convertCompilerOptionsFromJson } from 'typescript'
 
 import { name, version } from '../../package.json'
+import { resolveCwdArg, sharedArgs } from './_shared'
 
 export default defineCommand({
   meta: {
@@ -23,44 +24,41 @@ export default defineCommand({
     description: 'Build module for distribution',
   },
   args: {
-    cwd: {
-      type: 'string',
-      description: 'Current working directory',
-    },
-    rootDir: {
-      type: 'positional',
-      description: 'Root directory',
-      required: false,
-    },
+    ...sharedArgs,
     outDir: {
       type: 'string',
+      default: 'dist',
+      description: 'Build directory',
     },
     sourcemap: {
       type: 'boolean',
+      default: false,
+      description: 'Generate sourcemaps',
     },
     stub: {
       type: 'boolean',
+      default: false,
+      description: 'Stub dist instead of actually building it for development',
     },
   },
   async run(context) {
     const { build } = await import('unbuild')
 
-    const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
+    const cwd = resolveCwdArg(context.args)
 
     const jiti = createJiti(cwd)
-    const outDir = context.args.outDir || 'dist'
 
     await build(cwd, false, {
       declaration: 'node16',
       sourcemap: context.args.sourcemap,
       stub: context.args.stub,
       stubOptions: { absoluteJitiPath: true },
-      outDir,
+      outDir: context.args.outDir,
       entries: [
         'src/module',
         {
           input: 'src/runtime/',
-          outDir: `${outDir}/runtime`,
+          outDir: `${context.args.outDir}/runtime`,
           addRelativeDeclarationExtensions: true,
           ext: 'js',
           pattern: [

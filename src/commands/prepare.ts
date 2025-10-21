@@ -1,6 +1,7 @@
 import type { NuxtConfig } from '@nuxt/schema'
 import { defineCommand } from 'citty'
 import { resolve } from 'pathe'
+import { resolveCwdArg, sharedArgs } from './_shared'
 
 export default defineCommand({
   meta: {
@@ -8,20 +9,12 @@ export default defineCommand({
     description: 'Prepare @nuxt/module-builder environment by writing types and stubs',
   },
   args: {
-    cwd: {
-      type: 'string',
-      description: 'Current working directory',
-    },
-    rootDir: {
-      type: 'positional',
-      description: 'Root directory',
-      required: false,
-    },
+    ...sharedArgs,
   },
   async run(context) {
     const { runCommand } = await import('@nuxt/cli')
 
-    const cwd = resolve(context.args.cwd || context.args.rootDir || '.')
+    const cwd = resolveCwdArg(context.args)
 
     return runCommand('prepare', [cwd], {
       overrides: {
