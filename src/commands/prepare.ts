@@ -14,7 +14,7 @@ export default defineCommand({
   async run(context) {
     const { runCommand } = await import('@nuxt/cli')
 
-    const cwd = resolve(resolveCwdArg(context.args))
+    const cwd = resolveCwdArg(context.args)
 
     return runCommand('prepare', [cwd], {
       overrides: {

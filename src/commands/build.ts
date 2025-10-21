@@ -44,7 +44,7 @@ export default defineCommand({
   async run(context) {
     const { build } = await import('unbuild')
 
-    const cwd = resolve(resolveCwdArg(context.args))
+    const cwd = resolveCwdArg(context.args)
 
     const jiti = createJiti(cwd)
 

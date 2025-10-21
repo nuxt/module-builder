@@ -1,4 +1,5 @@
 import type { ArgDef } from 'citty'
+import { resolve } from 'pathe'
 
 export const sharedArgs = {
   // cwd falls back to rootDir's default (indirect default)
@@ -16,4 +17,4 @@ export const sharedArgs = {
   },
 } as const satisfies Record<string, ArgDef>
 
-export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }) => args.cwd || args.rootDir || '.'
+export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }) => resolve(args.cwd || args.rootDir || '.')
