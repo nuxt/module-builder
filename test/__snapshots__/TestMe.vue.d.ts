@@ -1,4 +1,4 @@
-declare const _default: import("@vue/runtime-core").DefineComponent<import("@vue/runtime-core").ExtractPropTypes<{
+declare const __VLS_export: import("@vue/runtime-core").DefineComponent<import("@vue/runtime-core").ExtractPropTypes<{
     count: {
         type: NumberConstructor;
         required: true;
@@ -9,4 +9,5 @@ declare const _default: import("@vue/runtime-core").DefineComponent<import("@vue
         required: true;
     };
 }>> & Readonly<{}>, {}, {}, {}, {}, string, import("@vue/runtime-core").ComponentProvideOptions, true, {}, any>;
+declare const _default: typeof __VLS_export;
 export default _default;
