@@ -6,5 +6,4 @@ ignoredBuiltDependencies:
   - '@parcel/watcher'
   - esbuild
   - unrs-resolver
-trustPolicy: no-downgrade
 
