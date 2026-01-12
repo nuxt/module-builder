@@ -66,7 +66,7 @@ importers:
         specifier: ^4.2.2
         version: 4.2.2
       '@types/node':
-        specifier: ^24.10.4
+        specifier: ^24.10.7
         version: 24.10.7
       '@types/semver':
         specifier: ^7.7.1
@@ -84,7 +84,7 @@ importers:
         specifier: ^9.3.0
         version: 9.3.0
       knip:
-        specifier: ^5.80.0
+        specifier: ^5.80.2
         version: 5.80.2(@types/node@24.10.7)(typescript@5.9.3)
       nuxt:
         specifier: ^4.2.2
