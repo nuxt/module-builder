@@ -68,7 +68,7 @@
     "@nuxt/schema": "^4.2.2",
     "@types/node": "^24.10.7",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.0.16",
+    "@vitest/coverage-v8": "^4.0.17",
     "changelogen": "^0.6.2",
     "eslint": "^9.39.2",
     "installed-check": "^9.3.0",
@@ -80,7 +80,7 @@
     "semver": "^7.7.3",
     "tinyexec": "^1.0.2",
     "typescript": "~5.9.3",
-    "vitest": "^4.0.16",
+    "vitest": "^4.0.17",
     "vue": "^3.5.26",
     "vue-tsc": "^3.2.2"
   },
