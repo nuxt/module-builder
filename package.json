@@ -66,13 +66,13 @@
     "@nuxt/cli": "^3.32.0",
     "@nuxt/eslint-config": "^1.12.1",
     "@nuxt/schema": "^4.2.2",
-    "@types/node": "^24.10.7",
+    "@types/node": "^24.10.9",
     "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "^4.0.17",
     "changelogen": "^0.6.2",
     "eslint": "^9.39.2",
     "installed-check": "^9.3.0",
-    "knip": "^5.80.2",
+    "knip": "^5.82.0",
     "nuxt": "^4.2.2",
     "ofetch": "^1.5.1",
     "pkg-pr-new": "^0.0.62",
@@ -81,7 +81,7 @@
     "tinyexec": "^1.0.2",
     "typescript": "~5.9.3",
     "vitest": "^4.0.17",
-    "vue": "^3.5.26",
+    "vue": "^3.5.27",
     "vue-tsc": "^3.2.2"
   },
   "resolutions": {
@@ -89,7 +89,7 @@
     "@nuxt/module-builder": "workspace:*",
     "@nuxt/schema": "^4.2.2",
     "typescript": "~5.9.3",
-    "vue": "^3.5.26",
+    "vue": "^3.5.27",
     "vue-tsc": "^3.2.2"
   },
   "engines": {
