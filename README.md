@@ -164,10 +164,10 @@ Module builder generates dist files in `dist/` directory:
 [MIT](./LICENSE) - Made with 💚
 
 <!-- Badges -->
-[npm-version-src]: https://img.shields.io/npm/v/@nuxt/module-builder/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
-[npm-version-href]: https://npmjs.com/package/@nuxt/module-builder
+[npm-version-src]: https://npmx.dev/api/registry/badge/version/@nuxt/module-builder
+[npm-version-href]: https://npmx.dev/package/@nuxt/module-builder
 
-[npm-downloads-src]: https://img.shields.io/npm/dt/@nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-downloads-src]: https://npmx.dev/api/registry/badge/downloads/@nuxt/module-builder
 [npm-downloads-href]: https://npm.chart.dev/@nuxt/module-builder
 
 [license-src]: https://img.shields.io/github/license/nuxt/module-builder.svg?style=flat&colorA=18181B&colorB=28CF8D
