@@ -70,7 +70,7 @@
     "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "^4.0.17",
     "changelogen": "^0.6.2",
-    "eslint": "^9.39.2",
+    "eslint": "^10.0.3",
     "installed-check": "^9.3.0",
     "knip": "^5.82.1",
     "nuxt": "^4.2.2",
