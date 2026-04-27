@@ -72,7 +72,7 @@
     "changelogen": "^0.6.2",
     "eslint": "^10.2.1",
     "installed-check": "^9.3.0",
-    "knip": "^5.88.1",
+    "knip": "^6.7.0",
     "nuxt": "~4.2.2",
     "ofetch": "^1.5.1",
     "pkg-pr-new": "^0.0.67",
