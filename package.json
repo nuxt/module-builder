@@ -71,7 +71,7 @@
     "@vitest/coverage-v8": "^4.1.5",
     "changelogen": "^0.6.2",
     "eslint": "^10.2.1",
-    "installed-check": "^9.3.0",
+    "installed-check": "^10.0.1",
     "knip": "^6.7.0",
     "nuxt": "~4.2.2",
     "ofetch": "^1.5.1",
