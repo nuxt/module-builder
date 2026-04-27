@@ -58,12 +58,12 @@
     "vue-sfc-transformer": "^0.1.17"
   },
   "peerDependencies": {
-    "@nuxt/cli": "^3.35.0",
+    "@nuxt/cli": "^3.35.1",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
-    "@nuxt/cli": "^3.35.0",
+    "@nuxt/cli": "^3.35.1",
     "@nuxt/eslint-config": "^1.15.2",
     "@nuxt/schema": "~4.2.2",
     "@types/node": "^24.12.2",
