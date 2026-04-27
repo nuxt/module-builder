@@ -24,7 +24,7 @@ importers:
         specifier: ^3.4.2
         version: 3.4.2
       defu:
-        specifier: ^6.1.4
+        specifier: ^6.1.7
         version: 6.1.7
       jiti:
         specifier: ^2.6.1
@@ -42,7 +42,7 @@ importers:
         specifier: ^2.0.3
         version: 2.0.3
       pkg-types:
-        specifier: ^2.3.0
+        specifier: ^2.3.1
         version: 2.3.1
       tsconfck:
         specifier: ^3.1.6
@@ -58,7 +58,7 @@ importers:
         specifier: ^0.18.2
         version: 0.18.2
       '@nuxt/cli':
-        specifier: ^3.34.0
+        specifier: ^3.35.0
         version: 3.35.0(@nuxt/schema@4.2.2)(cac@6.7.14)(magicast@0.5.2)
       '@nuxt/eslint-config':
         specifier: ^1.15.2
