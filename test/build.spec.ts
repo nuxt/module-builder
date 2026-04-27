@@ -120,7 +120,15 @@ describe('module builder', () => {
 
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
-    await expect(pluginDts).toMatchFileSnapshot('__snapshots__/plugin.d.ts')
+    // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
+    const appAlias = `import\\("(?:nuxt/app|#app)"\\)`
+    expect(pluginDts).toMatch(/^export type SharedTypeFromRuntime = 'shared-type';$/m)
+    expect(pluginDts).toMatch(
+      new RegExp(
+        `declare const _default: ${appAlias}\\.Plugin<\\{\\s*injection: "injected";\\s*\\}> & ${appAlias}\\.ObjectPlugin<\\{\\s*injection: "injected";\\s*\\}>;`,
+      ),
+    )
+    expect(pluginDts).toMatch(/^export default _default;$/m)
   })
 
   it('should correctly add extensions to imports from runtime/ directory', async () => {
@@ -150,18 +158,14 @@ describe('module builder', () => {
 
   it('should generate wrapped composables', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
-    if (satisfies(nuxtVersion, '^3')) {
-      expect(componentFile).toMatchInlineSnapshot(`
-        "export declare const useWrappedFetch: () => import("#app").AsyncData<unknown, import("ofetch").FetchError<any> | null>;
-        "
-      `)
-    }
-    else {
-      expect(componentFile).toMatchInlineSnapshot(`
-        "export declare const useWrappedFetch: () => import("nuxt/app").AsyncData<unknown, import("ofetch").FetchError<any> | undefined>;
-        "
-      `)
-    }
+    // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
+    // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
+    const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
+    expect(componentFile).toMatch(
+      new RegExp(
+        `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, import\\("ofetch"\\)\\.FetchError<any> \\| ${expectedErrorType}>;\\s*$`,
+      ),
+    )
   })
 
   it('should handle JSX correctly', async () => {
