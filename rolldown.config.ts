@@ -15,9 +15,9 @@ export default defineConfig({
   platform: 'node',
   external: /^[^./]/,
   plugins: [
-    dts()
+    dts(),
   ],
   output: {
     entryFileNames: '[name].mjs',
-  }
+  },
 })
