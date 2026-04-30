@@ -50,6 +50,9 @@ importers:
       rolldown-plugin-dts:
         specifier: ^0.23.2
         version: 0.23.2(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(rolldown@1.0.0-rc.18)(typescript@5.9.3)(vue-tsc@3.2.7(typescript@5.9.3))
+      tinyglobby:
+        specifier: ^0.2.16
+        version: 0.2.16
       tsconfck:
         specifier: ^3.1.6
         version: 3.1.6(typescript@5.9.3)
