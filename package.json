@@ -27,11 +27,13 @@
     "dist"
   ],
   "scripts": {
-    "build": "unbuild",
-    "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
+    "build": "rolldown -c",
+    "build:watch": "pnpm build -w",
+    "dev:prepare": "pnpm -r dev:prepare",
     "example:build": "pnpm nuxt-module-build build ./example",
     "example:stub": "pnpm nuxt-module-build build --stub ./example",
-    "lint": "eslint .",
+    "lint": "eslint . --cache",
+    "lint:fix": "eslint . --cache --fix",
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "release": "pnpm vitest run && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
@@ -53,6 +55,8 @@
     "mlly": "^1.8.2",
     "pathe": "^2.0.3",
     "pkg-types": "^2.3.1",
+    "rolldown": "^1.0.0-rc.18",
+    "rolldown-plugin-dts": "^0.23.2",
     "tsconfck": "^3.1.6",
     "unbuild": "^3.6.1",
     "vue-sfc-transformer": "^0.1.17"
@@ -85,6 +89,6 @@
     "vue-tsc": "^3.2.7"
   },
   "engines": {
-    "node": "^18.0.0 || >=20.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   }
 }
