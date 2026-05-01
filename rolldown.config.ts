@@ -7,7 +7,7 @@ export default defineConfig({
     './src/index.ts',
   ],
   platform: 'node',
-  external: /^(?!\.|\/|[i]:[\\/])/,
+  external: /^(?!\.|\/|[a-z]:[\\/])/i,
   plugins: [
     dts(),
   ],
