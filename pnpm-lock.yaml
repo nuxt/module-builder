@@ -11,7 +11,7 @@ overrides:
   nuxt: ~4.4.6
   typescript: ~5.9.3
   vue: ^3.5.34
-  vue-tsc: ^3.2.8
+  vue-tsc: ^3.2.9
 
 importers:
 
@@ -67,7 +67,7 @@ importers:
         specifier: ~4.4.6
         version: 4.4.6
       '@types/node':
-        specifier: ^24.12.3
+        specifier: ^24.12.4
         version: 24.12.4
       '@types/semver':
         specifier: ^7.7.1
@@ -79,13 +79,13 @@ importers:
         specifier: ^0.6.2
         version: 0.6.2(magicast@0.5.2)
       eslint:
-        specifier: ^10.3.0
+        specifier: ^10.4.0
         version: 10.4.0(jiti@2.7.0)
       installed-check:
         specifier: ^10.0.1
         version: 10.0.1
       knip:
-        specifier: ^6.12.2
+        specifier: ^6.14.1
         version: 6.14.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       nuxt:
         specifier: ~4.4.6
@@ -94,10 +94,10 @@ importers:
         specifier: ^1.5.1
         version: 1.5.1
       pkg-pr-new:
-        specifier: ^0.0.71
-        version: 0.0.71
+        specifier: ^0.0.74
+        version: 0.0.74
       publint:
-        specifier: ^0.3.20
+        specifier: ^0.3.21
         version: 0.3.21
       semver:
         specifier: ^7.8.0
@@ -115,7 +115,7 @@ importers:
         specifier: ^3.5.34
         version: 3.5.34(typescript@5.9.3)
       vue-tsc:
-        specifier: ^3.2.8
+        specifier: ^3.2.9
         version: 3.2.9(typescript@5.9.3)
 
   example:
@@ -144,7 +144,7 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
       vue-tsc:
-        specifier: ^3.2.8
+        specifier: ^3.2.9
         version: 3.2.9(typescript@5.9.3)
 
 packages:
@@ -3836,7 +3836,7 @@ packages:
       typescript: ~5.9.3
       vue: ^3.5.34
       vue-sfc-transformer: ^0.1.1
-      vue-tsc: ^3.2.8
+      vue-tsc: ^3.2.9
     peerDependenciesMeta:
       sass:
         optional: true
@@ -4137,8 +4137,8 @@ packages:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
 
-  pkg-pr-new@0.0.71:
-    resolution: {integrity: sha512-Ln7I7NaOXN6CjBLVrNqsWOo6mIaNW4chH4eCR2t4tnQSmYtyQiWCqlMG6bL2JYCT1MOiKEiDObnnzePGh0TNFQ==}
+  pkg-pr-new@0.0.74:
+    resolution: {integrity: sha512-f2gScB4cjpVcMLeCMEhkrkt3KJCx3TgHTqaWZx54dUgvQcYASh+Hj+txMLjCkSN5ofHEGEmzi1gXK3lWZ2imTA==}
     hasBin: true
 
   pkg-types@1.3.1:
@@ -5217,7 +5217,7 @@ packages:
       vite: '>=5.4.21'
       vls: '*'
       vti: '*'
-      vue-tsc: ^3.2.8
+      vue-tsc: ^3.2.9
     peerDependenciesMeta:
       '@biomejs/biome':
         optional: true
@@ -9576,7 +9576,7 @@ snapshots:
 
   picomatch@4.0.4: {}
 
-  pkg-pr-new@0.0.71: {}
+  pkg-pr-new@0.0.74: {}
 
   pkg-types@1.3.1:
     dependencies:
