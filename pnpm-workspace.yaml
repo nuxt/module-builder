@@ -9,7 +9,7 @@ overrides:
   nuxt: "~4.4.6"
   typescript: "~5.9.3"
   vue: "^3.5.34"
-  vue-tsc: "^3.2.8"
+  vue-tsc: "^3.2.9"
 
 shellEmulator: true
 
