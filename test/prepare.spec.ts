@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
-import { cp, mkdir, readFile, rm } from 'node:fs/promises'
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import ts from 'typescript'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { exec } from 'tinyexec'
 import { dirname, join } from 'pathe'
@@ -15,19 +16,15 @@ describe('module builder', () => {
     await cp(exampleDir, prepareRootDir, { recursive: true })
 
     await exec('pnpm', ['nuxt-module-build', 'prepare', prepareRootDir], {
-    nodeOptions: { cwd: workspaceDir },
+      nodeOptions: { cwd: workspaceDir },
     })
   }, 120 * 1000)
 
-  it('includes module runtime in generated server tsconfig', async () => {
-    const serverTsconfig = await readFile(join(prepareRootDir, '.nuxt/tsconfig.server.json'), 'utf-8')
-    const parsed = JSON.parse(serverTsconfig) as { include?: unknown }
-    const include = Array.isArray(parsed.include) ? parsed.include : []
-
-    expect(
-    include.some(
-        value => typeof value === 'string' && value.includes('../src/runtime'),
-    ),
-    ).toBe(true)
+  it('includes runtime server plugin in resolved tsconfig files', async () => {
+    const serverTsconfigPath = join(prepareRootDir, '.nuxt/tsconfig.server.json')
+    const sourceFile = ts.readJsonConfigFile(serverTsconfigPath, ts.sys.readFile)
+    const parsed = ts.parseJsonSourceFileConfigFileContent(sourceFile, ts.sys, dirname(serverTsconfigPath))
+    const expectedPluginPath = join(prepareRootDir, 'src/runtime/server/plugins/plugin.ts')
+    expect(parsed.fileNames).toContain(expectedPluginPath)
   })
 })
