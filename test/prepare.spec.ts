@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url'
-import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, rm } from 'node:fs/promises'
 import ts from 'typescript'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { exec } from 'tinyexec'
