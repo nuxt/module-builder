@@ -69,9 +69,7 @@ describe('module builder', () => {
         interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
       }
 
-      export { default } from './module.mjs'
-
-      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks } from './module.mjs'
+      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
       "
     `)
   })
@@ -95,21 +93,19 @@ describe('module builder', () => {
 
       export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
 
-      export { default } from './module.mjs'
-
-      export { type ModuleHooks, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks } from './module.mjs'
+      export { type ModuleHooks, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
       "
     `)
   })
 
   it('should generate module metadata as separate JSON file', async () => {
     const meta = await readFile(join(distDir, 'module.json'), 'utf-8')
-    const unbuildPkg = await readPackageJSON('unbuild')
+    const rolldownPkg = await readPackageJSON('rolldown')
     expect(JSON.parse(meta)).toMatchObject(
       {
         builder: {
           '@nuxt/module-builder': version,
-          'unbuild': unbuildPkg.version,
+          'rolldown': rolldownPkg.version,
         },
         configKey: 'myModule',
         name: 'my-module',
@@ -121,20 +117,26 @@ describe('module builder', () => {
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
     // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
-    const appAlias = `import\\("(?:nuxt/app|#app)"\\)`
-    expect(pluginDts).toMatch(/^export type SharedTypeFromRuntime = 'shared-type';$/m)
-    expect(pluginDts).toMatch(
-      new RegExp(
-        `declare const _default: ${appAlias}\\.Plugin<\\{\\s*injection: "injected";\\s*\\}> & ${appAlias}\\.ObjectPlugin<\\{\\s*injection: "injected";\\s*\\}>;`,
-      ),
-    )
-    expect(pluginDts).toMatch(/^export default _default;$/m)
+    const normalizedDts = pluginDts
+      .replaceAll('nuxt/app', '#app')
+
+    expect(normalizedDts).toMatchInlineSnapshot(`
+      "//#region src/runtime/plugins/plugin.d.ts
+      type SharedTypeFromRuntime = 'shared-type';
+      declare const _default: import("#app").Plugin<{
+        injection: "injected";
+      }> & import("#app").ObjectPlugin<{
+        injection: "injected";
+      }>;
+      //#endregion
+      export { SharedTypeFromRuntime, _default as default };"
+    `)
   })
 
   it('should correctly add extensions to imports from runtime/ directory', async () => {
     const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
-    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';"`)
+    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from \"./runtime/plugins/plugin.js\";"`)
   })
 
   it('should generate components correctly', async () => {
@@ -161,11 +163,16 @@ describe('module builder', () => {
     // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
     // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
     const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
-    expect(componentFile).toMatch(
-      new RegExp(
-        `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, import\\("ofetch"\\)\\.FetchError<any> \\| ${expectedErrorType}>;\\s*$`,
-      ),
-    )
+
+    const normalizedComponentFile = componentFile
+      .replaceAll('nuxt/app', '#app')
+
+    expect(normalizedComponentFile).toMatchInlineSnapshot(`
+      "//#region src/runtime/composables/useWrappedFetch.d.ts
+      declare const useWrappedFetch: () => import("#app").AsyncData<unknown, import("ofetch").FetchError<any> | ${expectedErrorType}>;
+      //#endregion
+      export { useWrappedFetch };"
+    `)
   })
 
   it('should handle JSX correctly', async () => {

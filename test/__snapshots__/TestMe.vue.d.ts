@@ -1,13 +1,13 @@
 declare const _default: typeof __VLS_export;
 export default _default;
-declare const __VLS_export: import("@vue/runtime-core").DefineComponent<import("@vue/runtime-core").ExtractPropTypes<{
+declare const __VLS_export: import("vue").DefineComponent<import("vue").ExtractPropTypes<{
     count: {
         type: NumberConstructor;
         required: true;
     };
-}>, {}, {}, {}, {}, import("@vue/runtime-core").ComponentOptionsMixin, import("@vue/runtime-core").ComponentOptionsMixin, {}, string, import("@vue/runtime-core").PublicProps, Readonly<import("@vue/runtime-core").ExtractPropTypes<{
+}>, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<import("vue").ExtractPropTypes<{
     count: {
         type: NumberConstructor;
         required: true;
     };
-}>> & Readonly<{}>, {}, {}, {}, {}, string, import("@vue/runtime-core").ComponentProvideOptions, true, {}, any>;
+}>> & Readonly<{}>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, true, {}, any>;

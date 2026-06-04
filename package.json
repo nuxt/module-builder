@@ -27,8 +27,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "unbuild",
-    "dev:prepare": "unbuild --stub && pnpm -r dev:prepare",
+    "build": "rolldown -c",
+    "build:watch": "pnpm build -w",
+    "dev:prepare": "pnpm -r dev:prepare",
     "example:build": "pnpm nuxt-module-build build ./example",
     "example:stub": "pnpm nuxt-module-build build --stub ./example",
     "lint": "eslint .",
@@ -48,13 +49,13 @@
     "consola": "^3.4.2",
     "defu": "^6.1.7",
     "jiti": "^2.7.0",
-    "magic-regexp": "^0.11.0",
-    "mkdist": "^2.4.1",
     "mlly": "^1.8.2",
     "pathe": "^2.0.3",
     "pkg-types": "^2.3.1",
+    "rolldown": "^1.1.0",
+    "rolldown-plugin-dts": "^0.25.2",
+    "tinyglobby": "^0.2.17",
     "tsconfck": "^3.1.6",
-    "unbuild": "^3.6.1",
     "vue-sfc-transformer": "^0.2.3"
   },
   "peerDependencies": {
@@ -65,6 +66,7 @@
     "@arethetypeswrong/cli": "^0.18.3",
     "@nuxt/cli": "^3.35.2",
     "@nuxt/eslint-config": "^1.15.2",
+    "unbuild": "^3.6.1",
     "@nuxt/schema": "~4.4.6",
     "@types/node": "^24.12.4",
     "@types/semver": "^7.7.1",
@@ -85,6 +87,6 @@
     "vue-tsc": "^3.3.3"
   },
   "engines": {
-    "node": "^18.0.0 || >=20.0.0"
+    "node": "^22.18.0 || >=24.0.0"
   }
 }
