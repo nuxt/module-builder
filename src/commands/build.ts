@@ -52,7 +52,9 @@ export default defineCommand({
     const moduleEntries = await inferModuleEntries(cwd)
 
     if (context.args.stub) {
+      await fsp.rm(distDir, { recursive: true, force: true })
       await buildStub(cwd, distDir, moduleEntries)
+      await writeTypes(distDir, true)
       return
     }
 
