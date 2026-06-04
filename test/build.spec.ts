@@ -136,7 +136,7 @@ describe('module builder', () => {
   it('should correctly add extensions to imports from runtime/ directory', async () => {
     const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
-    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from \"./runtime/plugins/plugin.js\";"`)
+    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";"`)
   })
 
   it('should generate components correctly', async () => {
