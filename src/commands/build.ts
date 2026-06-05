@@ -163,36 +163,36 @@ export default defineCommand({
 
 async function generateModuleMetadata(cwd: string, jiti: Jiti, distDir: string) {
   const moduleEntryPath = resolve(distDir, 'module.mjs')
-    const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(
-      pathToFileURL(moduleEntryPath).toString(),
-      { default: true },
-    ).catch((err) => {
-      consola.error(err)
-      consola.error('Cannot load module. Please check dist:', moduleEntryPath)
-      return null
-    })
+  const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(
+    pathToFileURL(moduleEntryPath).toString(),
+    { default: true },
+  ).catch((err) => {
+    consola.error(err)
+    consola.error('Cannot load module. Please check dist:', moduleEntryPath)
+    return null
+  })
 
-    if (!moduleFn) {
-      return
+  if (!moduleFn) {
+    return
+  }
+  const moduleMeta = await moduleFn.getMeta?.() || {}
+
+  const pkg = await readPackageJSON(cwd)
+  if (pkg) {
+    if (!moduleMeta.name) {
+      moduleMeta.name = pkg.name
     }
-    const moduleMeta = await moduleFn.getMeta?.() || {}
-
-    const pkg = await readPackageJSON(cwd)
-    if (pkg) {
-      if (!moduleMeta.name) {
-        moduleMeta.name = pkg.name
-      }
-      if (!moduleMeta.version) {
-        moduleMeta.version = pkg.version
-      }
+    if (!moduleMeta.version) {
+      moduleMeta.version = pkg.version
     }
+  }
 
-    moduleMeta.builder = {
-      [name]: version,
-      rolldown: await readPackageJSON('rolldown').then(r => r.version).catch(() => 'unknown'),
-    }
+  moduleMeta.builder = {
+    [name]: version,
+    rolldown: await readPackageJSON('rolldown').then(r => r.version).catch(() => 'unknown'),
+  }
 
-    await fsp.writeFile(resolve(distDir, 'module.json'), JSON.stringify(moduleMeta, null, 2), 'utf8')
+  await fsp.writeFile(resolve(distDir, 'module.json'), JSON.stringify(moduleMeta, null, 2), 'utf8')
 }
 
 function createRuntimeExternalsPlugin(srcRuntimeDir: string): Plugin {

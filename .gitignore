@@ -11,3 +11,4 @@ package-lock.json
 .idea/
 example/playground/.nuxtrc
 .temp*
+.eslintcache
