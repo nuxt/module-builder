@@ -1,22 +1,21 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, dirname, extname, join, normalize, resolve } from 'pathe'
+import { basename, dirname, extname, isAbsolute, normalize, relative, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
-import type { TSConfig } from 'pkg-types'
 import { defu } from 'defu'
-import { createJiti } from 'jiti'
-import { anyOf, createRegExp } from 'magic-regexp'
+import { createJiti, type Jiti } from 'jiti'
 import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
-import { findExports, resolvePath, findTypeExports } from 'mlly'
+import { findExports, resolvePath, findTypeExports, resolveModuleExportNames } from 'mlly'
 import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
-import { convertCompilerOptionsFromJson } from 'typescript'
 
 import { name, version } from '../../package.json'
 import { resolveCwdArg, sharedArgs } from './_shared'
+import type { CompilerOptions } from 'typescript'
+import type { Plugin } from 'rolldown'
 
 export default defineCommand({
   meta: {
@@ -42,45 +41,82 @@ export default defineCommand({
     },
   },
   async run(context) {
-    const { build } = await import('unbuild')
-
     const cwd = resolveCwdArg(context.args)
-
     const jiti = createJiti(cwd)
+    const outDir = context.args.outDir
+    const distDir = resolve(cwd, outDir)
+    const srcRuntimeDir = resolve(cwd, 'src/runtime')
+    const distRuntimeDir = resolve(distDir, 'runtime')
 
-    await build(cwd, false, {
-      declaration: 'node16',
-      sourcemap: context.args.sourcemap,
-      stub: context.args.stub,
-      stubOptions: { absoluteJitiPath: true },
-      outDir: context.args.outDir,
-      entries: [
-        'src/module',
-        {
-          input: 'src/runtime/',
-          outDir: `${context.args.outDir}/runtime`,
-          addRelativeDeclarationExtensions: true,
-          ext: 'js',
-          pattern: [
-            '**',
-            '!**/*.stories.{js,cts,mts,ts,jsx,tsx}', // ignore storybook files
-            '!**/*.{spec,test}.{js,cts,mts,ts,jsx,tsx}', // ignore tests
-          ],
-          esbuild: {
-            jsxImportSource: 'vue',
-            jsx: 'automatic',
-            jsxFactory: 'h',
-          },
-        },
-      ],
-      rollup: {
-        esbuild: {
-          target: 'esnext',
-        },
-        emitCJS: false,
-        cjsBridge: false,
+    // Detect entry points from package.json exports
+    const moduleEntries = await inferModuleEntries(cwd)
+
+    if (context.args.stub) {
+      await fsp.rm(distDir, { recursive: true, force: true })
+      await buildStub(cwd, distDir, moduleEntries, srcRuntimeDir, distRuntimeDir, jiti)
+      await writeTypes(distDir, true)
+      return
+    }
+
+    const { build } = await import('rolldown')
+    const { dts } = await import('rolldown-plugin-dts')
+    const { vueSfcPlugin } = await import('vue-sfc-transformer/rolldown')
+    const { glob } = await import('tinyglobby')
+
+    // Clean dist directory before building
+    await fsp.rm(distDir, { recursive: true, force: true })
+    await fsp.mkdir(distDir, { recursive: true })
+
+    // Load TypeScript compiler options (raw JSON for rolldown-plugin-dts)
+    const tsOptions = await loadTSCompilerOptions(moduleEntries[0] || resolve(cwd, 'src/module.ts'))
+    const compilerOptions = defu({
+      noEmit: false,
+      paths: {
+        '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
       },
-      externals: [
+    }, tsOptions)
+
+    // Step 1: Build runtime JS (Vue SFCs handled as assets + TS/TSX files)
+    if (existsSync(srcRuntimeDir)) {
+      const runtimeTsFiles = await glob('**/*.{ts,tsx}', {
+        cwd: srcRuntimeDir,
+        absolute: true,
+        ignore: ['**/*.stories.{ts,tsx}', '**/*.{spec,test}.{ts,tsx}'],
+      })
+      if (runtimeTsFiles.length > 0) {
+        await build({
+          cwd,
+          input: Object.fromEntries(
+            runtimeTsFiles.map(f => [relative(srcRuntimeDir, f).replace(/\.[cm]?tsx?$/, ''), f]),
+          ),
+          external: (id: string) => !id.startsWith('.') && !isAbsolute(id),
+          preserveEntrySignatures: 'strict',
+          plugins: [
+            vueSfcPlugin({ srcDir: srcRuntimeDir, emitLegacyDeclarationAlias: true }),
+            dts({ compilerOptions, cwd }),
+          ],
+          transform: {
+            jsx: { runtime: 'automatic', importSource: 'vue' },
+          },
+          output: {
+            format: 'esm',
+            dir: distRuntimeDir,
+            entryFileNames: '[name].js',
+            chunkFileNames: '[name].js',
+          },
+        })
+      }
+    }
+
+    // Step 2: Build module JS + DTS entries
+    const moduleInput = Object.fromEntries(
+      moduleEntries.map(e => [filename(e) || basename(e, extname(e)), e]),
+    )
+    const runtimeExternalsPlugin = createRuntimeExternalsPlugin(srcRuntimeDir)
+    await build({
+      cwd,
+      input: moduleInput,
+      external: [
         /dist[\\/]runtime[\\/]/,
         '@nuxt/schema',
         '@nuxt/schema-nightly',
@@ -97,114 +133,213 @@ export default defineCommand({
         'vue',
         'vue-demi',
       ],
-      hooks: {
-        async 'mkdist:entry:options'(_ctx, entry, options) {
-          options.typescript = defu(options.typescript, {
-            compilerOptions: await loadTSCompilerOptions(entry.input),
-          })
-        },
-        async 'rollup:options'(ctx, options) {
-          const [entry] = ctx.buildEntries
-          const mergedCompilerOptions = defu({
-            noEmit: false,
-            paths: {
-              '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
-            },
-          }, ctx.options.rollup.dts.compilerOptions, await loadTSCompilerOptions(entry!.path))
-          ctx.options.rollup.dts.compilerOptions = convertCompilerOptionsFromJson(mergedCompilerOptions, entry!.path).options
-          options.plugins ||= []
-          if (!Array.isArray(options.plugins))
-            options.plugins = [options.plugins]
-
-          const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
-
-          const runtimeDirs = runtimeEntries.map(entry => basename(entry.input))
-          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and(anyOf('/', '\\')))
-
-          // Add extension for imports of runtime files in build
-          options.plugins.unshift({
-            name: 'nuxt-module-builder:runtime-externals',
-            async resolveId(id, importer) {
-              if (!RUNTIME_RE.test(id))
-                return
-
-              const resolved = await this.resolve(id, importer, { skipSelf: true })
-              if (!resolved)
-                return
-
-              const normalizedId = normalize(resolved.id)
-              for (const entry of runtimeEntries) {
-                if (!entry.outDir || !normalizedId.includes(entry.input))
-                  continue
-
-                const name = filename(normalizedId) || basename(normalizedId, extname(normalizedId))
-                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir)), name))
-                if (distFile) {
-                  return {
-                    external: true,
-                    id: distFile,
-                  }
-                }
-              }
-            },
-          })
-        },
-        async 'rollup:done'(ctx) {
-          // Load module meta
-          const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-          const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(pathToFileURL(moduleEntryPath).toString(), { default: true }).catch((err) => {
-            consola.error(err)
-            consola.error('Cannot load module. Please check dist:', moduleEntryPath)
-            return null
-          })
-
-          if (!moduleFn) {
-            return
-          }
-          const moduleMeta = await moduleFn.getMeta?.() || {}
-
-          // Enhance meta using package.json
-          if (ctx.pkg) {
-            if (!moduleMeta.name) {
-              moduleMeta.name = ctx.pkg.name
-            }
-            if (!moduleMeta.version) {
-              moduleMeta.version = ctx.pkg.version
-            }
-          }
-
-          // Add module builder metadata
-          moduleMeta.builder = {
-            [name]: version,
-            unbuild: await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
-          }
-
-          // Write meta
-          const metaFile = resolve(ctx.options.outDir, 'module.json')
-          await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
-
-          // Generate types
-          await writeTypes(ctx.options.outDir, ctx.options.stub)
-        },
-        async 'build:done'(ctx) {
-          const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
-          if (logs.filter(l => l.match(/\.d\.ts/)).length > 0) {
-            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`.d.ts\` declaration files. You can update these paths to use the \`.d.mts\` extension instead.`)
-          }
-
-          if (logs.filter(l => l.match(/module\.cjs/)).length > 0) {
-            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`module.cjs\` as this is not required for Nuxt v3+. You can safely remove replace this with \`module.mjs\` in your \`package.json\`.`)
-          }
-
-          const pkg = await readPackageJSON(cwd)
-          if (pkg?.types && !existsSync(resolve(cwd, pkg.types))) {
-            consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
-          }
-        },
+      preserveEntrySignatures: 'strict',
+      plugins: [
+        runtimeExternalsPlugin,
+        dts({ compilerOptions, cwd }),
+      ],
+      output: {
+        format: 'esm',
+        dir: distDir,
+        entryFileNames: '[name].mjs',
+        chunkFileNames: '[name].mjs',
+        sourcemap: context.args.sourcemap,
       },
     })
+
+    // Step 3: Generate module metadata
+    await generateModuleMetadata(cwd, jiti, distDir)
+
+    // Step 4: Generate types.d.mts
+    await writeTypes(distDir, false)
+
+    // Step 5: Build warnings
+    const builtPkg = await readPackageJSON(cwd)
+    if (builtPkg?.types && !existsSync(resolve(cwd, builtPkg.types))) {
+      consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
+    }
   },
 })
+
+async function generateModuleMetadata(cwd: string, jiti: Jiti, distDir: string) {
+  const moduleEntryPath = resolve(distDir, 'module.mjs')
+  const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(
+    pathToFileURL(moduleEntryPath).toString(),
+    { default: true },
+  ).catch((err) => {
+    consola.error(err)
+    consola.error('Cannot load module. Please check dist:', moduleEntryPath)
+    return null
+  })
+
+  if (!moduleFn) {
+    return
+  }
+  const moduleMeta = await moduleFn.getMeta?.() || {}
+
+  const pkg = await readPackageJSON(cwd)
+  if (pkg) {
+    if (!moduleMeta.name) {
+      moduleMeta.name = pkg.name
+    }
+    if (!moduleMeta.version) {
+      moduleMeta.version = pkg.version
+    }
+  }
+
+  moduleMeta.builder = {
+    [name]: version,
+    rolldown: await readPackageJSON('rolldown').then(r => r.version).catch(() => 'unknown'),
+  }
+
+  await fsp.writeFile(resolve(distDir, 'module.json'), JSON.stringify(moduleMeta, null, 2), 'utf8')
+}
+
+function createRuntimeExternalsPlugin(srcRuntimeDir: string): Plugin {
+  const RUNTIME_RE = /[\\/]runtime[\\/]/
+  const normalizedSrcDir = normalize(srcRuntimeDir)
+
+  return {
+    name: 'nuxt-module-builder:runtime-externals',
+    async resolveId(this, id, importer) {
+      if (!RUNTIME_RE.test(id))
+        return
+
+      const resolved = await this.resolve(id, importer, { skipSelf: true })
+      if (!resolved)
+        return
+
+      const normalizedId = normalize(resolved.id)
+      if (!normalizedId.startsWith(normalizedSrcDir))
+        return
+
+      // Map source file to its output .js path relative to dist dir
+      const relInRuntime = relative(normalizedSrcDir, normalizedId).replace(/\.[cm]?tsx?$/, '')
+      const distRelativePath = './runtime/' + relInRuntime.replace(/\\/g, '/') + '.js'
+
+      return {
+        external: true,
+        id: distRelativePath,
+      }
+    },
+  }
+}
+
+async function inferModuleEntries(cwd: string): Promise<string[]> {
+  const entries: string[] = []
+
+  // Always include src/module
+  for (const ext of ['.ts', '.tsx', '.mts']) {
+    const candidate = resolve(cwd, 'src/module' + ext)
+    if (existsSync(candidate)) {
+      entries.push(candidate)
+      break
+    }
+  }
+
+  const pkg = await readPackageJSON(cwd).catch(() => null)
+  if (!pkg?.exports) return entries
+
+  // Collect .mjs paths from package.json exports
+  function collectMjs(obj: unknown): string[] {
+    if (typeof obj === 'string') return obj.endsWith('.mjs') ? [obj] : []
+    if (typeof obj === 'object' && obj !== null) {
+      return Object.values(obj as Record<string, unknown>).flatMap(collectMjs)
+    }
+    return []
+  }
+
+  for (const mjsPath of collectMjs(pkg.exports)) {
+    // './dist/utils.mjs' → 'src/utils'
+    const match = mjsPath.match(/^\.\/dist\/(.+)\.mjs$/)
+    if (!match) continue
+    const srcBase = resolve(cwd, 'src', match[1]!)
+    for (const ext of ['.ts', '.tsx', '.mts']) {
+      const candidate = srcBase + ext
+      if (existsSync(candidate) && !entries.includes(candidate)) {
+        entries.push(candidate)
+        break
+      }
+    }
+  }
+
+  return entries
+}
+
+async function buildStub(cwd: string, distDir: string, entries: string[], srcRuntimeDir: string, distRuntimeDir: string, jiti: Jiti) {
+  await fsp.mkdir(distDir, { recursive: true })
+
+  const jitiPath = pathToFileURL(
+    await resolvePath('jiti', { url: import.meta.url, conditions: ['node', 'import'] }),
+  ).toString()
+
+  for (const resolvedEntry of entries) {
+    const entryName = filename(resolvedEntry) || basename(resolvedEntry, extname(resolvedEntry))
+    const outBase = resolve(distDir, entryName)
+
+    const exports = await resolveModuleExportNames(resolvedEntry, {
+      extensions: ['.ts', '.tsx', '.mts'],
+    }).catch(() => [] as string[])
+    const hasDefaultExport = exports.includes('default')
+
+    const mjsContent = [
+      `import { createJiti } from ${JSON.stringify(jitiPath)};`,
+      ``,
+      `const jiti = createJiti(import.meta.url);`,
+      ``,
+      `/** @type {import(${JSON.stringify(resolvedEntry)})} */`,
+      `const _module = await jiti.import(${JSON.stringify(resolvedEntry)});`,
+      hasDefaultExport ? `export default _module?.default ?? _module;` : '',
+      ...exports.filter(n => n !== 'default').map(n => `export const ${n} = _module.${n};`),
+    ].filter(Boolean).join('\n') + '\n'
+
+    await fsp.writeFile(outBase + '.mjs', mjsContent, 'utf8')
+
+    const dtsContent = [
+      `export * from ${JSON.stringify(resolvedEntry)};`,
+      hasDefaultExport ? `export { default } from ${JSON.stringify(resolvedEntry)};` : '',
+    ].filter(Boolean).join('\n') + '\n'
+
+    await fsp.writeFile(outBase + '.d.mts', dtsContent, 'utf8')
+  }
+
+  if (existsSync(srcRuntimeDir)) {
+    const { glob } = await import('tinyglobby')
+
+    const runtimeFiles = await glob('**/*.{ts,tsx,vue}', {
+      cwd: srcRuntimeDir,
+      absolute: true,
+      ignore: ['**/*.stories.{ts,tsx,vue}', '**/*.{spec,test}.{ts,tsx,vue}'],
+    })
+
+    await fsp.mkdir(distRuntimeDir, { recursive: true })
+
+    for (const file of runtimeFiles) {
+      const rel = relative(srcRuntimeDir, file).replace(/\.[cm]?[tj]sx?$/, '')
+      const outBase = resolve(distRuntimeDir, rel)
+      const outDir = dirname(outBase)
+
+      await fsp.mkdir(outDir, { recursive: true })
+
+      // Simple jiti stub (works for .ts, .tsx, .vue)
+      const mjsContent = `import { createJiti } from ${JSON.stringify(jitiPath)};
+
+const jiti = createJiti(import.meta.url);
+/** @type {import(${JSON.stringify(file)})} */
+const _mod = await jiti.import(${JSON.stringify(file)});
+export default _mod?.default ?? _mod;
+`
+
+      await fsp.writeFile(outBase + '.mjs', mjsContent, 'utf8')
+
+      // Basic type forwarder
+      const dtsContent = `export * from ${JSON.stringify(file)};\n`
+      await fsp.writeFile(outBase + '.d.mts', dtsContent, 'utf8')
+    }
+  }
+
+  await generateModuleMetadata(cwd, jiti, distDir)
+}
 
 async function writeTypes(distDir: string, isStub: boolean) {
   const dtsFile = resolve(distDir, 'types.d.mts')
@@ -277,7 +412,7 @@ ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
 }
 
-async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
+async function loadTSCompilerOptions(path: string): Promise<CompilerOptions> {
   const config = await parse(path)
   const resolvedCompilerOptions = config?.tsconfig.compilerOptions || {}
 
