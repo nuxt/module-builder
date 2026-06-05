@@ -300,8 +300,6 @@ async function buildStub(cwd: string, distDir: string, entries: string[], srcRun
       hasDefaultExport ? `export { default } from ${JSON.stringify(resolvedEntry)};` : '',
     ].filter(Boolean).join('\n') + '\n'
 
-    console.log(outBase + '.d.mts', dtsContent)
-
     await fsp.writeFile(outBase + '.d.mts', dtsContent, 'utf8')
   }
 
