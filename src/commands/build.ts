@@ -5,7 +5,7 @@ import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
 import { parse } from 'tsconfck'
 import { defu } from 'defu'
-import { createJiti } from 'jiti'
+import { createJiti, type Jiti } from 'jiti'
 import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
 import { findExports, resolvePath, findTypeExports, resolveModuleExportNames } from 'mlly'
@@ -53,7 +53,7 @@ export default defineCommand({
 
     if (context.args.stub) {
       await fsp.rm(distDir, { recursive: true, force: true })
-      await buildStub(cwd, distDir, moduleEntries)
+      await buildStub(cwd, distDir, moduleEntries, srcRuntimeDir, distRuntimeDir, jiti)
       await writeTypes(distDir, true)
       return
     }
@@ -148,7 +148,21 @@ export default defineCommand({
     })
 
     // Step 3: Generate module metadata
-    const moduleEntryPath = resolve(distDir, 'module.mjs')
+    await generateModuleMetadata(cwd, jiti, distDir)
+
+    // Step 4: Generate types.d.mts
+    await writeTypes(distDir, false)
+
+    // Step 5: Build warnings
+    const builtPkg = await readPackageJSON(cwd)
+    if (builtPkg?.types && !existsSync(resolve(cwd, builtPkg.types))) {
+      consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
+    }
+  },
+})
+
+async function generateModuleMetadata(cwd: string, jiti: Jiti, distDir: string) {
+  const moduleEntryPath = resolve(distDir, 'module.mjs')
     const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(
       pathToFileURL(moduleEntryPath).toString(),
       { default: true },
@@ -179,17 +193,7 @@ export default defineCommand({
     }
 
     await fsp.writeFile(resolve(distDir, 'module.json'), JSON.stringify(moduleMeta, null, 2), 'utf8')
-
-    // Step 6: Generate types.d.mts
-    await writeTypes(distDir, false)
-
-    // Step 7: Build warnings
-    const builtPkg = await readPackageJSON(cwd)
-    if (builtPkg?.types && !existsSync(resolve(cwd, builtPkg.types))) {
-      consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
-    }
-  },
-})
+}
 
 function createRuntimeExternalsPlugin(srcRuntimeDir: string): Plugin {
   const RUNTIME_RE = /[\\/]runtime[\\/]/
@@ -262,7 +266,7 @@ async function inferModuleEntries(cwd: string): Promise<string[]> {
   return entries
 }
 
-async function buildStub(cwd: string, distDir: string, entries: string[]) {
+async function buildStub(cwd: string, distDir: string, entries: string[], srcRuntimeDir: string, distRuntimeDir: string, jiti: Jiti) {
   await fsp.mkdir(distDir, { recursive: true })
 
   const jitiPath = pathToFileURL(
@@ -272,7 +276,6 @@ async function buildStub(cwd: string, distDir: string, entries: string[]) {
   for (const resolvedEntry of entries) {
     const entryName = filename(resolvedEntry) || basename(resolvedEntry, extname(resolvedEntry))
     const outBase = resolve(distDir, entryName)
-    const srcUrl = pathToFileURL(resolvedEntry).toString()
 
     const exports = await resolveModuleExportNames(resolvedEntry, {
       extensions: ['.ts', '.tsx', '.mts'],
@@ -284,8 +287,8 @@ async function buildStub(cwd: string, distDir: string, entries: string[]) {
       ``,
       `const jiti = createJiti(import.meta.url);`,
       ``,
-      `/** @type {import(${JSON.stringify(srcUrl)})} */`,
-      `const _module = await jiti.import(${JSON.stringify(srcUrl)});`,
+      `/** @type {import(${JSON.stringify(resolvedEntry)})} */`,
+      `const _module = await jiti.import(${JSON.stringify(resolvedEntry)});`,
       hasDefaultExport ? `export default _module?.default ?? _module;` : '',
       ...exports.filter(n => n !== 'default').map(n => `export const ${n} = _module.${n};`),
     ].filter(Boolean).join('\n') + '\n'
@@ -293,12 +296,51 @@ async function buildStub(cwd: string, distDir: string, entries: string[]) {
     await fsp.writeFile(outBase + '.mjs', mjsContent, 'utf8')
 
     const dtsContent = [
-      `export * from ${JSON.stringify(srcUrl)};`,
-      hasDefaultExport ? `export { default } from ${JSON.stringify(srcUrl)};` : '',
+      `export * from ${JSON.stringify(resolvedEntry)};`,
+      hasDefaultExport ? `export { default } from ${JSON.stringify(resolvedEntry)};` : '',
     ].filter(Boolean).join('\n') + '\n'
+
+    console.log(outBase + '.d.mts', dtsContent)
 
     await fsp.writeFile(outBase + '.d.mts', dtsContent, 'utf8')
   }
+
+  if (existsSync(srcRuntimeDir)) {
+    const { glob } = await import('tinyglobby')
+
+    const runtimeFiles = await glob('**/*.{ts,tsx,vue}', {
+      cwd: srcRuntimeDir,
+      absolute: true,
+      ignore: ['**/*.stories.{ts,tsx,vue}', '**/*.{spec,test}.{ts,tsx,vue}'],
+    })
+
+    await fsp.mkdir(distRuntimeDir, { recursive: true })
+
+    for (const file of runtimeFiles) {
+      const rel = relative(srcRuntimeDir, file).replace(/\.[cm]?[tj]sx?$/, '')
+      const outBase = resolve(distRuntimeDir, rel)
+      const outDir = dirname(outBase)
+
+      await fsp.mkdir(outDir, { recursive: true })
+
+      // Simple jiti stub (works for .ts, .tsx, .vue)
+      const mjsContent = `import { createJiti } from ${JSON.stringify(jitiPath)};
+
+const jiti = createJiti(import.meta.url);
+/** @type {import(${JSON.stringify(file)})} */
+const _mod = await jiti.import(${JSON.stringify(file)});
+export default _mod?.default ?? _mod;
+`
+
+      await fsp.writeFile(outBase + '.mjs', mjsContent, 'utf8')
+
+      // Basic type forwarder
+      const dtsContent = `export * from ${JSON.stringify(file)};\n`
+      await fsp.writeFile(outBase + '.d.mts', dtsContent, 'utf8')
+    }
+  }
+
+  await generateModuleMetadata(cwd, jiti, distDir)
 }
 
 async function writeTypes(distDir: string, isStub: boolean) {
