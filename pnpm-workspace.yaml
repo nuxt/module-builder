@@ -8,8 +8,8 @@ overrides:
   "@nuxt/schema": "~4.4.8"
   nuxt: "~4.4.8"
   typescript: "~5.9.3"
-  vue: "^3.5.38"
-  vue-tsc: "^3.3.5"
+  vue: "^3.5.39"
+  vue-tsc: "^3.3.6"
 
 shellEmulator: true
 
