@@ -42,7 +42,7 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.10.0",
   "dependencies": {
     "citty": "^0.2.2",
     "consola": "^3.4.2",
@@ -68,11 +68,11 @@
     "@nuxt/schema": "~4.4.8",
     "@types/node": "^24.13.2",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
     "changelogen": "^0.6.2",
     "eslint": "^10.6.0",
     "installed-check": "^10.0.1",
-    "knip": "^6.23.0",
+    "knip": "^6.24.0",
     "nuxt": "~4.4.8",
     "ofetch": "^1.5.1",
     "pkg-pr-new": "^0.0.75",
@@ -80,7 +80,7 @@
     "semver": "^7.8.5",
     "tinyexec": "^1.2.4",
     "typescript": "~5.9.3",
-    "vitest": "^4.1.9",
+    "vitest": "^4.1.10",
     "vue": "^3.5.39",
     "vue-tsc": "^3.3.6"
   },
