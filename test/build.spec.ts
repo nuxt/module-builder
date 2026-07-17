@@ -160,10 +160,14 @@ describe('module builder', () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
     // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
     // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
+    // Nuxt 4+ moved the default error from `FetchError` to `NuxtError<unknown>` (nuxt/nuxt#35346); accept both until it lands in a release.
     const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
+    const errorType = satisfies(nuxtVersion, '^3')
+      ? 'import\\("ofetch"\\)\\.FetchError<any>'
+      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("#app"\\)\\.NuxtError<unknown>)'
     expect(componentFile).toMatch(
       new RegExp(
-        `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, import\\("ofetch"\\)\\.FetchError<any> \\| ${expectedErrorType}>;\\s*$`,
+        `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;\\s*$`,
       ),
     )
   })
