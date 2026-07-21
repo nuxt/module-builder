@@ -42,7 +42,7 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@11.15.0",
+  "packageManager": "pnpm@11.15.1",
   "dependencies": {
     "citty": "^0.2.2",
     "consola": "^3.4.2",
@@ -79,7 +79,7 @@
     "publint": "^0.3.21",
     "semver": "^7.8.5",
     "tinyexec": "^1.2.4",
-    "tsdown": "^0.22.9",
+    "tsdown": "^0.22.12",
     "typescript": "~5.9.3",
     "vitest": "^4.1.10",
     "vue": "^3.5.40",
