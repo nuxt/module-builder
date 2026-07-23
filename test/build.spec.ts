@@ -120,8 +120,7 @@ describe('module builder', () => {
 
   it('should generate typed plugin', async () => {
     const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
-    // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
-    const appAlias = `import\\("(?:nuxt/app|#app)"\\)`
+    const appAlias = `import\\("nuxt/app"\\)`
     expect(pluginDts).toMatch(/^export type SharedTypeFromRuntime = 'shared-type';$/m)
     expect(pluginDts).toMatch(
       new RegExp(
@@ -129,6 +128,16 @@ describe('module builder', () => {
       ),
     )
     expect(pluginDts).toMatch(/^export default _default;$/m)
+  })
+
+  it('should not leak build-only virtual aliases into emitted runtime declarations', async () => {
+    const files = await readdir(runtimeDir, { recursive: true })
+    const declarations = files.filter(file => /\.d\.[^/]*ts$/.test(file))
+    expect(declarations.length).toBeGreaterThan(0)
+    for (const file of declarations) {
+      const contents = await readFile(join(runtimeDir, file), 'utf-8')
+      expect(contents, file).not.toMatch(/(["'])#app(?:\/[^"']*)?\1/)
+    }
   })
 
   it('should correctly add extensions to imports from runtime/ directory', async () => {
@@ -158,16 +167,15 @@ describe('module builder', () => {
 
   it('should generate wrapped composables', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
-    // aliases flip between `nuxt/app` and `#app` in repo vs ecosystem-ci
     // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
     // Nuxt 4+ moved the default error from `FetchError` to `NuxtError<unknown>` (nuxt/nuxt#35346); accept both until it lands in a release.
     const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
     const errorType = satisfies(nuxtVersion, '^3')
       ? 'import\\("ofetch"\\)\\.FetchError<any>'
-      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("(?:nuxt/app|#app)"\\)\\.NuxtError<unknown>)'
+      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("nuxt/app"\\)\\.NuxtError<unknown>)'
     expect(componentFile).toMatch(
       new RegExp(
-        `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;\\s*$`,
+        `^export declare const useWrappedFetch: \\(\\) => import\\("nuxt/app"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;\\s*$`,
       ),
     )
   })

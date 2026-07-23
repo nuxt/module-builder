@@ -185,6 +185,10 @@ export default defineCommand({
 
           // Generate types
           await writeTypes(ctx.options.outDir, ctx.options.stub)
+
+          if (!ctx.options.stub) {
+            await rewriteRuntimeTypeAliases(resolve(ctx.options.outDir, 'runtime'))
+          }
         },
         async 'build:done'(ctx) {
           const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
@@ -275,6 +279,34 @@ ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
+}
+
+const DECLARATION_RE = /\.d\.[^/]*ts$/
+
+// `#app`/`#app/*` are build-time-only aliases with no package resolution, so leaking
+// them into emitted declarations breaks `tsc`/`attw` for consumers. `nuxt/app` is the
+// resolvable public entry and re-exports the `#app/*` symbols.
+async function rewriteRuntimeTypeAliases(runtimeDir: string) {
+  if (!existsSync(runtimeDir)) {
+    return
+  }
+
+  const entries = await fsp.readdir(runtimeDir, { recursive: true })
+  await Promise.all(entries.map(async (entry) => {
+    if (!DECLARATION_RE.test(entry)) {
+      return
+    }
+
+    const file = join(runtimeDir, entry)
+    const contents = await fsp.readFile(file, 'utf8')
+    const rewritten = contents
+      .replace(/import\("#app(?:\/[^"]*)?"\)/g, 'import("nuxt/app")')
+      .replace(/(\bfrom\s*)(['"])#app(?:\/[^'"]*)?\2/g, '$1$2nuxt/app$2')
+
+    if (rewritten !== contents) {
+      await fsp.writeFile(file, rewritten, 'utf8')
+    }
+  }))
 }
 
 async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
