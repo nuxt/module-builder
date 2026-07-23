@@ -164,7 +164,7 @@ describe('module builder', () => {
     const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
     const errorType = satisfies(nuxtVersion, '^3')
       ? 'import\\("ofetch"\\)\\.FetchError<any>'
-      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("#app"\\)\\.NuxtError<unknown>)'
+      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("(?:nuxt/app|#app)"\\)\\.NuxtError<unknown>)'
     expect(componentFile).toMatch(
       new RegExp(
         `^export declare const useWrappedFetch: \\(\\) => import\\("(?:nuxt/app|#app)"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;\\s*$`,
