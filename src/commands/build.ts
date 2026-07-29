@@ -3,8 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { basename, dirname, extname, join, normalize, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
-import { parse } from 'tsconfck'
-import type { TSConfig } from 'pkg-types'
+import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import { defu } from 'defu'
 import { createJiti } from 'jiti'
 import { anyOf, createRegExp } from 'magic-regexp'
@@ -100,7 +99,7 @@ export default defineCommand({
       hooks: {
         async 'mkdist:entry:options'(_ctx, entry, options) {
           options.typescript = defu(options.typescript, {
-            compilerOptions: await loadTSCompilerOptions(entry.input),
+            compilerOptions: loadTSCompilerOptions(entry.input),
           })
         },
         async 'rollup:options'(ctx, options) {
@@ -110,7 +109,7 @@ export default defineCommand({
             paths: {
               '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
             },
-          }, ctx.options.rollup.dts.compilerOptions, await loadTSCompilerOptions(entry!.path))
+          }, ctx.options.rollup.dts.compilerOptions, loadTSCompilerOptions(entry!.path))
           ctx.options.rollup.dts.compilerOptions = convertCompilerOptionsFromJson(mergedCompilerOptions, entry!.path).options
           options.plugins ||= []
           if (!Array.isArray(options.plugins))
@@ -309,20 +308,17 @@ async function rewriteRuntimeTypeAliases(runtimeDir: string) {
   }))
 }
 
-async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
-  const config = await parse(path)
-  const resolvedCompilerOptions = config?.tsconfig.compilerOptions || {}
+function loadTSCompilerOptions(path: string) {
+  const tsconfig = getTsconfig(path)
+  const compilerOptions = tsconfig?.config.compilerOptions ?? {}
 
-  // TODO: this should probably be ported to tsconfck?
-  for (const { tsconfig, tsconfigFile } of config.extended || []) {
-    for (const alias in tsconfig.compilerOptions?.paths || {}) {
-      resolvedCompilerOptions.paths[alias] = resolvedCompilerOptions.paths[alias].map((p: string) => {
-        if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
+  const matchPath = tsconfig && createPathsMatcher(tsconfig)
 
-        return resolve(dirname(tsconfigFile), p)
-      })
+  if (matchPath && compilerOptions.paths) {
+    for (const alias in compilerOptions.paths) {
+      compilerOptions.paths[alias] = matchPath(alias)
     }
   }
 
-  return resolvedCompilerOptions
+  return compilerOptions
 }
