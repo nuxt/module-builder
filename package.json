@@ -54,7 +54,7 @@
     "pkg-types": "^2.3.1",
     "tsconfck": "^3.1.6",
     "unbuild": "^3.6.1",
-    "vue-sfc-transformer": "^0.2.3"
+    "vue-sfc-transformer": "^0.2.5"
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.37.0",
@@ -73,7 +73,7 @@
     "knip": "^6.29.0",
     "nuxt": "~4.5.0",
     "ofetch": "^1.5.1",
-    "pkg-pr-new": "^0.0.80",
+    "pkg-pr-new": "^0.0.82",
     "publint": "^0.3.22",
     "semver": "^7.8.5",
     "tinyexec": "^1.2.4",
