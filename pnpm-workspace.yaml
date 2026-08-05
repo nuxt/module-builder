@@ -7,7 +7,7 @@ overrides:
   "@nuxt/module-builder": "workspace:*"
   "@nuxt/schema": "~4.5.1"
   nuxt: "~4.5.1"
-  typescript: "~5.9.3"
+  typescript: "~7.0.2"
   vue: "^3.5.40"
   vue-tsc: "^3.3.9"
 
