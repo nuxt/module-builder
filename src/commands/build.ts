@@ -103,6 +103,9 @@ export default defineCommand({
             compilerOptions: await loadTSCompilerOptions(entry.input),
           })
         },
+        async 'mkdist:entry:build'(_ctx, entry, output) {
+          await assertVueFilesEmitted(entry, output.writtenFiles)
+        },
         async 'rollup:options'(ctx, options) {
           const [entry] = ctx.buildEntries
           const mergedCompilerOptions = defu({
@@ -209,6 +212,27 @@ export default defineCommand({
     })
   },
 })
+
+// mkdist < 2.4.1 deduplicates outputs by path alone, so the compiled `.vue` file and its
+// `.d.vue.ts` declaration collide and the SFC is silently dropped: https://github.com/nuxt/module-builder/issues/786
+async function assertVueFilesEmitted(entry: { input: string, outDir?: string }, writtenFiles: string[]) {
+  if (!entry.outDir || !existsSync(entry.input)) {
+    return
+  }
+
+  const written = new Set(writtenFiles.map(file => normalize(file)))
+  const sources = await fsp.readdir(entry.input, { recursive: true })
+  const missing = sources
+    .filter(source => extname(source) === '.vue')
+    .filter(source => !written.has(normalize(resolve(entry.outDir!, source))))
+
+  if (missing.length > 0) {
+    throw new Error(
+      `\`mkdist\` did not emit ${missing.length} Vue component(s):\n${missing.map(file => `  - ${file}`).join('\n')}\n`
+      + `This is a known issue with \`mkdist\` < 2.4.1. Please ensure a newer version is installed (for example with a package manager override).`,
+    )
+  }
+}
 
 async function writeTypes(distDir: string, isStub: boolean) {
   const dtsFile = resolve(distDir, 'types.d.mts')
