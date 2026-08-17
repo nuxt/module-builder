@@ -26,7 +26,7 @@ export default defineCommand({
           autoImport: false,
         },
         modules: [
-          resolve(cwd, './src/module'),
+          resolve(cwd, './src'),
           function (_options, nuxt) {
             nuxt.hooks.hook('app:templates', (app) => {
               for (const template of app.templates) {
