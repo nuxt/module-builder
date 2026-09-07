@@ -41,7 +41,7 @@
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@11.24.0",
+  "packageManager": "pnpm@12.3.4",
   "dependencies": {
     "citty": "^0.2.2",
     "consola": "^3.4.2",
