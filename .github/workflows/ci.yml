@@ -31,10 +31,10 @@ jobs:
       - name: ⚙️ Check package engines
         run: pnpm test:engines
 
-      - name: 💪 Check published types
+      - name: 💪 Check published types (example)
         run: pnpm test:attw
 
-      - name: 📦 Check `package.json`
+      - name: 📦 Check `package.json` (example)
         run: pnpm test:publint
 
   ci:

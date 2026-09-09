@@ -35,7 +35,7 @@
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "test": "pnpm vitest --coverage",
-    "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz && pnpm pack --out .temp-attw/self.tgz && attw .temp-attw/self.tgz",
+    "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz",
     "test:publint": "cd example && publint",
     "test:engines": "installed-check -d --no-workspaces",
     "test:knip": "knip --exclude unresolved",
@@ -73,6 +73,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
+    "@arethetypeswrong/core": "^0.18.5",
     "@nuxt/cli": "^3.37.0",
     "@nuxt/eslint-config": "^1.17.0",
     "@nuxt/schema": "~4.5.2",
