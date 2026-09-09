@@ -35,13 +35,24 @@
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "test": "pnpm vitest --coverage",
-    "test:attw": "attw --pack example && attw --pack .",
+    "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz",
     "test:publint": "cd example && publint",
     "test:engines": "installed-check -d --no-workspaces",
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
-  "packageManager": "pnpm@12.3.4",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24.0.0",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.3.4",
+      "onFail": "download"
+    }
+  },
   "dependencies": {
     "citty": "^0.2.2",
     "consola": "^3.4.2",
@@ -62,6 +73,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
+    "@arethetypeswrong/core": "^0.18.5",
     "@nuxt/cli": "^3.37.0",
     "@nuxt/eslint-config": "^1.17.0",
     "@nuxt/schema": "~4.5.2",
