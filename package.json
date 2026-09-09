@@ -35,7 +35,7 @@
     "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
     "prepack": "pnpm build",
     "test": "pnpm vitest --coverage",
-    "test:attw": "attw --pack example && attw --pack .",
+    "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz && pnpm pack --out .temp-attw/self.tgz && attw .temp-attw/self.tgz",
     "test:publint": "cd example && publint",
     "test:engines": "installed-check -d --no-workspaces",
     "test:knip": "knip --exclude unresolved",
