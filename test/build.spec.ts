@@ -6,7 +6,7 @@ import { readPackageJSON } from 'pkg-types'
 import { dirname, join } from 'pathe'
 import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
-import { satisfies } from 'semver'
+import { satisfies } from 'verkit'
 import { version } from '../package.json'
 
 describe('module builder', () => {
