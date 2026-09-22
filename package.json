@@ -32,7 +32,7 @@
     "example:build": "pnpm nuxt-module-build build ./example",
     "example:stub": "pnpm nuxt-module-build build --stub ./example",
     "lint": "eslint .",
-    "nuxt-module-build": "JITI_ESM_RESOLVE=1 jiti ./src/cli.ts",
+    "nuxt-module-build": "node ./src/cli.ts",
     "prepack": "pnpm build",
     "test": "pnpm vitest --coverage",
     "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz",

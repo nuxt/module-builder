@@ -1,7 +1,7 @@
 import type { NuxtConfig } from '@nuxt/schema'
 import { defineCommand } from 'citty'
 import { resolve } from 'pathe'
-import { resolveCwdArg, sharedArgs } from './_shared'
+import { resolveCwdArg, sharedArgs } from './_shared.ts'
 
 export default defineCommand({
   meta: {

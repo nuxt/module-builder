@@ -14,8 +14,10 @@ import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
 import { convertCompilerOptionsFromJson } from 'typescript'
 
-import { name, version } from '../../package.json'
-import { resolveCwdArg, sharedArgs } from './_shared'
+import pkg from '../../package.json' with { type: 'json' }
+import { resolveCwdArg, sharedArgs } from './_shared.ts'
+
+const { name, version } = pkg
 
 export default defineCommand({
   meta: {
