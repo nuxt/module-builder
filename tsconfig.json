@@ -16,7 +16,11 @@
     "module": "Preserve",
     "noEmit": true,
     "moduleResolution": "Bundler",
-    "declaration": true
+    "declaration": true,
+    "types": ["node"],
+    "rootDir": "./src",
+    "noUncheckedSideEffectImports": false,
+    "libReplacement": false
   },
   "include": [
     "src",
