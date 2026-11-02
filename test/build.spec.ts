@@ -12,6 +12,8 @@ import { version } from '../package.json'
 describe('module builder', () => {
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
   const secondRootDir = rootDir.replace('example', '.temp-example-without-options')
+  // File URLs percent-encode spaces and non-ASCII characters
+  const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
   const distDir = join(rootDir, 'dist')
   const secondDistDir = join(secondRootDir, 'dist')
   const runtimeDir = join(distDir, 'runtime')
@@ -25,9 +27,13 @@ describe('module builder', () => {
     const contents = await readFile(moduleSrc, 'utf-8').then(r => r.replace('export interface ModuleOptions', 'interface ModuleOptions'))
     await writeFile(moduleSrc, contents)
 
+    await rm(encodedRootDir, { force: true, recursive: true })
+    await cp(rootDir, encodedRootDir, { recursive: true })
+
     await Promise.all([
       exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir } })),
       exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: secondRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: secondRootDir } })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: encodedRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: encodedRootDir } })),
     ])
   }, 120 * 1000)
 
@@ -144,6 +150,12 @@ describe('module builder', () => {
     const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
     expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';"`)
+  })
+
+  it('should add extensions to runtime imports when the path has spaces or non-ASCII characters', async () => {
+    const moduleDts = await readFile(join(encodedRootDir, 'dist/module.d.mts'), 'utf-8')
+    const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
+    expect(runtimeImport!.code.trim()).toBe(`import { SharedTypeFromRuntime } from '../dist/runtime/plugins/plugin.js';`)
   })
 
   it('should generate components correctly', async () => {
