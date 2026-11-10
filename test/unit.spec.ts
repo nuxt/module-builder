@@ -19,6 +19,7 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkStaleTypesField 
 import { guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
 import { findNonErasableSyntax } from '../src/build/loader.ts'
+import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
 const importer = fileURLToPath(new URL('../example/src/module.ts', import.meta.url))
@@ -268,7 +269,8 @@ describe('translateBuildConfig', () => {
 })
 
 describe('hints', () => {
-  it('should link the stub syntax hint to the upgrade guide', () => {
+  it('should link the missing tsdown and stub syntax hints to the upgrade guide', () => {
+    expect(MISSING_TSDOWN_HINT).toMatch(new RegExp(`pnpm add -D tsdown@"\\^[\\d.]+"\`\\. ${guide('install-tsdown')}$`))
     expect(erasableSyntaxHint([]).endsWith(guide('stub-builds'))).toBe(true)
   })
 

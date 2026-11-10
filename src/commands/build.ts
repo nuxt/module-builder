@@ -1,6 +1,17 @@
 import { defineCommand } from 'citty'
+import { consola } from 'consola'
 
+import pkg from '../../package.json' with { type: 'json' }
+import { guide } from '../build/guide.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
+
+export const MISSING_TSDOWN_HINT = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
+
+function isMissingTsdown(error: unknown) {
+  return error instanceof Error
+    && (error as Error & { code?: string }).code === 'ERR_MODULE_NOT_FOUND'
+    && error.message.includes('\'tsdown\'')
+}
 
 export default defineCommand({
   meta: {
@@ -33,7 +44,12 @@ export default defineCommand({
       return stub(cwd, { outDir: context.args.outDir })
     }
 
-    const { build } = await import('../build/build.ts')
+    const { build } = await import('../build/build.ts').catch((error) => {
+      if (isMissingTsdown(error)) {
+        consola.error(MISSING_TSDOWN_HINT)
+      }
+      throw error
+    })
     return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap })
   },
 })
