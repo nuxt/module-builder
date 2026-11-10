@@ -15,7 +15,7 @@ import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
 import { findNonErasableSyntax } from '../src/build/loader.ts'
@@ -343,6 +343,54 @@ describe('deprecation checks', () => {
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.mjs' })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('should warn about other referenced paths the build did not produce', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-paths-'))
+    await mkdir(join(root, 'dist'))
+    await writeFile(join(root, 'dist/module.mjs'), '')
+    await writeFile(join(root, 'package.json'), '{}')
+    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const pkg = {
+      types: './dist/stale.d.ts',
+      main: './dist/module.cjs',
+      exports: {
+        '.': { types: './dist/types.d.ts', import: './dist/module.mjs' },
+        './runtime/*': './dist/runtime/*',
+        './utils': { types: './dist/utils.d.mts', import: './dist/utils.mjs' },
+        './package.json': './package.json',
+      },
+    }
+    expect(checkMissingPaths(root, pkg)).toBe(true)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`: \`\\./dist/utils\\.d\\.mts\`, \`\\./dist/utils\\.mjs\`\\. Add the entry that produces each one, or remove the path\\. ${guide('paths-the-build-does-not-produce')}$`)))
+    warn.mockClear()
+    expect(checkMissingPaths(root, { exports: { '.': './dist/module.mjs', './package.json': './package.json' } })).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('should warn about extensionless `typesVersions` paths that node10 resolution cannot probe', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-node10-'))
+    await mkdir(join(root, 'dist/nested'), { recursive: true })
+    for (const file of ['dist/util.d.mts', 'dist/util.mjs', 'dist/nested/index.d.mts', 'dist/legacy.d.ts', 'dist/gone.mjs']) {
+      await writeFile(join(root, file), '')
+    }
+    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const pkg = {
+      exports: { './util': './dist/util.mjs', './gone': './dist/gone.mjs' },
+      typesVersions: { '*': { 'util': ['dist/util'], 'nested': ['./dist/nested'], 'legacy': ['dist/legacy'], 'gone': ['dist/gone'], 'runtime/*': ['dist/runtime/*'] } },
+    }
+    expect(checkNode10DeclarationPaths(root, pkg)).toBe(true)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`node10 module resolution.*: \`dist/util\` \\(use \`\\./dist/util\\.d\\.mts\`\\), \`\\./dist/nested\` \\(use \`\\./dist/nested/index\\.d\\.mts\`\\)\\. Write each path with its extension\\. ${guide('typesversions-paths')}$`)))
+    warn.mockClear()
+    expect(checkMissingPaths(root, pkg)).toBe(true)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(': `dist/gone`. Add the entry'))
+    warn.mockClear()
+    expect(checkNode10DeclarationPaths(root, { typesVersions: { '*': { util: ['dist/util.d.mts'], legacy: ['dist/legacy'] } } })).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+    await rm(root, { recursive: true, force: true })
   })
 
   it('should warn about a stale `types` field', () => {

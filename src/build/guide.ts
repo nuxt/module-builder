@@ -14,6 +14,7 @@ export type GuideSection
     | 'modulecjs'
     | 'the-types-field'
     | 'paths-the-build-does-not-produce'
+    | 'typesversions-paths'
     | 'stub-builds'
     | 'declaration-errors'
     | 'portability-errors'

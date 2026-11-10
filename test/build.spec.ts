@@ -117,6 +117,9 @@ import { Level } from './levels'
 enum Mode { Stub = 'stub' }
 class Holder { constructor(public value: string) {} }
 ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<string>Mode.Stub}-${Level.High}`).value')}`)
+    const stubSyntaxPkg = JSON.parse(await readFile(join(stubSyntaxRootDir, 'package.json'), 'utf-8'))
+    stubSyntaxPkg.exports['./plugin'] = './dist/runtime/plugins/plugin.js'
+    await writeFile(join(stubSyntaxRootDir, 'package.json'), JSON.stringify(stubSyntaxPkg, null, 2))
     await writeFile(join(stubSyntaxRootDir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
 
     await copyExample(typeErrorRootDir, contents => contents)
@@ -617,6 +620,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(await readFile(join(stubSyntaxRootDir, 'dist/module.json'), 'utf-8')).name).toBe('my-module-stub-high')
     expect((stdout + stderr).match(/erasableSyntaxOnly/g)).toHaveLength(1)
     expect(stdout + stderr).toContain(guide('stub-builds'))
+    expect(stdout + stderr).not.toContain('do not exist after the build')
   }, 60 * 1000)
 
   it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {

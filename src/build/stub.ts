@@ -82,6 +82,6 @@ export async function stub(cwd: string, options: StubOptions) {
   })
   await writeTypes(outDir, true)
   await callBuildHook(config, 'rollup:done', ctx)
-  await checkDeprecatedPackageFields(cwd)
+  await checkDeprecatedPackageFields(cwd, { stub: true })
   await callBuildHook(config, 'build:done', ctx)
 }
