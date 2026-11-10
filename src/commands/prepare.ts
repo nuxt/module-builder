@@ -3,6 +3,32 @@ import { defineCommand } from 'citty'
 import { resolve } from 'pathe'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
 
+export async function prepareModule(cwd: string) {
+  const { runCommand } = await import('@nuxt/cli')
+
+  return runCommand('prepare', [cwd], {
+    overrides: {
+      compatibilityDate: '2024-04-03',
+      typescript: {
+        builder: 'shared',
+      },
+      imports: {
+        autoImport: false,
+      },
+      modules: [
+        resolve(cwd, './src/module'),
+        function (_options, nuxt) {
+          nuxt.hooks.hook('app:templates', (app) => {
+            for (const template of app.templates) {
+              template.write = true
+            }
+          })
+        },
+      ],
+    } satisfies NuxtConfig,
+  })
+}
+
 export default defineCommand({
   meta: {
     name: 'prepare',
@@ -12,30 +38,6 @@ export default defineCommand({
     ...sharedArgs,
   },
   async run(context) {
-    const { runCommand } = await import('@nuxt/cli')
-
-    const cwd = resolveCwdArg(context.args)
-
-    return runCommand('prepare', [cwd], {
-      overrides: {
-        compatibilityDate: '2024-04-03',
-        typescript: {
-          builder: 'shared',
-        },
-        imports: {
-          autoImport: false,
-        },
-        modules: [
-          resolve(cwd, './src/module'),
-          function (_options, nuxt) {
-            nuxt.hooks.hook('app:templates', (app) => {
-              for (const template of app.templates) {
-                template.write = true
-              }
-            })
-          },
-        ],
-      } satisfies NuxtConfig,
-    })
+    return prepareModule(resolveCwdArg(context.args))
   },
 })

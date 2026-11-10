@@ -45,6 +45,7 @@ describe('module builder', () => {
   const semanticErrorRootDir = rootDir.replace('example', '.temp-example-semantic-error')
   const vueErrorRootDir = rootDir.replace('example', '.temp-example-vue-error')
   const stubSyntaxRootDir = rootDir.replace('example', '.temp-example-stub-syntax')
+  const autoPrepareRootDir = rootDir.replace('example', '.temp-example-auto-prepare')
   const annotatedRootDir = rootDir.replace('example', '.temp-example-isolated-annotated')
   const runtimeShapeRootDir = rootDir.replace('example', '.temp-example-runtime-shape')
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
@@ -121,6 +122,9 @@ ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<str
     stubSyntaxPkg.exports['./plugin'] = './dist/runtime/plugins/plugin.js'
     await writeFile(join(stubSyntaxRootDir, 'package.json'), JSON.stringify(stubSyntaxPkg, null, 2))
     await writeFile(join(stubSyntaxRootDir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
+
+    await copyExample(autoPrepareRootDir, contents => contents)
+    await rm(join(autoPrepareRootDir, '.nuxt'), { recursive: true, force: true })
 
     await copyExample(typeErrorRootDir, contents => contents)
     await rm(join(typeErrorRootDir, 'src/runtime/components'), { recursive: true, force: true })
@@ -654,6 +658,14 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toContain(guide('isolated-declarations'))
     expect(stdout + stderr).not.toMatch(/Type declarations could not be generated/)
   }, 60 * 1000)
+
+  it('should prepare a module without `.nuxt` before building it', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', autoPrepareRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+    expect(exitCode).toBe(0)
+    expect(stdout + stderr).toMatch(new RegExp(`\\.nuxt\`? not found, running \`?nuxt-module-build prepare\`? first\\..*${guide('preparing-nuxt')}`))
+    const declaration = await readFile(join(autoPrepareRootDir, 'dist/runtime/composables/useAliasedApp.d.ts'), 'utf-8')
+    expect(declaration).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
+  }, 120 * 1000)
 
   it('should explain type errors that prevent declaration generation', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', typeErrorRootDir], { nodeOptions: { cwd: repoRoot } })
