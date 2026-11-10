@@ -102,7 +102,7 @@ export default defineCommand({
         async 'mkdist:entry:options'(_ctx, entry, options) {
           options.typescript = defu(options.typescript, {
             compilerOptions: loadTSCompilerOptions(entry.input),
-          })
+          }) as typeof options.typescript
         },
         async 'rollup:options'(ctx, options) {
           const [entry] = ctx.buildEntries

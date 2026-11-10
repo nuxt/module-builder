@@ -6,10 +6,10 @@
   },
   "dependencies": {
     "my-module": "workspace:*",
-    "nuxt": "^4.5.2"
+    "nuxt": "^4.6.4"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
-    "vue-tsc": "^3.3.11"
+    "vue-tsc": "^3.3.14"
   }
 }
