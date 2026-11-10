@@ -69,7 +69,7 @@ describe('module builder', () => {
     await copyExample(secondRootDir, contents => contents.replace('export interface ModuleOptions', 'interface ModuleOptions'))
 
     // Prepare a root directory whose path is percent-encoded in file URLs
-    await copyExample(encodedRootDir, contents => contents)
+    await copyExample(encodedRootDir, contents => contents + RUNTIME_IMPORTS)
 
     // Prepare third root directory whose module entry pulls in runtime code, through a
     // relative specifier, a tsconfig alias and a `.vue` import
@@ -1233,6 +1233,34 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
     expect(runtimeImport!.code.trim()).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
   })
+
+  it('should build a module under a path with spaces and non-ASCII characters', async () => {
+    const encodedDistDir = join(encodedRootDir, 'dist')
+    const runtimeSpecifiers = (code: string) => findStaticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
+
+    expect(runtimeSpecifiers(await readFile(join(encodedDistDir, 'module.mjs'), 'utf-8'))).toEqual([
+      './runtime/components/TestMe.vue',
+      './runtime/composables/useAppNuxt.js',
+      './runtime/composables/useWrappedFetch.js',
+    ])
+    expect(JSON.parse(await readFile(join(encodedDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
+    expect(await readFile(join(encodedDistDir, 'types.d.mts'), 'utf-8')).toContain('from \'./module.mjs\'')
+
+    const runtimeFiles = (dir: string) => readdir(join(dir, 'runtime'), { recursive: true }).then(files => files.sort())
+    expect(await runtimeFiles(encodedDistDir)).toEqual(await runtimeFiles(thirdDistDir))
+  })
+
+  it('should stub a module under a path with spaces and non-ASCII characters', async () => {
+    const stubDir = join(encodedRootDir, '.stub')
+    try {
+      await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+      expect(await readFile(join(stubDir, 'module.mjs'), 'utf-8')).toContain('from \'../src/module.ts\'')
+      expect(JSON.parse(await readFile(join(stubDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
+    }
+    finally {
+      await rm(stubDir, { force: true, recursive: true })
+    }
+  }, 60 * 1000)
 
   it('should generate components correctly', async () => {
     const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
