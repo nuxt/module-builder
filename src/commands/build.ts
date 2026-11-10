@@ -139,7 +139,7 @@ export default defineCommand({
                   continue
 
                 const name = filename(normalizedId) || basename(normalizedId, extname(normalizedId))
-                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir)), name))
+                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId.replace(entry.input, entry.outDir)).href), name))
                 if (distFile) {
                   return {
                     external: true,
