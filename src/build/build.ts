@@ -12,12 +12,14 @@ import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
+import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, warnDeprecatedBuildConfig } from './build-config.ts'
+import type { DirectoryEntry } from './build-config.ts'
 import { externalDependencyDeclarations, NUXT_EXTERNALS } from './externals.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
-import { bundledEntries } from './entries.ts'
 import { guide } from './guide.ts'
 import { loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
+import { replacePlugin } from './replace.ts'
 import { runtimeExternals } from './runtime-externals.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
@@ -61,13 +63,21 @@ export async function build(cwd: string, options: BuildOptions) {
   }
   const selfPaths = selfReferencePaths(cwd, pkg, outDir)
 
-  const directories = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' as const }]
-  const sourcemap = options.sourcemap
+  const config = await loadBuildConfig(cwd, pkg, outDir)
+  if (config.unsupported.length) {
+    throw new Error(formatUnsupportedOptions(config.unsupported))
+  }
+  warnDeprecatedBuildConfig(config)
 
+  const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
+  const sourcemap = options.sourcemap || config.sourcemap
+  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: false, sourcemap })
+
+  await callBuildHook(config, 'build:before', ctx)
   await rm(outDir, { recursive: true, force: true })
 
-  const entries = bundledEntries(cwd, pkg)
-  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module))
+  const entries = bundledEntries(cwd, config)
+  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))
   const isolatedDeclarations = hasIsolatedDeclarations(moduleTsconfig)
   // `eager` puts every file of the tsconfig in the program, so ambient declarations such
   // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
@@ -99,13 +109,17 @@ export async function build(cwd: string, options: BuildOptions) {
     transform: loadOxc()?.transform,
     sourcemap,
     vue,
-    // The module entry keeps its own output. Any other file is mirrored where the
-    // specifier already points, or under `_external/` when that would take the name of
-    // the module entry or `types`.
+    // Bundled entries and other directories keep their own output. Any other file is
+    // mirrored where the specifier already points, or under `_external/` when that would
+    // take the name of a bundled entry or `types`.
     resolveExternal(_specifier, _importer, { file, kind, from, output }) {
       const bundled = bundledSources.get(file)
       if (bundled) {
         return relativeSpecifier(from, bundled)
+      }
+      const other = directories.find(directory => !relative(directory.srcDir, file).startsWith('..'))
+      if (other) {
+        return relativeSpecifier(from, join(relative(outDir, other.outDir), relative(other.srcDir, file).replace(SCRIPT_RE, `.${other.ext}`)))
       }
       if (reserved.has(output.replace(SCRIPT_RE, ''))) {
         const segments = relative(cwd, file).replace(SCRIPT_RE, `.${directory.ext}`).split('/').map(segment => segment === '..' ? '_' : segment)
@@ -124,7 +138,7 @@ export async function build(cwd: string, options: BuildOptions) {
     clean: false,
     report: false,
     sourcemap,
-    deps: { neverBundle: NUXT_EXTERNALS },
+    deps: { neverBundle: [...NUXT_EXTERNALS, ...config.neverBundle] },
     entry: entries,
     dts: moduleDts,
     inputOptions: options => ({
@@ -138,6 +152,7 @@ export async function build(cwd: string, options: BuildOptions) {
     plugins: [
       externalDependencyDeclarations(),
       runtimeExternals({ outDir, directories, packageName: pkg.name }),
+      ...config.replace ? [await replacePlugin(config.replace)] : [],
       ...directoryPlugins,
     ],
   } satisfies InlineConfig).catch(async (error) => {
@@ -165,6 +180,7 @@ export async function build(cwd: string, options: BuildOptions) {
     consola.error('Cannot load module. Please check dist:', resolve(outDir, 'module.mjs'))
   })
   await writeTypes(outDir, false)
+  await callBuildHook(config, 'rollup:done', ctx)
   const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
   await rewriteRuntimeDeclarations(outDir, outputs.flatMap(map => [...map.values()]))
 
@@ -173,6 +189,7 @@ export async function build(cwd: string, options: BuildOptions) {
   }
 
   await checkDeprecatedPackageFields(cwd)
+  await callBuildHook(config, 'build:done', ctx)
 }
 
 function isDirectoryError(error: unknown) {

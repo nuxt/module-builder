@@ -32,6 +32,9 @@ describe('module builder', () => {
   const vueOnlyRootDir = rootDir.replace('example', '.temp-example-vue-only-runtime')
   const unpreparedRootDir = rootDir.replace('example', '.temp-example-unprepared')
   const jsSpecifierRootDir = rootDir.replace('example', '.temp-example-js-specifiers')
+  const buildConfigRootDir = rootDir.replace('example', '.temp-example-build-config')
+  const replaceRootDir = rootDir.replace('example', '.temp-example-build-config-replace')
+  const unsupportedRootDir = rootDir.replace('example', '.temp-example-build-config-unsupported')
   const stylesheetsRootDir = rootDir.replace('example', '.temp-example-stylesheets')
   const transpileRootDir = rootDir.replace('example', '.temp-example-transpile-only')
   const solutionRootDir = rootDir.replace('example', '.temp-example-solution-tsconfig')
@@ -173,6 +176,141 @@ export default defineNuxtModule({
       ...fakeCache,
       'src/runtime/components/Cached.vue': `<script lang="ts">\nimport { defineCached } from 'fake-cache'\n\nexport const cachedHandler = defineCached(() => 'cached')\nexport default {}\n</script>\n\n<template>\n  <span>cached</span>\n</template>\n`,
       'src/runtime/server/cached.ts': `import { defineCached } from 'fake-cache'\n\nexport const defineCachedHandler = defineCached(() => 'cached')\n`,
+    })
+
+    await copyExample(buildConfigRootDir, contents => contents)
+    await writeFiles(buildConfigRootDir, {
+      'build.config.ts': `import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineBuildConfig } from '@nuxt/module-builder'
+import { externals } from './build/externals'
+
+const record = hook => ctx => appendFileSync(join(ctx.options.rootDir, 'hooks.log'), JSON.stringify({
+  hook,
+  stub: ctx.options.stub,
+  meta: existsSync(join(ctx.options.outDir, 'module.json')),
+  entries: ctx.options.entries.map(entry => entry.name).sort(),
+}) + '\\n')
+
+export default defineBuildConfig({
+  hooks: {
+    'build:before'(ctx) {
+      record('build:before')(ctx)
+      writeFileSync(join(ctx.options.rootDir, 'src/generated.ts'), 'export const generated = "from build:before"\\n')
+    },
+    'rollup:done': record('rollup:done'),
+    'build:done': record('build:done'),
+  },
+  declaration: true,
+  entries: [
+    'src/utils',
+    './src/vite.ts',
+    { input: 'src/content', name: 'content' },
+    'src/nested/helper',
+    { input: 'src/shared/', outDir: 'dist/shared' },
+  ],
+  externals,
+  replace: {
+    __MODULE_VERSION__: JSON.stringify('1.2.3'),
+  },
+  rollup: {
+    emitCJS: false,
+  },
+})
+`,
+      'build/externals.ts': `export const externals = ['fake-pkg', '#content-alias', /^regex-pkg$/]\n`,
+      'node_modules/fake-pkg/package.json': JSON.stringify({ name: 'fake-pkg', type: 'module', exports: { './sub': './sub.js' } }),
+      'node_modules/fake-pkg/sub.js': `export const plugin = 'bundled-fake-pkg'\n`,
+      'node_modules/regex-pkg/package.json': JSON.stringify({ name: 'regex-pkg', type: 'module', exports: './index.js' }),
+      'node_modules/regex-pkg/index.js': `export default 'bundled-regex-pkg'\n`,
+      'src/alias/config.ts': `export default 'bundled-alias'\n`,
+      'src/vite.ts': `// @ts-ignore untyped
+import { plugin } from 'fake-pkg/sub'
+// @ts-ignore untyped
+import virtual from 'regex-pkg'
+
+import { generated } from './generated'
+
+declare const __MODULE_VERSION__: string
+
+export const version: string = __MODULE_VERSION__
+export const refs: unknown[] = [plugin, virtual, generated]
+`,
+      'src/content.ts': `// @ts-ignore build-time alias
+import config from '#content-alias/config'
+
+export const content: unknown = config
+`,
+      'src/nested/helper.ts': `import plugin from '../runtime/plugins/plugin'\n\nexport const helper = (): unknown => plugin\nexport const lazy = (): Promise<unknown> => import('../runtime/composables/useWrappedFetch')\n`,
+      'src/shared/format.ts': `export const format = (value: string): string => value.trim()\n`,
+      'src/features/flag.ts': `export const flag: boolean = true\n`,
+    })
+
+    const buildConfigPkg = join(buildConfigRootDir, 'package.json')
+    await writeFile(buildConfigPkg, JSON.stringify({
+      ...JSON.parse(await readFile(buildConfigPkg, 'utf-8')),
+      imports: { '#content-alias/*': './src/alias/*.ts' },
+      build: { entries: [{ input: 'src/features/', outDir: 'dist/features', ext: 'js' }] },
+    }))
+
+    await copyExample(replaceRootDir, contents => contents)
+    await writeFiles(replaceRootDir, {
+      'build.config.ts': `import { defineBuildConfig } from 'unbuild'
+
+export default defineBuildConfig({
+  entries: ['./src/unplugin'],
+  externals: ['#build/ui'],
+  hooks: {
+    'mkdist:entry:options'(ctx, entry, options) {
+      options.addRelativeDeclarationExtensions = false
+    },
+  },
+  rollup: {
+    replace: {
+      delimiters: ['', ''],
+      values: {
+        "process.argv.includes('--uiDev')": 'false',
+      },
+    },
+  },
+})
+`,
+      'src/unplugin.ts': `// @ts-ignore untyped
+import ext from 'ext-pkg'
+
+declare const process: { argv: string[] }
+
+export const isDev: boolean = process.argv.includes('--uiDev')
+export const extRef: unknown = ext
+`,
+      'node_modules/ext-pkg/package.json': JSON.stringify({ name: 'ext-pkg', type: 'module', exports: './index.js' }),
+      'node_modules/ext-pkg/index.js': `export default 'bundled-ext-pkg'\n`,
+    })
+    const replacePkg = join(replaceRootDir, 'package.json')
+    await writeFile(replacePkg, JSON.stringify({ ...JSON.parse(await readFile(replacePkg, 'utf-8')), unbuild: { externals: ['ext-pkg'] } }))
+
+    await copyExample(unsupportedRootDir, contents => contents)
+    await writeFiles(unsupportedRootDir, {
+      'build.config.ts': `import { defineBuildConfig } from 'unbuild'
+
+export default defineBuildConfig({
+  entries: [
+    { input: 'src/runtime/', ext: 'cjs' },
+    { input: 'src/schema', builder: 'untyped' },
+  ],
+  hooks: {
+    'build:prepare'() {},
+    'rollup:options'() {},
+    'mkdist:entry:options'() {},
+  },
+  rollup: {
+    emitCJS: true,
+    alias: {},
+  },
+  stub: true,
+  unknownOption: 1,
+})
+`,
     })
 
     await copyExample(transpileRootDir, contents => `import type { DeepPartial } from 'fake-types'
@@ -393,12 +531,85 @@ export const defineOptions = (options: Options) => ({ options, helper })
       exec('pnpm', ['nuxt-module-build', 'build', annotatedRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['prepack'], { nodeOptions: { cwd: vueOnlyRootDir } }),
       exec('pnpm', ['nuxt-module-build', 'build', '--stub', wildcardRootDir], { nodeOptions: { cwd: repoRoot } }),
+      exec('pnpm', ['nuxt-module-build', 'build', buildConfigRootDir], { nodeOptions: { cwd: repoRoot } }),
+      exec('pnpm', ['nuxt-module-build', 'build', replaceRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', transpileRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', join(parentTsconfigRootDir, 'packages/mod')], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', portableRootDir], { nodeOptions: { cwd: repoRoot } }),
     ])
   }, 180 * 1000)
+
+  it('should build `build.config.ts` entries under the names unbuild gave them', async () => {
+    const files = await readdir(join(buildConfigRootDir, 'dist'), { recursive: true })
+    expect(files.filter(file => !file.startsWith('runtime')).sort()).toMatchInlineSnapshot(`
+      [
+        "content.d.mts",
+        "content.mjs",
+        "features",
+        "features/flag.d.ts",
+        "features/flag.js",
+        "module.d.mts",
+        "module.json",
+        "module.mjs",
+        "nested",
+        "nested/helper.d.mts",
+        "nested/helper.mjs",
+        "shared",
+        "shared/format.d.mts",
+        "shared/format.mjs",
+        "types.d.mts",
+        "utils.d.mts",
+        "utils.mjs",
+        "vite.d.mts",
+        "vite.mjs",
+      ]
+    `)
+  })
+
+  it('should import runtime code relative to nested entries', async () => {
+    const helper = await readFile(join(buildConfigRootDir, 'dist/nested/helper.mjs'), 'utf-8')
+    expect(findStaticImports(helper).map(i => i.specifier)).toEqual(['../runtime/plugins/plugin.js'])
+    expect(helper).toContain('import("../runtime/composables/useWrappedFetch.js")')
+    expect(helper).not.toContain(buildConfigRootDir)
+  })
+
+  it('should run `build.config.ts` hooks in order with the build context', async () => {
+    const log = (await readFile(join(buildConfigRootDir, 'hooks.log'), 'utf-8')).trim().split('\n').map(line => JSON.parse(line))
+    expect(log.slice(0, 3)).toEqual([
+      expect.objectContaining({ hook: 'build:before', stub: false }),
+      expect.objectContaining({ hook: 'rollup:done', stub: false, meta: true }),
+      expect.objectContaining({ hook: 'build:done', stub: false, meta: true }),
+    ])
+    expect(log[0].entries).toEqual(['content', 'features', 'module', 'nested/helper', 'runtime', 'shared', 'utils', 'vite'])
+    expect(await readFile(join(buildConfigRootDir, 'dist/vite.mjs'), 'utf-8')).toContain('from build:before')
+  })
+
+  it('should read the `unbuild` field of `package.json` in preference to `build`', async () => {
+    const unplugin = await readFile(join(replaceRootDir, 'dist/unplugin.mjs'), 'utf-8')
+    expect(unplugin).toContain('from "ext-pkg"')
+    expect(unplugin).not.toContain('bundled-ext-pkg')
+    expect(existsSync(join(replaceRootDir, 'dist/utils.mjs'))).toBe(false)
+  })
+
+  it('should keep `build.config.ts` externals external', async () => {
+    const vite = await readFile(join(buildConfigRootDir, 'dist/vite.mjs'), 'utf-8')
+    expect(vite).toContain('from "fake-pkg/sub"')
+    expect(vite).toContain('from "regex-pkg"')
+    const content = await readFile(join(buildConfigRootDir, 'dist/content.mjs'), 'utf-8')
+    expect(content).toContain('from "#content-alias/config"')
+    expect(vite + content).not.toContain('bundled-')
+  })
+
+  it('should apply `build.config.ts` replacements', async () => {
+    const vite = await readFile(join(buildConfigRootDir, 'dist/vite.mjs'), 'utf-8')
+    expect(vite).toContain('"1.2.3"')
+    expect(vite).not.toContain('__MODULE_VERSION__')
+
+    const unplugin = await readFile(join(replaceRootDir, 'dist/unplugin.mjs'), 'utf-8')
+    expect(unplugin).not.toContain('--uiDev')
+    expect(unplugin).toMatch(/isDev = false/)
+  })
 
   it('should stub a module whose source needs more than type stripping', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', stubSyntaxRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
@@ -407,6 +618,30 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect((stdout + stderr).match(/erasableSyntaxOnly/g)).toHaveLength(1)
     expect(stdout + stderr).toContain(guide('stub-builds'))
   }, 60 * 1000)
+
+  it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
+    expect(exitCode).toBe(0)
+    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('build-configuration')}`))
+    expect(stdout + stderr).not.toContain('instead of')
+    expect(stdout + stderr).not.toContain('`unbuild` field')
+    const files = await readdir(join(buildConfigRootDir, '.stub'), { recursive: true })
+    expect(files).toEqual(expect.arrayContaining(['content.mjs', 'nested/helper.mjs', 'utils.mjs', 'vite.mjs']))
+    const log = (await readFile(join(buildConfigRootDir, 'hooks.log'), 'utf-8')).trim().split('\n').map(line => JSON.parse(line))
+    expect(log.filter(entry => entry.stub).map(entry => entry.hook)).toEqual(['build:before', 'rollup:done', 'build:done'])
+  }, 60 * 1000)
+
+  it('should fail on every `build.config.ts` option without an equivalent', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', unsupportedRootDir], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).not.toBe(0)
+    for (const option of ['entries[0].ext', 'entries[1].builder: \'untyped\'', 'hooks[\'build:prepare\']', 'hooks[\'rollup:options\']', 'rollup.emitCJS: true', 'rollup.alias', 'stub', 'unknownOption']) {
+      expect(stdout + stderr).toContain(`build.config.ts: ${option}`)
+    }
+    expect(stdout + stderr).not.toContain('build.config.ts: hooks[\'mkdist:entry:options\']')
+    expect(stdout + stderr).toContain(`build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`)
+    expect(stdout + stderr).toContain(guide('unsupported-build-options'))
+  }, 60 * 1000)
+
   it('should surface isolated declaration diagnostics when the tsconfig opts in', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', isolatedRootDir], { nodeOptions: { cwd: repoRoot } })
     expect(exitCode).not.toBe(0)
