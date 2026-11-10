@@ -1,8 +1,8 @@
 import { writeFile } from 'node:fs/promises'
-import { pathToFileURL } from 'node:url'
-import { createJiti } from 'jiti'
 import { resolve } from 'pathe'
 import type { NuxtModule } from '@nuxt/schema'
+
+import { importModule } from './loader.ts'
 
 export interface WriteModuleMetaOptions {
   cwd: string
@@ -12,8 +12,8 @@ export interface WriteModuleMetaOptions {
 }
 
 export async function writeModuleMeta({ cwd, outDir, pkg, builder }: WriteModuleMetaOptions) {
-  const jiti = createJiti(cwd)
-  const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(pathToFileURL(resolve(outDir, 'module.mjs')).href, { default: true })
+  const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd })
+  const moduleFn = (moduleExports.default ?? moduleExports) as NuxtModule<Record<string, unknown>>
 
   const moduleMeta = await moduleFn.getMeta?.() || {}
   moduleMeta.name ||= pkg.name

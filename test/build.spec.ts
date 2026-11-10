@@ -27,8 +27,11 @@ describe('module builder', () => {
   const secondRootDir = rootDir.replace('example', '.temp-example-without-options')
   const thirdRootDir = rootDir.replace('example', '.temp-example-with-runtime-imports')
   const fourthRootDir = rootDir.replace('example', '.temp-example-single-runtime-dir')
+  const wildcardRootDir = rootDir.replace('example', '.temp-example-wildcard-paths')
   const noRuntimeRootDir = rootDir.replace('example', '.temp-example-without-runtime')
   const vueOnlyRootDir = rootDir.replace('example', '.temp-example-vue-only-runtime')
+  const unpreparedRootDir = rootDir.replace('example', '.temp-example-unprepared')
+  const jsSpecifierRootDir = rootDir.replace('example', '.temp-example-js-specifiers')
   const stylesheetsRootDir = rootDir.replace('example', '.temp-example-stylesheets')
   const transpileRootDir = rootDir.replace('example', '.temp-example-transpile-only')
   const solutionRootDir = rootDir.replace('example', '.temp-example-solution-tsconfig')
@@ -38,6 +41,7 @@ describe('module builder', () => {
   const typeErrorRootDir = rootDir.replace('example', '.temp-example-type-error')
   const semanticErrorRootDir = rootDir.replace('example', '.temp-example-semantic-error')
   const vueErrorRootDir = rootDir.replace('example', '.temp-example-vue-error')
+  const stubSyntaxRootDir = rootDir.replace('example', '.temp-example-stub-syntax')
   const annotatedRootDir = rootDir.replace('example', '.temp-example-isolated-annotated')
   const runtimeShapeRootDir = rootDir.replace('example', '.temp-example-runtime-shape')
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
@@ -83,6 +87,11 @@ export default defineNuxtModule({
 })
 `
 
+    await copyExample(unpreparedRootDir, contents => contents)
+    await rm(join(unpreparedRootDir, '.nuxt'), { force: true, recursive: true })
+
+    await copyExample(jsSpecifierRootDir, contents => `${contents}\nexport { myModuleUtils } from './utils.js'\n`)
+
     await copyExample(noRuntimeRootDir, minimalModule('no-runtime'))
     await rm(join(noRuntimeRootDir, 'src/runtime'), { force: true, recursive: true })
 
@@ -98,6 +107,14 @@ export default defineNuxtModule({
 
     await copyExample(isolatedRootDir, contents => contents)
     await enableIsolatedDeclarations(isolatedRootDir)
+
+    await copyExample(stubSyntaxRootDir, contents => `import { name as packageName } from '../package.json'
+import { Level } from './levels'
+
+enum Mode { Stub = 'stub' }
+class Holder { constructor(public value: string) {} }
+${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<string>Mode.Stub}-${Level.High}`).value')}`)
+    await writeFile(join(stubSyntaxRootDir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
 
     await copyExample(typeErrorRootDir, contents => contents)
     await rm(join(typeErrorRootDir, 'src/runtime/components'), { recursive: true, force: true })
@@ -120,6 +137,19 @@ export default defineNuxtModule({
     ].join('\n'))
     await writeFile(join(annotatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
     await enableIsolatedDeclarations(annotatedRootDir)
+
+    // Prepare a root directory whose tsconfig maps every bare specifier into `src/`,
+    // with a file that shadows a real package
+    await copyExample(wildcardRootDir, () => `import { defineNuxtModule } from '@nuxt/kit'
+
+export default defineNuxtModule({
+  meta: { name: 'wildcard-module', configKey: 'wildcardModule' },
+  setup() {},
+})
+`)
+    await writeFile(join(wildcardRootDir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '*': ['./src/*'] } } }, null, 2))
+    await mkdir(join(wildcardRootDir, 'src/@nuxt'), { recursive: true })
+    await writeFile(join(wildcardRootDir, 'src/@nuxt/kit.ts'), 'export const defineNuxtModule = (_: unknown) => ({ SHADOWED: true })\n')
 
     const writeFiles = async (target: string, files: Record<string, string>) => {
       for (const [file, contents] of Object.entries(files)) {
@@ -358,8 +388,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
       exec('pnpm', ['prepack'], { nodeOptions: { cwd: thirdRootDir } }),
       exec('pnpm', ['prepack'], { nodeOptions: { cwd: fourthRootDir } }),
       exec('pnpm', ['prepack'], { nodeOptions: { cwd: noRuntimeRootDir } }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', unpreparedRootDir], { nodeOptions: { cwd: repoRoot } }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', jsSpecifierRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', annotatedRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['prepack'], { nodeOptions: { cwd: vueOnlyRootDir } }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', wildcardRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', transpileRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot } }),
       exec('pnpm', ['nuxt-module-build', 'build', join(parentTsconfigRootDir, 'packages/mod')], { nodeOptions: { cwd: repoRoot } }),
@@ -367,6 +400,13 @@ export const defineOptions = (options: Options) => ({ options, helper })
     ])
   }, 180 * 1000)
 
+  it('should stub a module whose source needs more than type stripping', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', stubSyntaxRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(await readFile(join(stubSyntaxRootDir, 'dist/module.json'), 'utf-8')).name).toBe('my-module-stub-high')
+    expect((stdout + stderr).match(/erasableSyntaxOnly/g)).toHaveLength(1)
+    expect(stdout + stderr).toContain(guide('stub-builds'))
+  }, 60 * 1000)
   it('should surface isolated declaration diagnostics when the tsconfig opts in', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', isolatedRootDir], { nodeOptions: { cwd: repoRoot } })
     expect(exitCode).not.toBe(0)
@@ -425,6 +465,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(await readFile(join(annotatedDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
   })
 
+  it('should not let a wildcard `paths` entry shadow real packages when loading meta', async () => {
+    const meta = JSON.parse(await readFile(join(wildcardRootDir, 'dist/module.json'), 'utf-8'))
+    expect(meta).toMatchObject({ name: 'wildcard-module', configKey: 'wildcardModule' })
+  })
+
   it('should mirror the runtime source tree even when it has a single subdirectory', async () => {
     const files = await readdir(join(fourthDistDir, 'runtime'), { recursive: true, withFileTypes: true })
     const names = files.filter(file => file.isFile()).map(file => join(file.parentPath, file.name).replace(join(fourthDistDir, 'runtime') + '/', ''))
@@ -434,6 +479,17 @@ export const defineOptions = (options: Options) => ({ options, helper })
         "plugins/plugin.js",
       ]
     `)
+  })
+
+  it('should stub a module before `.nuxt` has been generated', async () => {
+    const meta = JSON.parse(await readFile(join(unpreparedRootDir, 'dist/module.json'), 'utf-8'))
+    expect(meta).toMatchObject({ name: 'my-module', configKey: 'myModule' })
+    expect(existsSync(join(unpreparedRootDir, '.nuxt'))).toBe(false)
+  })
+
+  it('should stub a module that imports TypeScript sources through `.js` specifiers', async () => {
+    const meta = JSON.parse(await readFile(join(jsSpecifierRootDir, 'dist/module.json'), 'utf-8'))
+    expect(meta).toMatchObject({ name: 'my-module', configKey: 'myModule' })
   })
 
   it('should reference `@nuxt/schema` rather than `nuxt/schema` in module declarations', async () => {
@@ -871,6 +927,20 @@ export const defineOptions = (options: Options) => ({ options, helper })
         version: '1.0.0',
       },
     )
+  })
+
+  it('should generate module metadata when the module entry imports runtime code', async () => {
+    const meta = await readFile(join(thirdDistDir, 'module.json'), 'utf-8')
+    expect(JSON.parse(meta)).toMatchObject({ configKey: 'myModule', name: 'my-module' })
+  })
+
+  it('should generate module metadata when the module entry re-exports from a build-only alias', async () => {
+    await exec('pnpm', ['nuxt-module-build', 'build', '--stub', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+    const meta = JSON.parse(await readFile(join(thirdDistDir, 'module.json'), 'utf-8'))
+    expect(meta).toMatchObject({ configKey: 'myModule', name: 'my-module' })
+
+    // leave the bundled output in place for the remaining assertions
+    await exec('pnpm', ['prepack'], { nodeOptions: { cwd: thirdRootDir }, throwOnError: true })
   })
 
   it('should generate typed plugin', async () => {

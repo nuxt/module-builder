@@ -1,17 +1,30 @@
 import { promises as fsp } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'pathe'
+import { consola } from 'consola'
 import { findExports } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
 
 import builderPkg from '../../package.json' with { type: 'json' }
 import { checkDeprecatedPackageFields } from './deprecations.ts'
+import { guide } from './guide.ts'
+import { findNonErasableSyntax, listNonErasableSyntax } from './loader.ts'
+import type { NonErasableSyntax } from './loader.ts'
 import { bundledEntries } from './entries.ts'
 import { writeModuleMeta } from './meta.ts'
 import { writeTypes } from './types.ts'
 
 export interface StubOptions {
   outDir: string
+}
+
+export function erasableSyntaxHint(found: NonErasableSyntax[]) {
+  return [
+    'Node cannot run this module\'s source directly.',
+    'Without `tsdown` installed, `nuxt-module-build build --stub` relies on Node\'s built-in type stripping, which only erases types: `enum`, `namespace`, parameter properties, `<T>value` assertions and legacy decorators are not supported.',
+    ...found.length ? ['These files use such syntax:', ...listNonErasableSyntax(found)] : [],
+    `Install \`tsdown\`, or set \`erasableSyntaxOnly: true\` in your \`tsconfig.json\` and replace the syntax listed. ${guide('stub-builds')}`,
+  ].join('\n')
 }
 
 /**
@@ -43,7 +56,12 @@ export async function stub(cwd: string, options: StubOptions) {
     await fsp.writeFile(resolve(outDir, `${name}.d.mts`), reExports.replace(/\.([cm]?)tsx?'/g, '.$1js\''), 'utf8')
   }
 
-  await writeModuleMeta({ cwd, outDir, pkg, builder: { [builderPkg.name]: builderPkg.version } })
+  await writeModuleMeta({ cwd, outDir, pkg, builder: { [builderPkg.name]: builderPkg.version } }).catch((error: Error & { code?: string }) => {
+    if (error.code?.startsWith('ERR_UNSUPPORTED_') || error.code === 'ERR_INVALID_TYPESCRIPT_SYNTAX') {
+      consola.error(erasableSyntaxHint(findNonErasableSyntax(cwd, Object.values(bundledEntries(cwd, pkg)))))
+    }
+    throw error
+  })
   await writeTypes(outDir, true)
   await checkDeprecatedPackageFields(cwd)
 }

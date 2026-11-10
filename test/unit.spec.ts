@@ -8,6 +8,7 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { dirname, join } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
+import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/build/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig } from '../src/rolldown/tsconfig.ts'
@@ -15,6 +16,8 @@ import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { guide } from '../src/build/guide.ts'
+import { erasableSyntaxHint } from '../src/build/stub.ts'
+import { findNonErasableSyntax } from '../src/build/loader.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
 const importer = fileURLToPath(new URL('../example/src/module.ts', import.meta.url))
@@ -108,6 +111,59 @@ describe('runtimeExternals', () => {
   })
 })
 
+describe('hints', () => {
+  it('should link the stub syntax hint to the upgrade guide', () => {
+    expect(erasableSyntaxHint([]).endsWith(guide('stub-builds'))).toBe(true)
+  })
+
+  it('should locate every use of syntax that Node cannot strip across the imported sources', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-erasable-'))
+    try {
+      await mkdir(join(dir, 'src'))
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/*': ['./*'] } } }))
+      await writeFile(join(dir, 'src/module.ts'), [
+        `import { Level } from './levels'`,
+        `import {`,
+        `  asArray,`,
+        `  normalise,`,
+        `} from './util'`,
+        `import { Context } from '~/src/context'`,
+        `import type { Unused } from './types'`,
+        `export * from './shared'`,
+        ``,
+        `export class Holder {`,
+        `  constructor(public value: string, private flag = false) {}`,
+        `}`,
+        `export const level = <string>Level.High`,
+        `export declare enum Ambient { A }`,
+        `export { asArray, normalise, Context }`,
+        ``,
+      ].join('\n'))
+      await writeFile(join(dir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
+      await writeFile(join(dir, 'src/util.ts'), `export const asArray = (v: unknown) => <unknown[]>(Array.isArray(v) ? v : [v])\nexport function normalise(v: string) {\n  return <string>v.trim()\n}\n`)
+      await writeFile(join(dir, 'src/context.ts'), `export class Context {\n  constructor(\n    public readonly name: string,\n    public options: object,\n  ) {}\n}\n`)
+      await writeFile(join(dir, 'src/shared.ts'), `export const enum Mode { On }\n`)
+      await writeFile(join(dir, 'src/types.ts'), `export interface Unused { never: true }\ndeclare module 'ambient' { enum Hidden { A } }\nexport enum Skipped { A }\n`)
+      const expected = [
+        { file: 'src/module.ts', line: 11, column: 15, kind: 'parameter property' },
+        { file: 'src/module.ts', line: 11, column: 37, kind: 'parameter property' },
+        { file: 'src/module.ts', line: 13, column: 22, kind: 'angle-bracket type assertion' },
+        { file: 'src/levels.ts', line: 1, column: 1, kind: '`enum`' },
+        { file: 'src/util.ts', line: 1, column: 40, kind: 'angle-bracket type assertion' },
+        { file: 'src/util.ts', line: 3, column: 10, kind: 'angle-bracket type assertion' },
+        { file: 'src/context.ts', line: 3, column: 5, kind: 'parameter property' },
+        { file: 'src/context.ts', line: 4, column: 5, kind: 'parameter property' },
+        { file: 'src/shared.ts', line: 1, column: 1, kind: '`enum`' },
+      ]
+      expect(findNonErasableSyntax(dir, ['./src/module.ts'])).toEqual(expected)
+      expect(erasableSyntaxHint(expected)).toContain('  - src/util.ts:3:10: angle-bracket type assertion')
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('deprecation checks', () => {
   const cwd = fileURLToPath(new URL('..', import.meta.url))
 
@@ -183,6 +239,19 @@ describe('selfReferencePaths', () => {
       'my-module/utils': ['/mod/src/utils'],
       'my-module/runtime/*': ['/mod/src/runtime/*'],
     })
+  })
+})
+
+describe('importModule', () => {
+  it('should import JSON without attributes, with top-level keys as named exports', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-json-'))
+    await writeFile(join(dir, 'data.json'), '{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}')
+    await writeFile(join(dir, 'entry.ts'), `export * from './data.json'\nexport { default as data } from './data.json'\n`)
+    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
+    const script = `const { importModule } = await import(${JSON.stringify(loader)}); console.log(JSON.stringify(await importModule(${JSON.stringify(join(dir, 'entry.ts'))})))`
+    const { stdout } = await exec('node', ['--input-type=module', '-e', script])
+    expect(JSON.parse(stdout)).toEqual(JSON.parse('{"name":"x","not-an-identifier":true,"__proto__":{"kept":true},"data":{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}}'))
+    await rm(dir, { recursive: true, force: true })
   })
 })
 
