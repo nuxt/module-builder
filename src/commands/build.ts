@@ -3,8 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { basename, dirname, extname, join, normalize, resolve } from 'pathe'
 import { filename } from 'pathe/utils'
 import { readPackageJSON } from 'pkg-types'
-import { parse } from 'tsconfck'
-import type { TSConfig } from 'pkg-types'
+import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import { defu } from 'defu'
 import { createJiti } from 'jiti'
 import { anyOf, createRegExp } from 'magic-regexp'
@@ -15,8 +14,10 @@ import type { ESMExport } from 'mlly'
 import { defineCommand } from 'citty'
 import { convertCompilerOptionsFromJson } from 'typescript'
 
-import { name, version } from '../../package.json'
-import { resolveCwdArg, sharedArgs } from './_shared'
+import pkg from '../../package.json' with { type: 'json' }
+import { resolveCwdArg, sharedArgs } from './_shared.ts'
+
+const { name, version } = pkg
 
 export default defineCommand({
   meta: {
@@ -100,7 +101,7 @@ export default defineCommand({
       hooks: {
         async 'mkdist:entry:options'(_ctx, entry, options) {
           options.typescript = defu(options.typescript, {
-            compilerOptions: await loadTSCompilerOptions(entry.input),
+            compilerOptions: loadTSCompilerOptions(entry.input),
           })
         },
         async 'rollup:options'(ctx, options) {
@@ -110,7 +111,7 @@ export default defineCommand({
             paths: {
               '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
             },
-          }, ctx.options.rollup.dts.compilerOptions, await loadTSCompilerOptions(entry!.path))
+          }, ctx.options.rollup.dts.compilerOptions, loadTSCompilerOptions(entry!.path))
           ctx.options.rollup.dts.compilerOptions = convertCompilerOptionsFromJson(mergedCompilerOptions, entry!.path).options
           options.plugins ||= []
           if (!Array.isArray(options.plugins))
@@ -138,7 +139,7 @@ export default defineCommand({
                   continue
 
                 const name = filename(normalizedId) || basename(normalizedId, extname(normalizedId))
-                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId).href.replace(entry.input, entry.outDir)), name))
+                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId.replace(entry.input, entry.outDir)).href), name))
                 if (distFile) {
                   return {
                     external: true,
@@ -185,6 +186,10 @@ export default defineCommand({
 
           // Generate types
           await writeTypes(ctx.options.outDir, ctx.options.stub)
+
+          if (!ctx.options.stub) {
+            await rewriteRuntimeTypeAliases(resolve(ctx.options.outDir, 'runtime'))
+          }
         },
         async 'build:done'(ctx) {
           const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
@@ -277,20 +282,45 @@ ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
 }
 
-async function loadTSCompilerOptions(path: string): Promise<NonNullable<TSConfig['compilerOptions']>> {
-  const config = await parse(path)
-  const resolvedCompilerOptions = config?.tsconfig.compilerOptions || {}
+const DECLARATION_RE = /\.d\.[^/]*ts$/
 
-  // TODO: this should probably be ported to tsconfck?
-  for (const { tsconfig, tsconfigFile } of config.extended || []) {
-    for (const alias in tsconfig.compilerOptions?.paths || {}) {
-      resolvedCompilerOptions.paths[alias] = resolvedCompilerOptions.paths[alias].map((p: string) => {
-        if (!/^\.{1,2}(?:\/|$)/.test(p)) return p
+// `#app`/`#app/*` are build-time-only aliases with no package resolution, so leaking
+// them into emitted declarations breaks `tsc`/`attw` for consumers. `nuxt/app` is the
+// resolvable public entry and re-exports the `#app/*` symbols.
+async function rewriteRuntimeTypeAliases(runtimeDir: string) {
+  if (!existsSync(runtimeDir)) {
+    return
+  }
 
-        return resolve(dirname(tsconfigFile), p)
-      })
+  const entries = await fsp.readdir(runtimeDir, { recursive: true })
+  await Promise.all(entries.map(async (entry) => {
+    if (!DECLARATION_RE.test(entry)) {
+      return
+    }
+
+    const file = join(runtimeDir, entry)
+    const contents = await fsp.readFile(file, 'utf8')
+    const rewritten = contents
+      .replace(/import\("#app(?:\/[^"]*)?"\)/g, 'import("nuxt/app")')
+      .replace(/(\bfrom\s*)(['"])#app(?:\/[^'"]*)?\2/g, '$1$2nuxt/app$2')
+
+    if (rewritten !== contents) {
+      await fsp.writeFile(file, rewritten, 'utf8')
+    }
+  }))
+}
+
+function loadTSCompilerOptions(path: string) {
+  const tsconfig = getTsconfig(path)
+  const compilerOptions = tsconfig?.config.compilerOptions ?? {}
+
+  const matchPath = tsconfig && createPathsMatcher(tsconfig)
+
+  if (matchPath && compilerOptions.paths) {
+    for (const alias in compilerOptions.paths) {
+      compilerOptions.paths[alias] = matchPath(alias)
     }
   }
 
-  return resolvedCompilerOptions
+  return compilerOptions
 }

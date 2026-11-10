@@ -14,15 +14,10 @@ jobs:
   release-pkg-pr-new:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - run: corepack enable
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with:
-          node-version: lts/*
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install
+          cache: true
 
       - name: Prepare build environment
         run: pnpm dev:prepare
@@ -30,4 +25,4 @@ jobs:
       - run: pnpm build
 
       - name: publish nightly release
-        run: pnpm pkg-pr-new publish --compact
+        run: pnpm pkg-pr-new publish --compact --pnpm
