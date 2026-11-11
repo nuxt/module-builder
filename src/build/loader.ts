@@ -380,7 +380,7 @@ function stubURL(specifier: string, parentURL: string | undefined) {
   const source = [
     `const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => ({}) })`,
     `export default stub`,
-    ...[...names].map(name => `export const ${name} = stub`),
+    ...[...names].filter(name => name !== 'default').map(name => `export { stub as ${name} }`),
   ].join('\n')
 
   return `data:text/javascript,${encodeURIComponent(source)}`

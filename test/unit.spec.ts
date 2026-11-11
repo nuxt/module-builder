@@ -459,6 +459,18 @@ describe('importModule', () => {
     expect(JSON.parse(stdout)).toEqual(JSON.parse('{"name":"x","not-an-identifier":true,"__proto__":{"kept":true},"data":{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}}'))
     await rm(dir, { recursive: true, force: true })
   })
+
+  it('should stand in for `#build` re-exports of `default` and of reserved words', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-stub-'))
+    await writeFile(join(dir, 'entry.ts'), `export { default as theme, for as loop } from '#build/ui/button'\nexport { size } from './size'\n`)
+    await writeFile(join(dir, 'size.ts'), `import { default as button, variants } from '#build/ui/button'\nexport const size = typeof button.slots + typeof variants\n`)
+    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([Object.keys(m).sort(), typeof m.theme, typeof m.loop, m.size]))`
+    const { stdout, stderr } = await exec('node', ['--input-type=module', '-e', script])
+    expect(stderr).toBe('')
+    expect(JSON.parse(stdout)).toEqual([['loop', 'size', 'theme'], 'function', 'function', 'functionfunction'])
+    await rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('declarationPaths', () => {
