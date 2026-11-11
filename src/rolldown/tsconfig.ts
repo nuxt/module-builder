@@ -216,7 +216,7 @@ export function declarationPaths(paths: Record<string, string[]>, cwd: string): 
 }
 
 function serverRoutesTable(paths: Record<string, string[]>, cwd: string) {
-  const targets = [...paths[SERVER_ROUTES_ALIAS] ?? [], ...(paths['#build/*'] ?? []).map(target => target.replace('*', 'server-routes'))]
+  const targets = [...paths[SERVER_ROUTES_ALIAS] ?? [], ...(paths['#build/*'] ?? []).map(target => target.replaceAll('*', 'server-routes'))]
   for (const target of targets) {
     const file = target.endsWith('.d.ts') ? target : `${target}.d.ts`
     if (isOwnBuildFile(file, cwd) && existsSync(file)) {
