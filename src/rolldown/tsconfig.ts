@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { createFilesMatcher, createPathsMatcher, getTsconfig, parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, isAbsolute, join, relative, resolve } from 'pathe'
@@ -92,10 +92,7 @@ async function rebaseOnOwnBuildDir(tsconfig: string, own: string, dir: string): 
   const references = (read(tsconfig)?.references ?? [])
     .map(reference => ({ path: resolve(dirname(tsconfig), reference.path) }))
     .filter(reference => !isForeignBuildFile(reference.path, dir))
-  const contents = JSON.stringify({ ...config, ...references.length && { references } })
-  const file = cachedPath(dir, '.json', contents)
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, contents)
+  const file = await writeCached(dir, '.json', JSON.stringify({ ...config, ...references.length && { references } }))
   return { path: file, config: parseTsconfig(file) }
 }
 
@@ -244,10 +241,24 @@ function cachedPath(cwd: string, extension: string, contents: string) {
   return join(cacheDir(cwd), `${createHash('sha256').update(contents).digest('hex').slice(0, 12)}${extension}`)
 }
 
+/**
+ * Writes `contents` to its content-addressed path unless it is already there, through a
+ * temporary file, so a concurrent reader (the declaration worker) never sees it half-written.
+ */
 async function writeCached(cwd: string, extension: string, contents: string) {
   const file = cachedPath(cwd, extension, contents)
+  if (existsSync(file)) {
+    return file
+  }
   await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, contents)
+  const temp = `${file}.${randomUUID()}`
+  await writeFile(temp, contents)
+  await rename(temp, file).catch(async (error) => {
+    if (!existsSync(file)) {
+      throw error
+    }
+    await rm(temp, { force: true })
+  })
   return file
 }
 

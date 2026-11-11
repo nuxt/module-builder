@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -6,13 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
-import { dirname, join } from 'pathe'
+import { basename, dirname, join } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/build/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig } from '../src/rolldown/tsconfig.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
@@ -490,6 +490,17 @@ describe('declarationPaths', () => {
     expect(ambient).toEqual(['#build', '#build/*', '#internal/nuxt/paths', '#components'])
     expect(Object.keys(paths)).toEqual(['#build/server-routes', '#imports', '#app', 'not-installed-package', '~/*'])
     expect(paths['#build/server-routes']![0]).toMatch(/[\\/]node_modules[\\/]\.cache[\\/]transpile-dir[\\/][0-9a-f]{12}\.d\.ts$/)
+  })
+
+  it('should write the server routes stub once and leave no temporary file behind', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-stub-'))
+    const file = await writeServerRoutesStub(cwd)
+    const written = await stat(file)
+    expect(await writeServerRoutesStub(cwd)).toBe(file)
+    expect((await stat(file)).mtimeMs).toBe(written.mtimeMs)
+    expect(await readdir(dirname(file))).toEqual([basename(file)])
+    expect(await readFile(file, 'utf-8')).toBe(SERVER_ROUTES_STUB)
+    await rm(cwd, { recursive: true, force: true })
   })
 
   it('should export from the server routes stub every name Nuxt\'s fetch types import from `#build/server-routes`', async () => {
