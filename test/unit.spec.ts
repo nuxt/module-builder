@@ -396,7 +396,7 @@ describe('deprecation checks', () => {
   it('should warn about a stale `types` field', () => {
     const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
     expect(checkStaleTypesField(cwd, { types: './dist/nope.d.ts' })).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`^Remove the \`types\` field from \`package\\.json\`: it points at \`\\./dist/nope\\.d\\.ts\`.* ${guide('the-types-field')}$`)))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`\`types\` in \`package.json\` points at \`./dist/nope.d.ts\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
     warn.mockClear()
     expect(checkStaleTypesField(cwd, {})).toBe(false)
     expect(warn).not.toHaveBeenCalled()

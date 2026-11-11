@@ -174,11 +174,7 @@ The module entry's declarations are `dist/types.d.mts` and `dist/module.d.mts`. 
       "import": "./dist/module.mjs"
     }
   },
-  "typesVersions": {
-    "*": {
-      ".": ["./dist/types.d.mts"]
-    }
-  }
+  "types": "./dist/types.d.mts"
 }
 ```
 
@@ -188,7 +184,7 @@ The module entry's declarations are `dist/types.d.mts` and `dist/module.d.mts`. 
 
 ### The types field
 
-A top-level `types` field isn't needed with `"moduleResolution": "bundler"`, which Nuxt projects use. Remove the field. If your module also supports `node10` resolution, add `typesVersions` for its subpath exports instead.
+With `"moduleResolution": "bundler"`, which Nuxt projects use, TypeScript reads `exports` and ignores the top-level `types` field. With `node10` resolution, TypeScript ignores `exports` and resolves the root import through `types`, then `main`. A `typesVersions` entry doesn't change that root lookup. If your module supports `node10` consumers, set `types` to `./dist/types.d.mts` and add `typesVersions` for subpath exports. Otherwise, remove the field.
 
 ### typesVersions paths
 
@@ -400,7 +396,7 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
 1. Use Node 22.18+, 24.11+ or 26+ locally and in CI.
 2. Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`, then `pnpm remove unbuild` (and `mkdist` and `jiti`, if they only served the builder). Do this before step 3.
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
-4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries and the top-level `types` field. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
+4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Set the top-level `types` field to `./dist/types.d.mts`, or remove it. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
 6. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
 7. Run `nuxt-module-build prepare`, then `nuxt-module-build build`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.

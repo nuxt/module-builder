@@ -46,7 +46,7 @@ export function checkStaleTypesField(cwd: string, pkg: PackageJSON) {
   if (!pkg.types || resolvesForTypeScript(cwd, pkg.types)) {
     return false
   }
-  consola.warn(`Remove the \`types\` field from \`package.json\`: it points at \`${pkg.types}\`, which the build does not produce, and bundler module resolution reads \`exports\` instead. Use \`typesVersions\` for subpath export types under Node10 resolution, if required. ${guide('the-types-field')}`)
+  consola.warn(`\`types\` in \`package.json\` points at \`${pkg.types}\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
   return true
 }
 
