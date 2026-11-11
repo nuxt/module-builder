@@ -75,7 +75,7 @@ async function rebaseOnOwnBuildDir(tsconfig: string, own: string, dir: string): 
       .map(target => resolveExtends(target, dirname(file)))
       .filter(target => target !== undefined && !isForeignBuildFile(target, dir))
       .map(target => layerOptions(target!))
-    return Object.assign({}, ...base, absoluteOptions(raw?.compilerOptions ?? {}, dirname(file)))
+    return Object.assign({}, ...base, absoluteOptions(raw?.compilerOptions ?? {}, dirname(file), dirname(tsconfig)))
   }
   const ownConfig = parseTsconfig(own)
   const ownPaths = tsconfigPaths({ path: own, config: ownConfig })
@@ -118,8 +118,9 @@ function resolveExtends(target: string, from: string) {
   }
 }
 
-function absoluteOptions(options: Record<string, unknown>, from: string) {
-  const dir = (value: string) => resolve(from, value.replace('${configDir}', from))
+/** Path options resolved against `from`, the layer's directory; `${configDir}` is the leaf tsconfig's. */
+function absoluteOptions(options: Record<string, unknown>, from: string, configDir: string) {
+  const dir = (value: string) => resolve(from, value.replace('${configDir}', configDir))
   const result = { ...options }
   for (const key of PATH_OPTIONS) {
     if (typeof result[key] === 'string') {
@@ -133,7 +134,7 @@ function absoluteOptions(options: Record<string, unknown>, from: string) {
   }
   if (result.paths && typeof result.paths === 'object') {
     const base = typeof options.baseUrl === 'string' ? dir(options.baseUrl) : from
-    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target.replace('${configDir}', from)))]))
+    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target.replace('${configDir}', configDir)))]))
   }
   return result
 }

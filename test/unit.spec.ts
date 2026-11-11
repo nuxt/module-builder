@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
-import { basename, dirname, join } from 'pathe'
+import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
 import { exec } from 'tinyexec'
@@ -532,8 +532,9 @@ describe('createTsconfigResolver', () => {
     await mkdir(join(cwd, 'playground/.nuxt'), { recursive: true })
     await writeFile(join(cwd, '.nuxt/tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, types: [], paths: { '#build/*': ['./*'], '#shared': ['../shared'] } }, include: ['./nuxt.d.ts', '../src/**/*'] }))
     await writeFile(join(cwd, 'playground/.nuxt/tsconfig.json'), JSON.stringify({ compilerOptions: { types: ['playground-types'], paths: { '#build/*': ['./*'], '#playground': ['../app'] } }, include: ['../**/*'] }))
-    await writeFile(join(cwd, 'base.json'), JSON.stringify({ compilerOptions: { types: ['global-types'], noUncheckedIndexedAccess: true } }))
-    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ extends: ['./base.json', './playground/.nuxt/tsconfig.json'], compilerOptions: { paths: { '#shared': ['./other'], '#mine/*': ['./mine/*'] }, exactOptionalPropertyTypes: true }, references: [{ path: './playground/.nuxt/tsconfig.app.json' }, { path: './tsconfig.node.json' }] }))
+    await mkdir(join(cwd, 'config'))
+    await writeFile(join(cwd, 'config/base.json'), JSON.stringify({ compilerOptions: { types: ['global-types'], noUncheckedIndexedAccess: true, rootDir: '${configDir}', paths: { '#shared': ['${configDir}/other'], '#mine/*': ['${configDir}/mine/*'] } } }))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ extends: ['./config/base.json', './playground/.nuxt/tsconfig.json'], compilerOptions: { exactOptionalPropertyTypes: true }, references: [{ path: './playground/.nuxt/tsconfig.app.json' }, { path: './tsconfig.node.json' }] }))
     await writeFile(join(cwd, 'tsconfig.node.json'), JSON.stringify({ compilerOptions: {}, include: ['nuxt.config.ts'] }))
     await writeFile(join(cwd, 'playground/.nuxt/tsconfig.app.json'), JSON.stringify({ compilerOptions: { types: ['playground-types'] }, include: ['../**/*'] }))
     const { root, replaced } = await createTsconfigResolver(cwd)
@@ -544,6 +545,7 @@ describe('createTsconfigResolver', () => {
     expect(options.noUncheckedIndexedAccess).toBe(true)
     expect(options.exactOptionalPropertyTypes).toBe(true)
     expect(options.types).toEqual(['global-types'])
+    expect(resolve(dirname(root!.path), options.rootDir!)).toBe(cwd)
     expect(tsconfigPaths(root)).toEqual({ '#build/*': [join(cwd, '.nuxt/*')], '#shared': [join(cwd, 'shared')], '#mine/*': [join(cwd, 'mine/*')] })
     expect(root!.config.references).toEqual([{ path: join(cwd, 'tsconfig.node.json') }])
     expect(root!.config.include).toEqual(['../../../.nuxt/nuxt.d.ts', '../../../.nuxt/../src/**/*'])
