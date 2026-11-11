@@ -33,6 +33,7 @@ export interface ImportModuleOptions {
  *   when importing TypeScript sources directly (`--stub`, `build.config.ts`).
  */
 export async function importModule(path: string, options: ImportModuleOptions = {}) {
+  const cwd = options.cwd ?? process.cwd()
   const matchPath = options.cwd ? pathsMatcher(options.cwd) : undefined
   const stubs = options.stubs || {}
 
@@ -89,7 +90,7 @@ export async function importModule(path: string, options: ImportModuleOptions = 
         return { format: 'module', source: 'export default {}', shortCircuit: true }
       }
       if (url.startsWith('file:') && TYPESCRIPT_RE.test(url)) {
-        const result = transpile(url)
+        const result = transpile(url, cwd)
         if (result) {
           return result
         }
@@ -259,7 +260,7 @@ function hasNonErasableSyntax(oxc: Oxc, filename: string, source: string, lang: 
 
 const reportedNonErasable = new Set<string>()
 
-function transpile(url: string) {
+function transpile(url: string, cwd: string) {
   const oxc = loadOxc()
   if (!oxc) {
     return
@@ -268,9 +269,9 @@ function transpile(url: string) {
   const source = readFileSync(filename, 'utf8')
   const lang = filename.endsWith('x') ? 'tsx' : 'ts'
   if (!process.env.CI && !reportedNonErasable.has(filename) && hasNonErasableSyntax(oxc, filename, source, lang)) {
-    const found = findNonErasableSyntax(process.cwd(), [filename])
+    const found = findNonErasableSyntax(cwd, [filename])
     for (const { file } of found) {
-      reportedNonErasable.add(resolve(process.cwd(), file))
+      reportedNonErasable.add(resolve(cwd, file))
     }
     consola.warn([
       'These files use TypeScript syntax that Node cannot strip, so they were transpiled:',

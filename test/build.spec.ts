@@ -626,6 +626,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(await readFile(join(stubSyntaxRootDir, 'dist/module.json'), 'utf-8')).name).toBe('my-module-stub-high')
     expect((stdout + stderr).match(/erasableSyntaxOnly/g)).toHaveLength(1)
     expect(stdout + stderr).toContain(guide('stub-builds'))
+    expect(stdout + stderr).toContain('\n  - src/module.ts:4:1: `enum`')
+    expect(stdout + stderr).toContain('\n  - src/levels.ts:1:1: `enum`')
     expect(stdout + stderr).not.toContain('do not exist after the build')
   }, 60 * 1000)
 
