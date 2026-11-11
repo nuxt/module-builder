@@ -460,6 +460,20 @@ describe('importModule', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  it('should leave files that only need type stripping to Node', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-strip-'))
+    const line = `export const location: string = ((): string => new Error('here').stack!.split('\\n')[1]!)()`
+    await writeFile(join(dir, 'entry.ts'), `${line}\nexport { kind } from './kind'\n`)
+    await writeFile(join(dir, 'kind.ts'), `export enum Kind { Stub = 'stub' }\nexport const kind: string = Kind.Stub\n`)
+    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([m.location, m.kind]))`
+    const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { env: { ...process.env, CI: '1' } } })
+    const [location, kind] = JSON.parse(stdout) as [string, string]
+    expect(location).toContain(`entry.ts:1:${line.indexOf('new Error') + 1}`)
+    expect(kind).toBe('stub')
+    await rm(dir, { recursive: true, force: true })
+  })
+
   it('should stand in for `#build` re-exports of `default` and of reserved words', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-stub-'))
     await writeFile(join(dir, 'entry.ts'), `export { default as theme, for as loop } from '#build/ui/button'\nexport { size } from './size'\n`)

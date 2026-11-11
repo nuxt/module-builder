@@ -120,14 +120,6 @@ const TYPESCRIPT_RE = /\.[cm]?tsx?$/
 interface Oxc {
   transform: Transform
   transformSync: (filename: string, source: string, options: Record<string, unknown>) => { code: string, errors: Array<{ message: string }> }
-  parseSync: (filename: string, source: string, options: Record<string, unknown>) => { program: unknown }
-  Visitor: new (visitor: Record<string, (node: SyntaxNode) => void>) => { visit: (program: unknown) => void }
-}
-
-interface SyntaxNode {
-  start: number
-  declare?: boolean
-  kind?: string
 }
 
 let oxc: Oxc | null | undefined
@@ -144,8 +136,6 @@ export function loadOxc() {
   }
   return oxc
 }
-
-const NON_ERASABLE_NODE_TYPES = ['TSParameterProperty', 'TSTypeAssertion', 'TSImportEqualsDeclaration', 'TSExportAssignment', 'Decorator', 'TSEnumDeclaration', 'TSModuleDeclaration']
 
 export interface NonErasableSyntax {
   /** Path relative to the module root. */
@@ -249,17 +239,12 @@ function nonErasableSyntaxIn(filename: string, source: string): Array<Omit<NonEr
   return found
 }
 
-function hasNonErasableSyntax(oxc: Oxc, filename: string, source: string, lang: string) {
-  let found = false
-  const visitor = Object.fromEntries(NON_ERASABLE_NODE_TYPES.map(type => [type, (node: SyntaxNode) => {
-    found ||= !node.declare && node.kind !== 'global'
-  }]))
-  new oxc.Visitor(visitor).visit(oxc.parseSync(filename, source, { lang, sourceType: 'module' }).program)
-  return found
-}
-
 const reportedNonErasable = new Set<string>()
 
+/**
+ * Transpiles a TypeScript file with oxc when Node's type stripping cannot load it: JSX, or
+ * syntax that only erasing types does not remove. Files Node can strip are left to Node.
+ */
 function transpile(url: string, cwd: string) {
   const oxc = loadOxc()
   if (!oxc) {
@@ -268,7 +253,11 @@ function transpile(url: string, cwd: string) {
   const filename = resolve(fileURLToPath(url))
   const source = readFileSync(filename, 'utf8')
   const lang = filename.endsWith('x') ? 'tsx' : 'ts'
-  if (!process.env.CI && !reportedNonErasable.has(filename) && hasNonErasableSyntax(oxc, filename, source, lang)) {
+  const nonErasable = lang === 'ts' && nonErasableSyntaxIn(filename, source).length > 0
+  if (lang === 'ts' && !nonErasable) {
+    return
+  }
+  if (nonErasable && !process.env.CI && !reportedNonErasable.has(filename)) {
     const found = findNonErasableSyntax(cwd, [filename])
     for (const { file } of found) {
       reportedNonErasable.add(resolve(cwd, file))

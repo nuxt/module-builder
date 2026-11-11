@@ -208,7 +208,7 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 
 ## Stub builds
 
-`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub loads the TypeScript sources with its own loader. The builder transpiles them with oxc when `tsdown` is installed, and uses Node's own type stripping otherwise. Plain Node only strips types, so `enum`, `namespace`, parameter properties, `<T>value` assertions, and legacy decorators fail to load there.
+`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub loads the TypeScript sources with its own loader. The builder loads them with Node's own type stripping. Only the files that type stripping can't load, those with JSX or with syntax that erasing types doesn't remove, are transpiled with oxc, and only when `tsdown` is installed. Plain Node only strips types, so `enum`, `namespace`, parameter properties, `<T>value` assertions, and legacy decorators fail to load there.
 
 The build lists every file, line, and column that uses such syntax, so the sources stay loadable by Node alone. Set `erasableSyntaxOnly` so the type checker reports it too, then rewrite each occurrence:
 
