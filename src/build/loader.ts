@@ -264,7 +264,7 @@ function transpile(url: string) {
   if (!oxc) {
     return
   }
-  const filename = fileURLToPath(url)
+  const filename = resolve(fileURLToPath(url))
   const source = readFileSync(filename, 'utf8')
   const lang = filename.endsWith('x') ? 'tsx' : 'ts'
   if (!process.env.CI && !reportedNonErasable.has(filename) && hasNonErasableSyntax(oxc, filename, source, lang)) {
