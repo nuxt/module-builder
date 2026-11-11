@@ -8,7 +8,7 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
+import { bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/build/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
@@ -511,6 +511,17 @@ describe('declarationPaths', () => {
     const exported = [...SERVER_ROUTES_STUB.matchAll(/^export (?:type|interface) (\w+)/gm)].map(match => match[1])
     expect(imported.length > 0).toBe(satisfies(nuxtVersion, '>=4.6.0'))
     expect(imported.filter(name => !exported.includes(name))).toEqual([])
+  })
+})
+
+describe('resolveOutDir', () => {
+  it('should resolve an output directory inside the module and refuse one containing it', () => {
+    expect(resolveOutDir('/repo/mod', 'dist')).toBe('/repo/mod/dist')
+    expect(resolveOutDir('/repo/mod', '../sibling-dist')).toBe('/repo/sibling-dist')
+    expect(resolveOutDir('/repo/mod', '/repo/mod/.stub')).toBe('/repo/mod/.stub')
+    for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod']) {
+      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+    }
   })
 })
 

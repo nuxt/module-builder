@@ -6,7 +6,7 @@ import { findExports } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, warnDeprecatedBuildConfig } from './build-config.ts'
+import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, warnDeprecatedBuildConfig } from './build-config.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
 import { findNonErasableSyntax, listNonErasableSyntax } from './loader.ts'
@@ -33,7 +33,7 @@ export function erasableSyntaxHint(found: NonErasableSyntax[]) {
  */
 export async function stub(cwd: string, options: StubOptions) {
   const pkg = await readPackageJSON(cwd)
-  const outDir = resolve(cwd, options.outDir)
+  const outDir = resolveOutDir(cwd, options.outDir)
 
   const config = await loadBuildConfig(cwd, pkg, outDir)
   // The stub only re-exports sources, so options the full build rejects do not affect it.

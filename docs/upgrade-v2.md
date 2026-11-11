@@ -349,6 +349,10 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 - A relative import of a file outside `src/runtime` is emitted where the import points (`src/shared/x.ts` becomes `dist/shared/x.js`), or under `dist/_external/` when that would leave `dist` or collide with another output. Files that are used as types only get a `.d.ts`.
 - The module's own package name and `#` subpath imports are never bundled into `module.mjs`.
 
+## Output directory
+
+The build empties `--outDir` (`dist` by default) before writing to it, so it must be a directory inside the module. An `--outDir` of `.`, or of a directory containing the module, is refused.
+
 ## Module tsconfig
 
 Declarations are generated with the module's own `.nuxt`, which `nuxt-module-build prepare` writes from a Nuxt instance that runs the module alone. Extend it from the module's `tsconfig.json`, and leave the playground to its own `tsconfig.json`:

@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/pr
 import { beforeAll, describe, it, expect } from 'vitest'
 import { exec } from 'tinyexec'
 import { readPackageJSON } from 'pkg-types'
-import { dirname, join, relative } from 'pathe'
+import { dirname, join, relative, resolve } from 'pathe'
 import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { satisfies } from 'verkit'
@@ -633,6 +633,16 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toContain('\n  - src/levels.ts:1:1: `enum`')
     expect(stdout + stderr).not.toContain('do not exist after the build')
   }, 60 * 1000)
+
+  it('should refuse an `outDir` that contains the module root', async () => {
+    for (const outDir of ['.', '..']) {
+      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', outDir, noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
+      expect(exitCode).not.toBe(0)
+      expect(stdout + stderr).toContain(`\`--outDir ${outDir}\` resolves to \`${resolve(noRuntimeRootDir, outDir)}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+    }
+    expect(existsSync(join(noRuntimeRootDir, 'package.json'))).toBe(true)
+    expect(existsSync(join(repoRoot, 'package.json'))).toBe(true)
+  })
 
   it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })

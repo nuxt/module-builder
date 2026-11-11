@@ -12,7 +12,7 @@ import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, warnDeprecatedBuildConfig } from './build-config.ts'
+import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, warnDeprecatedBuildConfig } from './build-config.ts'
 import type { DirectoryEntry } from './build-config.ts'
 import { externalDependencyDeclarations, NUXT_EXTERNALS } from './externals.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
@@ -53,7 +53,7 @@ export function shouldNudge(isolatedDeclarations: boolean) {
 
 export async function build(cwd: string, options: BuildOptions) {
   const pkg = await readPackageJSON(cwd)
-  const outDir = resolve(cwd, options.outDir)
+  const outDir = resolveOutDir(cwd, options.outDir)
   const runtimeSrcDir = resolve(cwd, 'src/runtime')
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {

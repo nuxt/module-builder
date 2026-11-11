@@ -317,6 +317,15 @@ const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
  * and translate them. Neither `unbuild` nor this package is loaded to evaluate the file:
  * `defineBuildConfig` is replaced with the identity.
  */
+/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
+export function resolveOutDir(cwd: string, outDir: string) {
+  const resolved = resolve(cwd, outDir)
+  if (!relative(resolved, cwd).startsWith('..')) {
+    throw new Error(`\`--outDir ${outDir}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  }
+  return resolved
+}
+
 export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: string): Promise<LoadedBuildConfig> {
   const sources: BuildConfigSource[] = []
   let configCount = 0
