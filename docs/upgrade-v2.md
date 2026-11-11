@@ -1,12 +1,12 @@
 # Upgrading to @nuxt/module-builder v2
 
-This guide takes a Nuxt module from `@nuxt/module-builder` v1 to v2. Version 2 builds your module with [tsdown](https://tsdown.dev) instead of unbuild. The CLI, the project layout (`src/module.ts` and `src/runtime/`), and the output files (`dist/module.mjs`, `dist/module.json`, `dist/types.d.mts`, and `dist/runtime/**`) stay the same.
+This guide takes a Nuxt module from v1 to v2 of the module builder. In v2, `@nuxt/module-builder` builds your module with [tsdown](https://tsdown.dev) instead of unbuild. The CLI, the project layout (`src/module.ts` and `src/runtime/`), and the output of your build stay the same.
 
 Most modules upgrade by running the build and following its output. Every message that requires a change links to the matching section of this guide. If you'd rather work through everything up front, use the [checklist](#checklist) at the end.
 
 ## Node engines
 
-`@nuxt/module-builder` v2 requires Node `^22.18.0 || >=24.0.0`, and `tsdown` requires `^22.18.0 || ^24.11.0 || >=26.0.0`. Build your module with Node 22.18 or later, or Node 24.11 or later, everywhere it's built, including CI:
+v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Build your module with Node 22.18 or later, or Node 24.11 or later:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -32,11 +32,11 @@ pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7
 }
 ```
 
-Then remove the packages that only served the old builder. See [Removed dependencies](#removed-dependencies).
+Then remove the packages that you don't need any more (see [Removed dependencies](#removed-dependencies)).
 
 ## Build configuration
 
-`build.config.ts` (also `.mts`, `.js`, and `.mjs`) and the `unbuild` field of `package.json` are deprecated. The build still reads them and applies these options:
+`build.config.ts` and the `unbuild` field of `package.json` are deprecated. The build still reads them and applies these options:
 
 - `entries`: strings and `{ input, name }` objects are bundled as extra entries. Entries with `builder: 'mkdist'`, or with an input that ends in `/`, are transpiled file by file.
 - `externals`: package names and regular expressions that are never bundled.
@@ -133,7 +133,7 @@ The `.d.ts` files that `typesVersions` entries relied on go with the CommonJS ou
 
 ### mkdist options
 
-Runtime files are transpiled with oxc, one file at a time, with their imports kept as written. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, `declaration` on an entry, `format`, and postcss plugins passed through `mkdist:entry:options`. Remove them. `ext` and `addRelativeDeclarationExtensions` on a directory entry are accepted when they match what the build produces anyway.
+Runtime files are transpiled with oxc, one file at a time, with their imports kept as written. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, `declaration` on an entry, and `format`. Remove them. Postcss plugins passed through `mkdist:entry:options` are ignored with a warning, so a build can pass without them. Replace that processing as described in [Runtime stylesheets](#runtime-stylesheets). `ext` and `addRelativeDeclarationExtensions` on a directory entry are accepted when they match what the build produces anyway.
 
 ```ts
 // before
@@ -212,9 +212,9 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 
 ## Stub builds
 
-`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`, and Node loads the TypeScript sources directly. With `tsdown` installed, the sources are transpiled with oxc as they load, so any TypeScript syntax works. Without it, Node's own type stripping is used. Type stripping only erases types, so `enum`, `namespace`, parameter properties, `<T>value` assertions, and legacy decorators fail to load.
+`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub loads the TypeScript sources with its own loader. The builder transpiles them with oxc when `tsdown` is installed, and uses Node's own type stripping otherwise. Plain Node only strips types, so `enum`, `namespace`, parameter properties, `<T>value` assertions, and legacy decorators fail to load there.
 
-In both cases, the build lists every file, line, and column that uses such syntax. Set `erasableSyntaxOnly` so the type checker reports it too, then rewrite each occurrence:
+The build lists every file, line, and column that uses such syntax, so the sources stay loadable by Node alone. Set `erasableSyntaxOnly` so the type checker reports it too, then rewrite each occurrence:
 
 ```json
 {
@@ -397,7 +397,7 @@ pnpm remove unbuild
 
 Follow these steps in order to upgrade a module. Each step is mechanical until the build runs. Use your module's own package manager where `pnpm` is written.
 
-1. Use Node 22.18+ or 24.11+ locally and in CI.
+1. Use Node 22.18+, 24.11+ or 26+ locally and in CI.
 2. Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`, then `pnpm remove unbuild` (and `mkdist` and `jiti`, if they only served the builder). Do this before step 3.
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
 4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries and the top-level `types` field. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
