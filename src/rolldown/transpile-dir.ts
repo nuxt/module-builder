@@ -450,7 +450,7 @@ class DirectoryBuild {
       }
     }
     const planned = this.outputs.get(file)
-    if (planned && !DECLARATION_RE.test(file) && (SCRIPT_RE.test(file) || file.endsWith('.vue'))) {
+    if (planned && !DECLARATION_RE.test(file) && (SCRIPT_RE.test(file) || file.endsWith('.vue') || SASS_RE.test(file))) {
       return relativeSpecifier(output, planned)
     }
   }

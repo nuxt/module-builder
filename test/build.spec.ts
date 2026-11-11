@@ -845,10 +845,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(await readFile(join(stylesheetsRootDir, 'dist/runtime/types/app.d.ts'), 'utf-8')).toBe(`import type { NuxtApp } from 'nuxt/app'\nexport type App = NuxtApp\n`)
   })
 
-  it('should keep stylesheet imports in runtime scripts as written', async () => {
+  it('should point stylesheet imports in runtime scripts at the emitted files', async () => {
     const styled = await readFile(join(stylesheetsRootDir, 'dist/runtime/plugins/styled.js'), 'utf-8')
     expect(styled).toContain('import "../styles/card.css";')
-    expect(styled).toContain('import "../styles/theme.scss";')
+    expect(styled).toContain('import "../styles/theme.css";')
+    expect(styled).not.toContain('theme.scss')
   })
 
   it('should keep every non-relative runtime import as written', async () => {

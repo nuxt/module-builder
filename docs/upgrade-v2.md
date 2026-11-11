@@ -337,7 +337,7 @@ Stylesheets under `src/runtime` are processed with lightningcss instead of postc
   pnpm add -D sass
   ```
 
-- Imports of stylesheets in runtime scripts are kept as written, including `import './x.scss'` when the output is `x.css`.
+- An import of a compiled Sass file in a runtime script points at the emitted file: `import './x.scss'` becomes `import './x.css'`. Other stylesheet imports are kept as written.
 - Postcss plugins and other postcss configuration are not applied. Move any such processing into the Nuxt app, or pre-process the stylesheets before the build.
 
 ## Runtime output
