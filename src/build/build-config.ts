@@ -7,7 +7,7 @@ import type { PackageJson } from 'pkg-types'
 import type { BuildContext, BuildHook } from './define.ts'
 import { guide } from './guide.ts'
 import type { GuideSection } from './guide.ts'
-import { importModule, probe } from './loader.ts'
+import { findUnresolvableImports, formatUnresolvableImports, importModule, probe } from './loader.ts'
 
 const BUILD_CONFIG_FILES = ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs']
 
@@ -330,12 +330,22 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   const sources: BuildConfigSource[] = []
   let configCount = 0
 
+  const field = pkg.unbuild !== undefined ? 'unbuild' : pkg.build !== undefined ? 'build' : undefined
+  const fieldSource = field ? [{ name: `package.json "${field}"`, config: pkg[field] }] : []
+
   let importsUnbuild: boolean | undefined
   let fileHasEntries: boolean | undefined
   const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
   if (file) {
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
     const stubs = { 'unbuild': DEFINE_BUILD_CONFIG_STUB, '@nuxt/module-builder': DEFINE_BUILD_CONFIG_STUB }
+    const unresolvable = findUnresolvableImports(cwd, [file], [])
+    if (unresolvable.length) {
+      const withoutFile = translateBuildConfig(fieldSource, { cwd, outDir })
+      const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
+      unresolvable.push(...findUnresolvableImports(cwd, Object.values(bundledEntries(cwd, withoutFile)), runtimeDirs))
+      throw new Error(formatUnresolvableImports(unresolvable))
+    }
     const { default: config } = await importModule(resolve(cwd, file), { cwd, stubs })
     if (typeof config === 'function') {
       throw new TypeError(`\`${file}\` must export a config object, not a function. Replace the function with the object it returns. ${guide('other-options')}`)
@@ -346,10 +356,7 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     fileHasEntries = configs.some(config => isPlainObject(config) && config.entries !== undefined)
   }
 
-  const field = pkg.unbuild !== undefined ? 'unbuild' : pkg.build !== undefined ? 'build' : undefined
-  if (field) {
-    sources.push({ name: `package.json "${field}"`, config: pkg[field] })
-  }
+  sources.push(...fieldSource)
 
   const translated = translateBuildConfig(sources, { cwd, outDir })
   translated.neverBundle.push(...inferredExternals(pkg))

@@ -17,7 +17,7 @@ import type { DirectoryEntry } from './build-config.ts'
 import { externalDependencyDeclarations, NUXT_EXTERNALS } from './externals.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
-import { loadOxc, probe } from './loader.ts'
+import { assertResolvableImports, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
 import { replacePlugin } from './replace.ts'
 import { runtimeExternals } from './runtime-externals.ts'
@@ -73,10 +73,12 @@ export async function build(cwd: string, options: BuildOptions) {
   const sourcemap = options.sourcemap || config.sourcemap
   const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: false, sourcemap })
 
+  const entries = bundledEntries(cwd, config)
+  const runtimeDirs = directories.map(directory => directory.srcDir)
   await callBuildHook(config, 'build:before', ctx)
+  assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
   await rm(outDir, { recursive: true, force: true })
 
-  const entries = bundledEntries(cwd, config)
   const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))
   const isolatedDeclarations = hasIsolatedDeclarations(moduleTsconfig)
   // `eager` puts every file of the tsconfig in the program, so ambient declarations such
@@ -170,6 +172,7 @@ export async function build(cwd: string, options: BuildOptions) {
   await writeModuleMeta({
     cwd,
     outDir,
+    runtimeDirs,
     pkg,
     builder: {
       [builderPkg.name]: builderPkg.version,

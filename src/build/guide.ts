@@ -23,6 +23,7 @@ export type GuideSection
     | 'preparing-nuxt'
     | 'module-tsconfig'
     | 'output-directory'
+    | 'import-extensions-in-module-code'
 
 /** The URL of a section of the upgrade guide. */
 export function guide(section: GuideSection) {

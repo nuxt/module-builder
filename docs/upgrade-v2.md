@@ -229,6 +229,24 @@ export const Mode = { Light: 0, Dark: 1 } as const
 export type Mode = typeof Mode[keyof typeof Mode]
 ```
 
+## Import extensions in module code
+
+Relative imports in `src/module.ts`, and in every file it imports outside the runtime directories, carry the imported file's extension: `./utils.ts`, not `./utils`, `./utils.js` or `./dir`. The stub re-exports these sources as they are, and Node resolves relative specifiers literally. The generated `.nuxt/tsconfig.json` sets `allowImportingTsExtensions`, so the `.ts` form type checks without further settings.
+
+The build lists every specifier that doesn't name a file, with the one to write instead, and stops:
+
+```ts
+// before
+import { helper } from './utils'
+import { kit } from './kit'
+
+// after
+import { helper } from './utils.ts'
+import { kit } from './kit/index.ts'
+```
+
+Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added, as before. The same rule applies to `build.config.ts`.
+
 ## Declaration errors
 
 Declarations for the module entry and for `src/runtime` are generated with TypeScript, using your module's own `tsconfig.json`. Run `nuxt-module-build prepare` first, as described in [Preparing .nuxt](#preparing-nuxt). Errors that would leave the declarations missing or wrong fail the build. Every other type error, in `.ts` and `.vue` files alike, is reported as a warning.
@@ -398,8 +416,9 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
 4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Set the top-level `types` field to `./dist/types.d.mts`, or remove it. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
-6. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
-7. Run `nuxt-module-build prepare`, then `nuxt-module-build build`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.
-8. Run your module's own type check (for example, `nuxt typecheck` or `vue-tsc --noEmit`) and fix what it reports. A build warning about type errors that the type check doesn't reproduce is safe to ignore. Annotate exports whose type is inferred through a `#build/*` alias; otherwise `dist` declares them as `any`.
-9. Run `pnpm dlx publint`. Then run `pnpm pack` and `pnpm dlx @arethetypeswrong/cli <name>-<version>.tgz`, and fix any path they report. (`attw --pack .` only works with npm, and `npm pack` fails on packages with `devEngines`.)
-10. Run your module's tests and the playground against `dist`.
+6. Add the `.ts` extension to relative imports in `src/module.ts` and the files it imports outside `src/runtime` (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`). The build lists each one that is missing.
+7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
+8. Run `nuxt-module-build prepare`, then `nuxt-module-build build`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.
+9. Run your module's own type check (for example, `nuxt typecheck` or `vue-tsc --noEmit`) and fix what it reports. A build warning about type errors that the type check doesn't reproduce is safe to ignore. Annotate exports whose type is inferred through a `#build/*` alias; otherwise `dist` declares them as `any`.
+10. Run `pnpm dlx publint`. Then run `pnpm pack` and `pnpm dlx @arethetypeswrong/cli <name>-<version>.tgz`, and fix any path they report. (`attw --pack .` only works with npm, and `npm pack` fails on packages with `devEngines`.)
+11. Run your module's tests and the playground against `dist`.

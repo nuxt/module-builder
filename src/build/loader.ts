@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { consola } from 'consola'
-import { dirname, relative, resolve } from 'pathe'
+import { dirname, isAbsolute, relative, resolve } from 'pathe'
 import { findExports, findStaticImports, parseStaticImport } from 'mlly'
 import type { NamedExport } from 'mlly'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
@@ -20,6 +20,8 @@ export interface ImportModuleOptions {
   cwd?: string
   /** Source code to serve in place of these bare specifiers. */
   stubs?: Record<string, string>
+  /** Directories whose files import relative sources without extensions, such as `src/runtime`. */
+  runtimeDirs?: string[]
 }
 
 /**
@@ -29,13 +31,16 @@ export interface ImportModuleOptions {
  * - `#app`, `#imports` and `#build` are build-time-only aliases with no package
  *   resolution, so a module entry that transitively imports runtime code cannot be
  *   loaded at all without standing in something for them.
- * - extensionless relative specifiers and tsconfig `paths` aliases, which matter
- *   when importing TypeScript sources directly (`--stub`, `build.config.ts`).
+ * - tsconfig `paths` aliases, which matter when importing TypeScript sources directly
+ *   (`--stub`, `build.config.ts`). Relative specifiers are left to Node, so they need
+ *   their file extension (see {@link findUnresolvableImports}), except inside
+ *   `runtimeDirs`, where the extension is probed for.
  */
 export async function importModule(path: string, options: ImportModuleOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
   const matchPath = options.cwd ? pathsMatcher(options.cwd) : undefined
   const stubs = options.stubs || {}
+  const runtimeDirs = options.runtimeDirs || []
 
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -47,10 +52,9 @@ export async function importModule(path: string, options: ImportModuleOptions = 
         return { url: stubURL(specifier, context.parentURL), shortCircuit: true }
       }
 
-      const parentDir = context.parentURL?.startsWith('file:') ? dirname(fileURLToPath(context.parentURL)) : undefined
-
-      if (specifier.startsWith('.') && parentDir) {
-        const file = probe(resolve(parentDir, specifier))
+      if (specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
+        const parentDir = dirname(fileURLToPath(context.parentURL))
+        const file = runtimeDirs.some(dir => isInside(dir, parentDir)) ? probe(resolve(parentDir, specifier)) : undefined
         if (file) {
           return { url: pathToFileURL(file).href, shortCircuit: true }
         }
@@ -116,6 +120,7 @@ export async function importModule(path: string, options: ImportModuleOptions = 
 }
 
 const TYPESCRIPT_RE = /\.[cm]?tsx?$/
+const SOURCE_RE = /\.[cm]?[jt]sx?$/
 
 interface Oxc {
   transform: Transform
@@ -151,26 +156,10 @@ export interface NonErasableSyntax {
  * and the sources they import, relative to `cwd`.
  */
 export function findNonErasableSyntax(cwd: string, entries: string[]): NonErasableSyntax[] {
-  const matchPath = pathsMatcher(cwd)
   const found: NonErasableSyntax[] = []
-  const seen = new Set<string>()
-  const queue = entries.map(entry => resolve(cwd, entry))
-  while (queue.length) {
-    const file = queue.shift()!
-    if (seen.has(file) || !TYPESCRIPT_RE.test(file) || !existsSync(file)) {
-      continue
-    }
-    seen.add(file)
-    const source = readFileSync(file, 'utf8')
-    found.push(...nonErasableSyntaxIn(file, source).map(location => ({ file: relative(cwd, file), ...location })))
-    const imports = findStaticImports(source).filter(statement => !/^\s*type\s/.test(statement.imports))
-    for (const { specifier } of [...imports, ...findExports(source)]) {
-      const target = specifier ? resolveSource(specifier, dirname(file), matchPath) : undefined
-      if (target) {
-        queue.push(target)
-      }
-    }
-  }
+  walkSources(cwd, entries, (file, analysis) => {
+    found.push(...analysis.nonErasable.map(location => ({ file: relative(cwd, file), ...location })))
+  })
   return found
 }
 
@@ -179,12 +168,112 @@ export function listNonErasableSyntax(found: NonErasableSyntax[]) {
   return found.map(({ file, line, column, kind }) => `  - ${file}:${line}:${column}: ${kind}`)
 }
 
+export interface UnresolvableImport {
+  /** Path relative to the module root. */
+  file: string
+  line: number
+  column: number
+  specifier: string
+  /** The specifier that names the file on disk. */
+  suggestion: string
+}
+
+/**
+ * Every relative value import in `entries` and the sources they import, outside
+ * `runtimeDirs`, whose specifier Node cannot resolve as written because it lacks the
+ * file's extension, carries another one, or names a directory, with the specifier to use
+ * instead. Type-only imports are erased before Node sees them.
+ */
+export function findUnresolvableImports(cwd: string, entries: string[], runtimeDirs: string[]): UnresolvableImport[] {
+  const found: UnresolvableImport[] = []
+  walkSources(cwd, entries, (file, analysis) => {
+    if (runtimeDirs.some(dir => isInside(dir, file))) {
+      return
+    }
+    for (const { specifier, typeOnly, line, column } of analysis.imports) {
+      if (typeOnly || !specifier.startsWith('.')) {
+        continue
+      }
+      const target = resolve(dirname(file), specifier)
+      const resolved = probe(target)
+      if (!resolved || resolved === target) {
+        continue
+      }
+      const suggestion = relative(dirname(file), resolved)
+      found.push({ file: relative(cwd, file), line, column, specifier, suggestion: suggestion.startsWith('.') ? suggestion : `./${suggestion}` })
+    }
+  })
+  return found
+}
+
+/** Fails the build for {@link findUnresolvableImports} findings. */
+export function assertResolvableImports(cwd: string, entries: string[], runtimeDirs: string[]) {
+  const found = findUnresolvableImports(cwd, entries, runtimeDirs)
+  if (found.length) {
+    throw new Error(formatUnresolvableImports(found))
+  }
+}
+
+/** The error message for {@link findUnresolvableImports} findings, one line each. */
+export function formatUnresolvableImports(found: UnresolvableImport[]) {
+  const lines = new Set(found.map(({ file, line, column, specifier, suggestion }) => `  - ${file}:${line}:${column}: \`${specifier}\` (use \`${suggestion}\`)`))
+  return [
+    'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
+    ...lines,
+    `Write each specifier as suggested. ${guide('import-extensions-in-module-code')}`,
+  ].join('\n')
+}
+
+interface SourceAnalysis {
+  nonErasable: Array<Omit<NonErasableSyntax, 'file'>>
+  imports: Array<{ specifier: string, typeOnly: boolean, line: number, column: number }>
+}
+
+function walkSources(cwd: string, entries: string[], visit: (file: string, analysis: SourceAnalysis) => void) {
+  const matchPath = pathsMatcher(cwd)
+  const seen = new Set<string>()
+  const queue = entries.map(entry => resolve(cwd, entry))
+  while (queue.length) {
+    const file = queue.shift()!
+    if (seen.has(file) || !SOURCE_RE.test(file) || !existsSync(file)) {
+      continue
+    }
+    seen.add(file)
+    const analysis = analyseSource(file, readFileSync(file, 'utf8'))
+    visit(file, analysis)
+    for (const { specifier, typeOnly } of analysis.imports) {
+      const target = typeOnly ? undefined : resolveSource(specifier, dirname(file), matchPath)
+      if (target) {
+        queue.push(target)
+      }
+    }
+  }
+}
+
+function resolvesAsPackage(specifier: string, parentDir: string) {
+  try {
+    createRequire(resolve(parentDir, 'index.js')).resolve(specifier)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
+function isInside(dir: string, path: string) {
+  const subpath = relative(dir, path)
+  return !subpath.startsWith('..') && !isAbsolute(subpath)
+}
+
 function resolveSource(specifier: string, parentDir: string, matchPath: ReturnType<typeof pathsMatcher>) {
   if (VIRTUAL_ALIAS_RE.test(specifier)) {
     return
   }
   if (specifier.startsWith('.')) {
     return probe(resolve(parentDir, specifier))
+  }
+  if (!ALIAS_SHAPED_RE.test(specifier) && resolvesAsPackage(specifier, parentDir)) {
+    return
   }
   for (const candidate of matchPath?.(specifier) || []) {
     const file = probe(candidate)
@@ -196,11 +285,33 @@ function resolveSource(specifier: string, parentDir: string, matchPath: ReturnTy
 
 let typescript: typeof ts | undefined
 
-function nonErasableSyntaxIn(filename: string, source: string): Array<Omit<NonErasableSyntax, 'file'>> {
+function scriptKind(ts: typeof import('typescript'), filename: string) {
+  if (TYPESCRIPT_RE.test(filename)) {
+    return filename.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  }
+  return filename.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
+}
+
+function analyseSource(filename: string, source: string): SourceAnalysis {
   const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
   const { SyntaxKind, NodeFlags } = ts
-  const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
-  const found: Array<Omit<NonErasableSyntax, 'file'>> = []
+  const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, scriptKind(ts, filename))
+  const found: SourceAnalysis = { nonErasable: [], imports: [] }
+  const position = (node: ts.Node) => {
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+    return { line: line + 1, column: character + 1 }
+  }
+  const specifierOf = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      return { specifier: node.moduleSpecifier, typeOnly: node.importClause?.isTypeOnly ?? false }
+    }
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      return { specifier: node.moduleSpecifier, typeOnly: node.isTypeOnly }
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+      return { specifier: node.arguments[0], typeOnly: false }
+    }
+  }
   const kindOf = (node: ts.Node) => {
     if (ts.isEnumDeclaration(node)) {
       return '`enum`'
@@ -230,8 +341,11 @@ function nonErasableSyntaxIn(filename: string, source: string): Array<Omit<NonEr
     }
     const kind = kindOf(node)
     if (kind) {
-      const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
-      found.push({ line: line + 1, column: character + 1, kind })
+      found.nonErasable.push({ ...position(node), kind })
+    }
+    const imported = specifierOf(node)
+    if (imported) {
+      found.imports.push({ specifier: imported.specifier.text, typeOnly: imported.typeOnly, ...position(imported.specifier) })
     }
     ts.forEachChild(node, visit)
   }
@@ -253,7 +367,7 @@ function transpile(url: string, cwd: string) {
   const filename = resolve(fileURLToPath(url))
   const source = readFileSync(filename, 'utf8')
   const lang = filename.endsWith('x') ? 'tsx' : 'ts'
-  const nonErasable = lang === 'ts' && nonErasableSyntaxIn(filename, source).length > 0
+  const nonErasable = lang === 'ts' && analyseSource(filename, source).nonErasable.length > 0
   if (lang === 'ts' && !nonErasable) {
     return
   }

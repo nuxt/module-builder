@@ -9,7 +9,7 @@ import builderPkg from '../../package.json' with { type: 'json' }
 import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, warnDeprecatedBuildConfig } from './build-config.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
-import { findNonErasableSyntax, listNonErasableSyntax } from './loader.ts'
+import { assertResolvableImports, findNonErasableSyntax, listNonErasableSyntax } from './loader.ts'
 import type { NonErasableSyntax } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
 import { writeTypes } from './types.ts'
@@ -42,21 +42,17 @@ export async function stub(cwd: string, options: StubOptions) {
   }
   warnDeprecatedBuildConfig(config)
 
-  const ctx = createBuildContext({
-    cwd,
-    outDir,
-    pkg,
-    config,
-    directories: [{ srcDir: resolve(cwd, 'src/runtime'), outDir: resolve(outDir, 'runtime'), ext: 'js' }, ...config.directories],
-    stub: true,
-    sourcemap: false,
-  })
+  const directories = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: resolve(outDir, 'runtime'), ext: 'js' as const }, ...config.directories]
+  const entries = bundledEntries(cwd, config)
+  const runtimeDirs = directories.map(directory => directory.srcDir)
+  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: true, sourcemap: false })
   await callBuildHook(config, 'build:before', ctx)
+  assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
 
   await rm(outDir, { recursive: true, force: true })
   await fsp.mkdir(outDir, { recursive: true })
 
-  for (const [name, input] of Object.entries(bundledEntries(cwd, config))) {
+  for (const [name, input] of Object.entries(entries)) {
     const entry = resolve(cwd, input)
     const source = await fsp.readFile(entry, 'utf8')
     const hasDefaultExport = findExports(source).some(e => e.type === 'default' || e.names?.includes('default'))
@@ -74,9 +70,9 @@ export async function stub(cwd: string, options: StubOptions) {
     await fsp.writeFile(resolve(outDir, `${name}.d.mts`), reExports.replace(/\.([cm]?)tsx?'/g, '.$1js\''), 'utf8')
   }
 
-  await writeModuleMeta({ cwd, outDir, pkg, builder: { [builderPkg.name]: builderPkg.version } }).catch((error: Error & { code?: string }) => {
+  await writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder: { [builderPkg.name]: builderPkg.version } }).catch((error: Error & { code?: string }) => {
     if (error.code?.startsWith('ERR_UNSUPPORTED_') || error.code === 'ERR_INVALID_TYPESCRIPT_SYNTAX') {
-      consola.error(erasableSyntaxHint(findNonErasableSyntax(cwd, Object.values(bundledEntries(cwd, config)))))
+      consola.error(erasableSyntaxHint(findNonErasableSyntax(cwd, Object.values(entries))))
     }
     throw error
   })

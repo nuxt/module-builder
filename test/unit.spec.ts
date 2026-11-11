@@ -18,7 +18,7 @@ import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
-import { findNonErasableSyntax } from '../src/build/loader.ts'
+import { findNonErasableSyntax, findUnresolvableImports } from '../src/build/loader.ts'
 import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
@@ -206,6 +206,23 @@ describe('translateBuildConfig', () => {
       await expect(loadBuildConfig(dir, {}, join(dir, 'dist'))).rejects.toThrow(`not a function. Replace the function with the object it returns. ${guide('other-options')}`)
 
       await rm(join(dir, 'build.config.mts'))
+      await mkdir(join(dir, 'extensions/src/lib'), { recursive: true })
+      await writeFile(join(dir, 'extensions/options.ts'), `export default { externals: ['o'] }\n`)
+      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options'\nexport default options\n`)
+      await writeFile(join(dir, 'extensions/src/module.ts'), `import { helper } from './helper'\nexport { shared } from './lib'\nexport default helper\n`)
+      await writeFile(join(dir, 'extensions/src/helper.ts'), `export const helper = 1\n`)
+      await writeFile(join(dir, 'extensions/src/lib/index.ts'), `import { shared } from '../../options'\nexport { shared }\n`)
+      await expect(loadBuildConfig(join(dir, 'extensions'), { build: { entries: ['src/lib/index'] } }, join(dir, 'dist'))).rejects.toThrow([
+        'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
+        '  - build.config.ts:1:21: `./options` (use `./options.ts`)',
+        '  - src/lib/index.ts:1:24: `../../options` (use `../../options.ts`)',
+        '  - src/module.ts:1:24: `./helper` (use `./helper.ts`)',
+        '  - src/module.ts:2:24: `./lib` (use `./lib/index.ts`)',
+        `Write each specifier as suggested. ${guide('import-extensions-in-module-code')}`,
+      ].join('\n'))
+      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options.ts'\nexport default options\n`)
+      expect((await loadBuildConfig(join(dir, 'extensions'), {}, join(dir, 'dist'))).neverBundle.map(String)).toEqual(['/^o(?:\\/|$)/'])
+
       expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ file: undefined, unsupported: [] })
       const fromPkg = await loadBuildConfig(dir, { unbuild: { externals: ['u'] }, build: { externals: ['b'] } }, join(dir, 'dist'))
       expect(fromPkg.neverBundle.map(String)).toEqual(['/^u(?:\\/|$)/'])
@@ -315,6 +332,66 @@ describe('hints', () => {
       ]
       expect(findNonErasableSyntax(dir, ['./src/module.ts'])).toEqual(expected)
       expect(erasableSyntaxHint(expected)).toContain('  - src/util.ts:3:10: angle-bracket type assertion')
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('findUnresolvableImports', () => {
+  it('should list relative value imports Node cannot resolve as written, skipping runtime files but not what they import', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-extensions-'))
+    try {
+      await mkdir(join(dir, 'src/kit'), { recursive: true })
+      await mkdir(join(dir, 'src/runtime'), { recursive: true })
+      await mkdir(join(dir, 'node_modules/fake-pkg'), { recursive: true })
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/*': ['./*'], '*': ['./src/*'] } } }))
+      await writeFile(join(dir, 'node_modules/fake-pkg/package.json'), JSON.stringify({ name: 'fake-pkg', main: 'index.js' }))
+      await writeFile(join(dir, 'node_modules/fake-pkg/index.js'), `module.exports = {}\n`)
+      await writeFile(join(dir, 'src/fake-pkg.ts'), `import { shadow } from './shadow'\nexport { shadow }\n`)
+      await writeFile(join(dir, 'src/shadow.ts'), `export const shadow = 1\n`)
+      await writeFile(join(dir, 'src/module.ts'), [
+        `import { kit } from './kit'`,
+        `import { util } from './util.js'`,
+        `import { ok } from './ok.ts'`,
+        `import { aliased } from '~/src/aliased'`,
+        `import type { Shape } from './shape'`,
+        `import plugin from './runtime/plugin'`,
+        `import { legacy } from './legacy.js'`,
+        `import pkg from 'fake-pkg'`,
+        `export { more } from './more'`,
+        `export type { Shape } from './shape'`,
+        `export const load = () => import('./lazy')`,
+        `export { kit, util, ok, aliased, plugin, legacy, pkg }`,
+        `export type { Shape }`,
+      ].join('\n'))
+      await writeFile(join(dir, 'src/kit/index.ts'), `export const kit = 1\n`)
+      await writeFile(join(dir, 'src/util.ts'), `export const util = 1\n`)
+      await writeFile(join(dir, 'src/ok.ts'), `import { nested } from './nested'\nexport const ok = nested\n`)
+      await writeFile(join(dir, 'src/nested.ts'), `export const nested = 1\n`)
+      await writeFile(join(dir, 'src/aliased.ts'), `import { deep } from '../deep'\nexport const aliased = deep\n`)
+      await writeFile(join(dir, 'deep.ts'), `export const deep = 1\n`)
+      await writeFile(join(dir, 'src/shape.ts'), `export interface Shape { a: 1 }\n`)
+      await writeFile(join(dir, 'src/runtime/plugin.ts'), `import { helper } from './helper'\nimport { shared } from '../shared'\nexport default [helper, shared]\n`)
+      await writeFile(join(dir, 'src/shared.ts'), `import { tail } from './tail'\nexport const shared = tail\n`)
+      await writeFile(join(dir, 'src/tail.ts'), `export const tail = 1\n`)
+      await writeFile(join(dir, 'src/runtime/helper.ts'), `export const helper = 1\n`)
+      await writeFile(join(dir, 'src/more.ts'), `export const more = 1\n`)
+      await writeFile(join(dir, 'src/legacy.js'), `export * from './leaf'\nexport const legacy = 1\n`)
+      await writeFile(join(dir, 'src/leaf.ts'), `export const leaf = 1\n`)
+      await writeFile(join(dir, 'src/lazy.ts'), `export const lazy = 1\n`)
+      expect(findUnresolvableImports(dir, ['./src/module.ts'], [join(dir, 'src/runtime')])).toEqual([
+        { file: 'src/module.ts', line: 1, column: 21, specifier: './kit', suggestion: './kit/index.ts' },
+        { file: 'src/module.ts', line: 2, column: 22, specifier: './util.js', suggestion: './util.ts' },
+        { file: 'src/module.ts', line: 6, column: 20, specifier: './runtime/plugin', suggestion: './runtime/plugin.ts' },
+        { file: 'src/module.ts', line: 9, column: 22, specifier: './more', suggestion: './more.ts' },
+        { file: 'src/module.ts', line: 11, column: 34, specifier: './lazy', suggestion: './lazy.ts' },
+        { file: 'src/ok.ts', line: 1, column: 24, specifier: './nested', suggestion: './nested.ts' },
+        { file: 'src/aliased.ts', line: 1, column: 22, specifier: '../deep', suggestion: '../deep.ts' },
+        { file: 'src/legacy.js', line: 1, column: 15, specifier: './leaf', suggestion: './leaf.ts' },
+        { file: 'src/shared.ts', line: 1, column: 22, specifier: './tail', suggestion: './tail.ts' },
+      ])
     }
     finally {
       await rm(dir, { recursive: true, force: true })
@@ -460,10 +537,30 @@ describe('importModule', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
+  it('should probe extensionless relative imports only inside runtime directories', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-probe-'))
+    await mkdir(join(dir, 'runtime'))
+    await writeFile(join(dir, 'helper.ts'), `export const value: string = 'module'\n`)
+    await writeFile(join(dir, 'entry.ts'), `export { value } from './helper'\n`)
+    await writeFile(join(dir, 'runtime/helper.ts'), `export const value: string = 'runtime'\n`)
+    await writeFile(join(dir, 'runtime/entry.ts'), `export { value } from './helper'\n`)
+    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
+    const script = [
+      `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)})`,
+      `const options = { runtimeDirs: [${JSON.stringify(join(dir, 'runtime'))}] }`,
+      `const failure = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}, options).then(() => 'loaded', error => error.code)`,
+      `const runtime = await importModule(${JSON.stringify(join(dir, 'runtime/entry.ts'))}, options)`,
+      `console.log(JSON.stringify([failure, runtime.value]))`,
+    ].join('\n')
+    const { stdout } = await exec('node', ['--input-type=module', '-e', script], { throwOnError: true })
+    expect(JSON.parse(stdout)).toEqual(['ERR_MODULE_NOT_FOUND', 'runtime'])
+    await rm(dir, { recursive: true, force: true })
+  })
+
   it('should leave files that only need type stripping to Node', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-strip-'))
     const line = `export const location: string = ((): string => new Error('here').stack!.split('\\n')[1]!)()`
-    await writeFile(join(dir, 'entry.ts'), `${line}\nexport { kind } from './kind'\n`)
+    await writeFile(join(dir, 'entry.ts'), `${line}\nexport { kind } from './kind.ts'\n`)
     await writeFile(join(dir, 'kind.ts'), `export enum Kind { Stub = 'stub' }\nexport const kind: string = Kind.Stub\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
     const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([m.location, m.kind]))`
@@ -476,7 +573,7 @@ describe('importModule', () => {
 
   it('should stand in for `#build` re-exports of `default` and of reserved words', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-stub-'))
-    await writeFile(join(dir, 'entry.ts'), `export { default as theme, for as loop } from '#build/ui/button'\nexport { size } from './size'\n`)
+    await writeFile(join(dir, 'entry.ts'), `export { default as theme, for as loop } from '#build/ui/button'\nexport { size } from './size.ts'\n`)
     await writeFile(join(dir, 'size.ts'), `import { default as button, variants } from '#build/ui/button'\nexport const size = typeof button.slots + typeof variants\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
     const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([Object.keys(m).sort(), typeof m.theme, typeof m.loop, m.size]))`
