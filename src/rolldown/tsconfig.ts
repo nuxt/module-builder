@@ -24,10 +24,11 @@ export interface TsconfigResolver {
  * {@link rebaseOnOwnBuildDir}.
  */
 export async function createTsconfigResolver(dir: string, file?: string): Promise<TsconfigResolver> {
-  let root = file ? { path: file, config: parseTsconfig(file) } : getTsconfig(dir) ?? undefined
+  const path = file && resolve(dir, file)
+  let root = path ? { path, config: parseTsconfig(path) } : getTsconfig(dir) ?? undefined
   let replaced: string | undefined
   const own = join(dir, '.nuxt/tsconfig.json')
-  if (root && !file && usesForeignBuildDir(root, dir) && existsSync(own)) {
+  if (root && !path && usesForeignBuildDir(root, dir) && existsSync(own)) {
     replaced = root.path
     root = await rebaseOnOwnBuildDir(root.path, own, dir)
   }
