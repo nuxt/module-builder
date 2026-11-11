@@ -70,7 +70,9 @@ export interface TranslateBuildConfigOptions {
  * unbuild's precedence order: `build.config.*` first, then `package.json`'s `unbuild` or
  * `build`.
  */
-export function translateBuildConfig(sources: BuildConfigSource[], { cwd, outDir }: TranslateBuildConfigOptions): TranslatedBuildConfig {
+export function translateBuildConfig(sources: BuildConfigSource[], options: TranslateBuildConfigOptions): TranslatedBuildConfig {
+  const cwd = resolve(options.cwd)
+  const outDir = resolve(options.outDir)
   const result: TranslatedBuildConfig = {
     entries: {},
     directories: [],
