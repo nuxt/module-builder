@@ -527,25 +527,28 @@ export const defineOptions = (options: Options) => ({ options, helper })
         .then(() => exec('pnpm', ['exec', 'nuxt', 'prepare', join(routesRootDir, 'playground')], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
         .then(() => exec('pnpm', ['nuxt-module-build', 'build', routesRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } }, throwOnError: true }))
         .then(({ stdout, stderr }) => { routesBuild = stdout + stderr }),
-      exec('pnpm', ['prepack'], { nodeOptions: { cwd: stylesheetsRootDir } }),
-      exec('pnpm', ['nuxt-module-build', 'build', runtimeShapeRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir } })),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: secondRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: secondRootDir } })),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: encodedRootDir } }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: encodedRootDir } })),
-      exec('pnpm', ['prepack'], { nodeOptions: { cwd: thirdRootDir } }),
-      exec('pnpm', ['prepack'], { nodeOptions: { cwd: fourthRootDir } }),
-      exec('pnpm', ['prepack'], { nodeOptions: { cwd: noRuntimeRootDir } }),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', unpreparedRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', jsSpecifierRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', annotatedRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['prepack'], { nodeOptions: { cwd: vueOnlyRootDir } }),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', wildcardRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', buildConfigRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', replaceRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', transpileRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', join(parentTsconfigRootDir, 'packages/mod')], { nodeOptions: { cwd: repoRoot } }),
-      exec('pnpm', ['nuxt-module-build', 'build', portableRootDir], { nodeOptions: { cwd: repoRoot } }),
+      exec('pnpm', ['nuxt-module-build', 'build', stylesheetsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', runtimeShapeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir }, throwOnError: true }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir }, throwOnError: true })),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+        .then(() => exec('pnpm', ['nuxt-module-build', 'prepare', secondRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
+        .then(() => exec('pnpm', ['nuxt-module-build', 'build', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+        .then(() => exec('pnpm', ['nuxt-module-build', 'build', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
+      exec('pnpm', ['nuxt-module-build', 'build', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', fourthRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', noRuntimeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', unpreparedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', jsSpecifierRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', annotatedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', vueOnlyRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', '--stub', wildcardRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', buildConfigRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', replaceRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', transpileRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', join(parentTsconfigRootDir, 'packages/mod')], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', portableRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
     ])
   }, 180 * 1000)
 
@@ -1195,7 +1198,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(meta).toMatchObject({ configKey: 'myModule', name: 'my-module' })
 
     // leave the bundled output in place for the remaining assertions
-    await exec('pnpm', ['prepack'], { nodeOptions: { cwd: thirdRootDir }, throwOnError: true })
+    await exec('pnpm', ['nuxt-module-build', 'build', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
   })
 
   it('should generate typed plugin', async () => {
