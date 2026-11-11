@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
@@ -454,7 +454,7 @@ describe('importModule', () => {
     await writeFile(join(dir, 'data.json'), '{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}')
     await writeFile(join(dir, 'entry.ts'), `export * from './data.json'\nexport { default as data } from './data.json'\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(loader)}); console.log(JSON.stringify(await importModule(${JSON.stringify(join(dir, 'entry.ts'))})))`
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); console.log(JSON.stringify(await importModule(${JSON.stringify(join(dir, 'entry.ts'))})))`
     const { stdout } = await exec('node', ['--input-type=module', '-e', script])
     expect(JSON.parse(stdout)).toEqual(JSON.parse('{"name":"x","not-an-identifier":true,"__proto__":{"kept":true},"data":{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}}'))
     await rm(dir, { recursive: true, force: true })

@@ -11,6 +11,8 @@ import { satisfies } from 'verkit'
 import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
 
+const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
+
 const RUNTIME_IMPORTS = `
 import { useWrappedFetch } from './runtime/composables/useWrappedFetch'
 import { useAppFromNuxt } from '~~/src/runtime/composables/useAppNuxt'
@@ -548,7 +550,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   }, 180 * 1000)
 
   it('should build `build.config.ts` entries under the names unbuild gave them', async () => {
-    const files = await readdir(join(buildConfigRootDir, 'dist'), { recursive: true })
+    const files = await listFiles(join(buildConfigRootDir, 'dist'))
     expect(files.filter(file => !file.startsWith('runtime')).sort()).toMatchInlineSnapshot(`
       [
         "content.d.mts",
@@ -633,7 +635,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('build-configuration')}`))
     expect(stdout + stderr).not.toContain('instead of')
     expect(stdout + stderr).not.toContain('`unbuild` field')
-    const files = await readdir(join(buildConfigRootDir, '.stub'), { recursive: true })
+    const files = await listFiles(join(buildConfigRootDir, '.stub'))
     expect(files).toEqual(expect.arrayContaining(['content.mjs', 'nested/helper.mjs', 'utils.mjs', 'vite.mjs']))
     const log = (await readFile(join(buildConfigRootDir, 'hooks.log'), 'utf-8')).trim().split('\n').map(line => JSON.parse(line))
     expect(log.filter(entry => entry.stub).map(entry => entry.hook)).toEqual(['build:before', 'rollup:done', 'build:done'])
@@ -755,7 +757,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should build a runtime directory that contains only single-file components', async () => {
-    const files = await readdir(join(vueOnlyRootDir, 'dist/runtime'), { recursive: true })
+    const files = await listFiles(join(vueOnlyRootDir, 'dist/runtime'))
     expect(files.sort()).toMatchInlineSnapshot(`
       [
         "components",
@@ -850,7 +852,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should not emit dependencies or bundler helpers into the runtime directory', async () => {
-    const files = await readdir(join(transpileRootDir, 'dist/runtime'), { recursive: true })
+    const files = await listFiles(join(transpileRootDir, 'dist/runtime'))
     expect(files.filter(file => /node_modules|_virtual/.test(file))).toEqual([])
     for (const file of files.filter(file => /\.m?[jt]s$/.test(file))) {
       expect(await readFile(join(transpileRootDir, 'dist/runtime', file), 'utf-8'), file).not.toMatch(/bundled-fake-dep|DeepPartial<T\[K\]>/)
@@ -965,7 +967,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       export const CONSTANT = LIMIT;
       "
     `)
-    const files = await readdir(dist, { recursive: true })
+    const files = await listFiles(dist)
     expect(files.filter(file => !file.startsWith('runtime')).sort()).toMatchInlineSnapshot(`
       [
         "_external",
@@ -1063,7 +1065,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   it('should generate declarations with the module\'s own `.nuxt` when the tsconfig takes its types from a playground', async () => {
     expect(routesBuild).toMatch(new RegExp(`\\.\\./tsconfig.json\`? takes its generated types from another app's \`?.nuxt\`?; declarations are generated with \`?.nuxt/tsconfig.json\`? instead. Add a \`?tsconfig.json\`? in the module directory that extends \`?./.nuxt/tsconfig.json\`?. ${guide('module-tsconfig')}`))
     expect(await readFile(join(routesRootDir, 'playground/.nuxt/types/nitro-routes.d.ts'), 'utf-8')).toContain('/api/secret')
-    for (const file of await readdir(join(routesRootDir, 'dist'), { recursive: true })) {
+    for (const file of await listFiles(join(routesRootDir, 'dist'))) {
       if (file.includes('.')) {
         expect(await readFile(join(routesRootDir, 'dist', file), 'utf-8'), file).not.toMatch(/must-not-be-published|playground|\.nuxt/)
       }
@@ -1089,7 +1091,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   it('should give every relative specifier in runtime declarations an extension that resolves', async () => {
     const unresolved = async (dir: string) => {
       const failures: string[] = []
-      for (const entry of await readdir(dir, { recursive: true })) {
+      for (const entry of await listFiles(dir)) {
         if (!/\.d\.[^/]*ts$/.test(entry)) {
           continue
         }
@@ -1207,7 +1209,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should not leak build-only virtual aliases into emitted runtime declarations', async () => {
-    const files = await readdir(runtimeDir, { recursive: true })
+    const files = await listFiles(runtimeDir)
     const declarations = files.filter(file => /\.d\.[^/]*ts$/.test(file))
     expect(declarations.length).toBeGreaterThan(0)
     for (const file of declarations) {
@@ -1262,7 +1264,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(await readFile(join(encodedDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
     expect(await readFile(join(encodedDistDir, 'types.d.mts'), 'utf-8')).toContain('from \'./module.mjs\'')
 
-    const runtimeFiles = (dir: string) => readdir(join(dir, 'runtime'), { recursive: true }).then(files => files.sort())
+    const runtimeFiles = (dir: string) => listFiles(join(dir, 'runtime')).then(files => files.sort())
     expect(await runtimeFiles(encodedDistDir)).toEqual(await runtimeFiles(thirdDistDir))
   })
 

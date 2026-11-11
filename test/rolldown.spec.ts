@@ -11,6 +11,7 @@ import type { ExternalImport } from '../src/rolldown/index.ts'
 const root = fileURLToPath(new URL('../.temp-rolldown-plugin', import.meta.url))
 const cwd = join(root, 'project')
 const dist = join(cwd, 'dist')
+const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
 
 const files: Record<string, string> = {
   'shared/helper.ts': `export const helper = 'outside the project'\n`,
@@ -120,7 +121,7 @@ describe('transpileDir', () => {
   const read = (file: string) => readFile(join(dist, file), 'utf8')
 
   it('should emit every file of the directory under its own name', async () => {
-    expect((await readdir(dist, { recursive: true })).filter(file => !file.startsWith('_external') && file.includes('.')).sort()).toMatchInlineSnapshot(`
+    expect((await listFiles(dist)).filter(file => !file.startsWith('_external') && file.includes('.')).sort()).toMatchInlineSnapshot(`
       [
         "index.mjs",
         "lib/assets/data.json",
@@ -231,7 +232,7 @@ describe('transpileDir', () => {
     expect(await read('types.d.ts')).toBe(`export interface Options {\n    enabled: boolean;\n}\n`)
     expect(await read('model/index.d.ts')).toBe(`export type * from './collection.js';\nexport type { Shape } from './shape.js';\nexport * from './common.js';\n`)
     expect(await read('model/shape.d.ts')).toContain('export declare const shapes: string[];')
-    expect(await readdir(join(dist, '_external'), { recursive: true })).toEqual(['_', '_/shared', '_/shared/helper.d.ts', '_/shared/helper.js'])
+    expect(await listFiles(join(dist, '_external'))).toEqual(['_', '_/shared', '_/shared/helper.d.ts', '_/shared/helper.js'])
   })
 
   it('should process stylesheets and copy other files', async () => {
@@ -244,7 +245,7 @@ describe('transpileDir', () => {
 
   it('should leave out declarations, stylesheet processing and excluded components when asked', async () => {
     const raw = join(cwd, 'dist-raw')
-    const emitted = (await readdir(raw, { recursive: true })).filter(file => file.includes('.')).sort()
+    const emitted = (await listFiles(raw)).filter(file => file.includes('.')).sort()
     expect(emitted.filter(file => /\.d\.|\.vue|\.mjs$|styles\//.test(file))).toEqual([
       'components/Hello.vue',
       'styles/_tokens.scss',
