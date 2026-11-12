@@ -213,7 +213,7 @@ export default defineNuxtModule({
         'src/runtime/components/JsxCard.vue': `<script setup lang="ts">\nimport JsxComponent from './JsxComponent'\n</script>\n\n<template>\n  <JsxComponent />\n</template>\n`,
         'src/runtime/components/JsxSlot.tsx': `import { defineComponent } from 'vue'\nimport { useNuxtApp } from '#app'\nimport JsxComponent from './JsxComponent'\n\nexport const useSlotApp = () => useNuxtApp()\n\nexport default defineComponent((_, { slots }) => () => <section><JsxComponent />{slots.default?.()}</section>)\n`,
         'src/runtime/server/render.tsx': `import { useSlotApp } from '../components/JsxSlot'\nimport { strong } from '../utils/strong'\n\nexport type SlotApp = ReturnType<typeof useSlotApp>\n\nexport const render = (label: string) => <p>{strong(label)}</p>\n`,
-        'src/runtime/server/render.spec.ts': `import JsxSlot from '../components/JsxSlot'\n\nexport const tested = JsxSlot\n`,
+        'src/runtime/server/render.stories.ts': `import JsxSlot from '../components/JsxSlot'\n\nexport const tested = JsxSlot\n`,
         'src/runtime/utils/strong.tsx': `import { bold } from './bold'\n\nexport const strong = (label: string) => <strong>{bold(label)}</strong>\n`,
         'src/runtime/utils/bold.tsx': `export const bold = (label: string) => <b>{label}</b>\n`,
         'src/runtime/utils/label.tsx': `export const label = <span>label</span>\n`,
