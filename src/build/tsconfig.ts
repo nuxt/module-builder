@@ -37,6 +37,6 @@ function exportTarget(target: unknown): string | undefined {
   }
 }
 
-export function hasIsolatedDeclarations(tsconfig: TsConfigResult | undefined) {
+export function hasIsolatedDeclarations(tsconfig: TsConfigResult | undefined): boolean {
   return tsconfig?.config.compilerOptions?.isolatedDeclarations === true
 }

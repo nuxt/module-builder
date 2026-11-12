@@ -18,7 +18,7 @@ const DECLARATION_TARGETS = [
  * - `#app` aliases, which tsc prints whenever the real path is not reachable through
  *   `node_modules` and which only resolve inside a Nuxt app, become `nuxt/app`.
  */
-export async function rewriteRuntimeDeclarations(outDir: string, outputs: string[]) {
+export async function rewriteRuntimeDeclarations(outDir: string, outputs: string[]): Promise<void> {
   const files = outputs.flatMap(output => declarationsOf(join(outDir, output))).filter(file => existsSync(file))
   await Promise.all(files.map(async (file) => {
     const contents = await fsp.readFile(file, 'utf8')

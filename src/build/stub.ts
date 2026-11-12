@@ -18,7 +18,7 @@ export interface StubOptions {
   outDir: string
 }
 
-export function erasableSyntaxHint(found: NonErasableSyntax[]) {
+export function erasableSyntaxHint(found: NonErasableSyntax[]): string {
   return [
     'Node cannot run this module\'s source directly.',
     'Without `tsdown` installed, `nuxt-module-build build --stub` relies on Node\'s built-in type stripping, which only erases types: `enum`, `namespace`, parameter properties, `<T>value` assertions and legacy decorators are not supported.',
@@ -31,7 +31,7 @@ export function erasableSyntaxHint(found: NonErasableSyntax[]) {
  * Write plain re-export files pointing back at the module's TypeScript sources.
  * Node's type stripping loads them directly, so no bundler is involved.
  */
-export async function stub(cwd: string, options: StubOptions) {
+export async function stub(cwd: string, options: StubOptions): Promise<void> {
   const pkg = await readPackageJSON(cwd)
   const outDir = resolveOutDir(cwd, options.outDir)
 

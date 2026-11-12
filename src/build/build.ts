@@ -47,11 +47,11 @@ const TYPE_ERROR_HINT = [
 
 const SCRIPT_RE = /\.[cm]?[jt]sx?$/
 
-export function shouldNudge(isolatedDeclarations: boolean) {
+export function shouldNudge(isolatedDeclarations: boolean): boolean {
   return !isolatedDeclarations && shouldAdvise('isolated-declarations')
 }
 
-export async function build(cwd: string, options: BuildOptions) {
+export async function build(cwd: string, options: BuildOptions): Promise<void> {
   const pkg = await readPackageJSON(cwd)
   const outDir = resolveOutDir(cwd, options.outDir)
   const runtimeSrcDir = resolve(cwd, 'src/runtime')

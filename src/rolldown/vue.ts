@@ -66,7 +66,7 @@ export async function emitDeclarations(files: string[], options: VueDeclarationO
 }
 
 /** The declaration emitted next to a source file. */
-export function declarationPath(id: string) {
+export function declarationPath(id: string): string {
   return id.replace(/\.(vue|[cm]?ts|tsx)$/, (_, extension: string) => extension === 'vue' ? '.d.vue.ts' : extension === 'tsx' ? '.d.ts' : `.d.${extension}`)
 }
 

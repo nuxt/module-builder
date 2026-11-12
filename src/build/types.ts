@@ -3,7 +3,7 @@ import { resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 
-export async function writeTypes(distDir: string, isStub: boolean) {
+export async function writeTypes(distDir: string, isStub: boolean): Promise<void> {
   const dtsFile = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
     return

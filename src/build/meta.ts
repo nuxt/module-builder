@@ -13,7 +13,7 @@ export interface WriteModuleMetaOptions {
   builder: Record<string, string>
 }
 
-export async function writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder }: WriteModuleMetaOptions) {
+export async function writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder }: WriteModuleMetaOptions): Promise<void> {
   const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd, runtimeDirs })
   const moduleFn = (moduleExports.default ?? moduleExports) as NuxtModule<Record<string, unknown>>
 

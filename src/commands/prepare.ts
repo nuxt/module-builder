@@ -1,12 +1,13 @@
 import type { NuxtConfig, NuxtModule } from '@nuxt/schema'
 import { defineCommand } from 'citty'
+import type { CommandDef } from 'citty'
 import { resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
 import { bundledEntries, loadBuildConfig } from '../build/build-config.ts'
 import { assertResolvableImports, importModule } from '../build/loader.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
 
-export async function prepareModule(cwd: string) {
+export async function prepareModule(cwd: string): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
   const pkg = await readPackageJSON(cwd)
@@ -50,7 +51,7 @@ export async function prepareModule(cwd: string) {
   })
 }
 
-export default defineCommand({
+const command: CommandDef<typeof sharedArgs> = defineCommand({
   meta: {
     name: 'prepare',
     description: 'Prepare @nuxt/module-builder environment by writing types and stubs',
@@ -62,3 +63,5 @@ export default defineCommand({
     return prepareModule(resolveCwdArg(context.args))
   },
 })
+
+export default command

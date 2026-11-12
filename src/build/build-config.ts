@@ -291,7 +291,7 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: Tran
 }
 
 /** The output name unbuild infers for an entry without an explicit `name`. */
-export function entryName(input: string, cwd: string) {
+export function entryName(input: string, cwd: string): string {
   let relativeInput = isAbsolute(input) ? relative(cwd, input) : normalize(input)
   if (relativeInput.startsWith('./')) {
     relativeInput = relativeInput.slice(2)
@@ -318,7 +318,7 @@ const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
  * `defineBuildConfig` is replaced with the identity.
  */
 /** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
-export function resolveOutDir(cwd: string, outDir: string) {
+export function resolveOutDir(cwd: string, outDir: string): string {
   const resolved = resolve(cwd, outDir)
   if (!relative(resolved, cwd).startsWith('..')) {
     throw new Error(`\`--outDir ${outDir}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
@@ -367,12 +367,12 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
 }
 
 /** `src/module` plus the translated extra entries, keyed by output name. */
-export function bundledEntries(cwd: string, config: TranslatedBuildConfig) {
+export function bundledEntries(cwd: string, config: TranslatedBuildConfig): { module: string, [name: string]: string } {
   const module = probe(resolve(cwd, 'src/module')) ?? resolve(cwd, 'src/module.ts')
   return { ...config.entries, module: `./${relative(cwd, module)}` }
 }
 
-export function warnDeprecatedBuildConfig(config: LoadedBuildConfig) {
+export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
   for (const hook of config.ignoredHooks) {
     consola.warn(`Ignoring ${hook}: runtime files are no longer built with mkdist. Remove the hook. ${guide('hooks')}`)
   }
@@ -417,13 +417,13 @@ export function createBuildContext({ cwd, outDir, pkg, config, directories, stub
   }
 }
 
-export async function callBuildHook(config: TranslatedBuildConfig, hook: SupportedHook, ctx: BuildContext) {
+export async function callBuildHook(config: TranslatedBuildConfig, hook: SupportedHook, ctx: BuildContext): Promise<void> {
   for (const fn of config.hooks[hook]) {
     await fn(ctx)
   }
 }
 
-export function formatUnsupportedOptions(unsupported: string[]) {
+export function formatUnsupportedOptions(unsupported: string[]): string {
   return [
     'The build config uses options that `@nuxt/module-builder` v2 does not support:',
     ...unsupported.map(option => `  - ${option} (${guide(unsupportedOptionSection(option))})`),

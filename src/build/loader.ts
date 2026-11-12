@@ -36,7 +36,7 @@ export interface ImportModuleOptions {
  *   their file extension (see {@link findUnresolvableImports}), except inside
  *   `runtimeDirs`, where the extension is probed for.
  */
-export async function importModule(path: string, options: ImportModuleOptions = {}) {
+export async function importModule(path: string, options: ImportModuleOptions = {}): Promise<Record<string, unknown>> {
   const cwd = options.cwd ?? process.cwd()
   const matchPath = options.cwd ? pathsMatcher(options.cwd) : undefined
   const stubs = options.stubs || {}
@@ -130,7 +130,7 @@ interface Oxc {
 let oxc: Oxc | null | undefined
 
 /** The oxc bindings of the `rolldown` that `tsdown` depends on, or `null` when `tsdown` is not installed. */
-export function loadOxc() {
+export function loadOxc(): Oxc | null {
   if (oxc === undefined) {
     try {
       oxc = createRequire(import.meta.resolve('tsdown'))('rolldown/utils') as Oxc
@@ -164,7 +164,7 @@ export function findNonErasableSyntax(cwd: string, entries: string[]): NonErasab
 }
 
 /** One line per occurrence, for a hint or warning. */
-export function listNonErasableSyntax(found: NonErasableSyntax[]) {
+export function listNonErasableSyntax(found: NonErasableSyntax[]): string[] {
   return found.map(({ file, line, column, kind }) => `  - ${file}:${line}:${column}: ${kind}`)
 }
 
@@ -207,7 +207,7 @@ export function findUnresolvableImports(cwd: string, entries: string[], runtimeD
 }
 
 /** Fails the build for {@link findUnresolvableImports} findings. */
-export function assertResolvableImports(cwd: string, entries: string[], runtimeDirs: string[]) {
+export function assertResolvableImports(cwd: string, entries: string[], runtimeDirs: string[]): void {
   const found = findUnresolvableImports(cwd, entries, runtimeDirs)
   if (found.length) {
     throw new Error(formatUnresolvableImports(found))
@@ -215,7 +215,7 @@ export function assertResolvableImports(cwd: string, entries: string[], runtimeD
 }
 
 /** The error message for {@link findUnresolvableImports} findings, one line each. */
-export function formatUnresolvableImports(found: UnresolvableImport[]) {
+export function formatUnresolvableImports(found: UnresolvableImport[]): string {
   const lines = new Set(found.map(({ file, line, column, specifier, suggestion }) => `  - ${file}:${line}:${column}: \`${specifier}\` (use \`${suggestion}\`)`))
   return [
     'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
@@ -422,7 +422,7 @@ function pathsMatcher(cwd: string) {
  * Find the source file a specifier refers to, trying the path as written, its
  * TypeScript counterpart, each source extension, then an `index` file.
  */
-export function probe(path: string) {
+export function probe(path: string): string | undefined {
   if (existsSync(path) && statSync(path).isFile()) {
     return path
   }

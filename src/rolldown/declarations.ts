@@ -138,7 +138,7 @@ export class DeclarationError extends Error {
  * The error for declaration diagnostics. Exports whose inferred type cannot be named
  * (TS2742 and relatives) are listed with the file and line to annotate.
  */
-export function declarationError(diagnostics: string[]) {
+export function declarationError(diagnostics: string[]): DeclarationError {
   const unnameable = diagnostics.flatMap((diagnostic) => {
     const match = diagnostic.match(UNNAMEABLE_TYPE_RE)
     if (!match) {
@@ -161,7 +161,7 @@ export function declarationError(diagnostics: string[]) {
 }
 
 /** The relative specifier from the directory of `from` to `to`. */
-export function relativeSpecifier(from: string, to: string) {
+export function relativeSpecifier(from: string, to: string): string {
   const path = relative(dirname(from), to)
   return path.startsWith('.') ? path : `./${path}`
 }
