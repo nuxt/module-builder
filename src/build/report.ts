@@ -14,7 +14,7 @@ const DECLARATION_RE = /\.d\.(?:[cm]?ts|vue\.ts)$/
 const originalStdoutWrite = process.stdout.write.bind(process.stdout)
 let outputRedirected = false
 
-export interface SizeBreakdown {
+interface SizeBreakdown {
   code: number
   types: number
   gzip: number
