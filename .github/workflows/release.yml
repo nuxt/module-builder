@@ -2,21 +2,44 @@ name: release
 
 on:
   push:
-    branches: [main]
+    # `release/v*` picks up hand edits to an open release PR
+    branches: [main, v1, 'release/v*']
   pull_request:
     types: [closed]
-    branches: [main]
-  # this is required to trigger releases when the release PR is merged, or to rerun a release if needed
+    branches: [main, v1]
+  # this is required to trigger releases when the release PR is merged, to rerun a release if needed, or to cut a prerelease
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Cut a prerelease instead of a normal release, e.g. `beta`, `rc`, or `0`'
+        required: false
+        default: ''
+      npm-tag:
+        description: 'npm dist-tag to publish to. Set by uppt/release for maintenance lines; leave blank otherwise'
+        required: false
+        default: ''
 
 permissions: {}
 
 jobs:
   # Parse commits since the last tag, push a `release/vX.Y.Z` branch, open
   # or update a draft release PR, and close any superseded release PRs
-  # (e.g. `release/v1.0.1` when the bump is now `release/v1.1.0`).
+  # (e.g. `release/v1.0.1` when the bump is now `release/v1.1.0`). Pushes
+  # to `v1` open release PRs against `v1`, which publish to the `1x`
+  # dist-tag. A manual run with `prerelease` set cuts a prerelease PR.
   pr:
-    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    if: |
+      (
+        github.event_name == 'push'
+        && (
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+          || github.ref == 'refs/heads/v1'
+          || startsWith(github.ref, 'refs/heads/release/v')
+        )
+      ) || (
+        github.event_name == 'workflow_dispatch'
+        && !startsWith(github.ref, 'refs/tags/')
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write       # push the `release/vX.Y.Z` branch and delete superseded ones
@@ -25,6 +48,8 @@ jobs:
       - uses: danielroe/uppt/pr@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          base-branch: ${{ github.ref_name }}
+          prerelease: ${{ inputs.prerelease }}
 
   # The release PR was merged: tag the squash commit, cut a GitHub release
   # from the PR body, and dispatch the publish workflow. The `release/v`
@@ -66,7 +91,8 @@ jobs:
         uses: danielroe/uppt/pack@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
 
   # `publish` downloads the prebuilt tarball from the pack job's
-  # artifact and stages it for publish.
+  # artifact and stages it for publish. `npm-tag` is set by `uppt/release`
+  # for maintenance releases; otherwise the tag is derived from the version.
   publish:
     if: |
       github.event_name == 'workflow_dispatch'
@@ -84,3 +110,4 @@ jobs:
       - uses: danielroe/uppt/publish@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
         with:
           files: ${{ needs.pack.outputs.files }}
+          npm-tag: ${{ inputs.npm-tag }}
