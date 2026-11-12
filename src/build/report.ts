@@ -11,6 +11,9 @@ import type { DirectoryEntry } from './build-config.ts'
 const gzipAsync = promisify(gzip)
 const DECLARATION_RE = /\.d\.(?:[cm]?ts|vue\.ts)$/
 
+const originalStdoutWrite = process.stdout.write.bind(process.stdout)
+let outputRedirected = false
+
 export interface SizeBreakdown {
   code: number
   types: number
@@ -62,8 +65,7 @@ export async function reportSize({ cwd, outDir, entries, directories, chunks, js
 
   const report = buildSizeReport(outDir, entries, directories, sizes)
   if (json) {
-    process.stdout.write(`${JSON.stringify(report)}
-`)
+    originalStdoutWrite(`${JSON.stringify(report)}\n`)
   }
   else {
     printSizeReport(cwd, outDir, entries, directories, chunks, report, sizes)
@@ -72,10 +74,15 @@ export async function reportSize({ cwd, outDir, entries, directories, chunks, js
 }
 
 /** Send consola and `console` output to stderr so stdout carries only the JSON report. */
-export function redirectLogsToStderr() {
+export function redirectLogsToStderr(): void {
+  if (outputRedirected) {
+    return
+  }
+  outputRedirected = true
   consola.options.stdout = process.stderr
   consola.options.stderr = process.stderr
   consola.wrapConsole()
+  process.stdout.write = ((chunk, encoding, callback) => process.stderr.write(chunk, encoding, callback)) as typeof process.stdout.write
 }
 
 function buildSizeReport(outDir: string, entries: string[], directories: DirectoryEntry[], sizes: Map<string, SizedFile>): BuildSizeReport {
