@@ -16,7 +16,7 @@ import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigP
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { guide } from '../src/build/guide.ts'
+import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
 import { findNonErasableSyntax, findUnresolvableImports } from '../src/build/loader.ts'
 import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
@@ -298,6 +298,15 @@ describe('translateBuildConfig', () => {
       warn.mockRestore()
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('upgrade guide', () => {
+  it('should have a heading for every section that build messages link to', async () => {
+    const markdown = await readFile(new URL('../docs/upgrade-v2.md', import.meta.url), 'utf8')
+    const anchors = [...markdown.replace(/^```.*\n[\s\S]*?^```/gm, '').matchAll(/^#{2,6} (.+)$/gm)]
+      .map(([, heading]) => heading!.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replaceAll(' ', '-'))
+    expect(GUIDE_SECTIONS.filter(section => !anchors.includes(section))).toEqual([])
   })
 })
 
