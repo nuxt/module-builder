@@ -43,6 +43,7 @@ describe('module builder', () => {
   const buildConfigRootDir = rootDir.replace('example', '.temp-example-build-config')
   const sizeHookRootDir = rootDir.replace('example', '.temp-example-size-hook')
   const replaceRootDir = rootDir.replace('example', '.temp-example-build-config-replace')
+  const sizeDotfileRootDir = rootDir.replace('example', '.temp-example-size-dotfile')
   const unsupportedRootDir = rootDir.replace('example', '.temp-example-build-config-unsupported')
   const stylesheetsRootDir = rootDir.replace('example', '.temp-example-stylesheets')
   const transpileRootDir = rootDir.replace('example', '.temp-example-transpile-only')
@@ -484,6 +485,21 @@ export default defineBuildConfig({
     await writeFile(portableNuxtTypes, `/// <reference types="fake-schema" />\n${await readFile(portableNuxtTypes, 'utf-8')}`)
 
     await copyExample(stylesheetsRootDir, contents => contents)
+    await copyExample(sizeDotfileRootDir, contents => contents)
+    await writeFiles(sizeDotfileRootDir, {
+      'build.config.ts': `import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineBuildConfig } from '@nuxt/module-builder'
+
+export default defineBuildConfig({
+  hooks: {
+    'build:done'(ctx) {
+      writeFileSync(join(ctx.options.outDir, '.hidden'), 'y'.repeat(50))
+    },
+  },
+})
+`,
+    })
     await writeFiles(join(stylesheetsRootDir, 'src/runtime'), {
       'styles/card.css': `@import "./base.css";\n\n.card {\n  user-select: none;\n  & .title { font-weight: bold; }\n  &:hover { color: rebeccapurple; }\n}\n`,
       'styles/base.css': `.base { margin: 0px 0px; }\n`,
@@ -1345,6 +1361,12 @@ export default defineBuildConfig({
       .filter(path => path.startsWith('runtime/') && !/\.d\.(?:[cm]?ts|vue\.ts)$/.test(path))
       .reduce((sum, path) => sum + gzipOf[path]!, 0))
     expect(report.other).toEqual({ code: 0, types: 0, gzip: 0 })
+  }, 60 * 1000)
+
+  it('should count dotfiles in the output', async () => {
+    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', sizeDotfileRootDir], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(stdout).other.code).toBe(50)
   }, 60 * 1000)
 
   it('should attribute entries and directories in the size report', async () => {

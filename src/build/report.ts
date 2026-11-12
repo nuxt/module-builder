@@ -43,7 +43,7 @@ interface SizedFile {
 
 /** Counts the files written to `outDir`, and prints the summary or the JSON report. */
 export async function reportSize({ cwd, outDir, entries, directories, chunks, json = false }: ReportSizeOptions): Promise<BuildSizeReport> {
-  const files = await glob(['**/*'], { cwd: outDir, absolute: true, onlyFiles: true })
+  const files = await glob(['**/*'], { cwd: outDir, absolute: true, onlyFiles: true, dot: true })
   const sizedFiles = await Promise.all(files.map(async (file) => {
     const path = relative(outDir, file)
     if (path === 'module.json') {
