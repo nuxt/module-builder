@@ -386,7 +386,7 @@ The declaration program starts from your module's own files only. Files the tsco
 
 ## Preparing .nuxt
 
-Declarations are generated against `.nuxt/tsconfig.json`, so `nuxt-module-build build` runs `nuxt-module-build prepare` first when `.nuxt` is missing. Keep `prepare` in your module's `dev:prepare` script so the build doesn't have to:
+Declarations are generated against `.nuxt/tsconfig.json`, so `nuxt-module-build build` runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with the same loader as `--stub`, so it checks [import extensions](#import-extensions-in-module-code) too. Keep `prepare` in your module's `dev:prepare` script so the build doesn't have to:
 
 ```json
 {

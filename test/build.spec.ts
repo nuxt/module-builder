@@ -35,6 +35,7 @@ describe('module builder', () => {
   const vueOnlyRootDir = rootDir.replace('example', '.temp-example-vue-only-runtime')
   const unpreparedRootDir = rootDir.replace('example', '.temp-example-unprepared')
   const nodeStubRootDir = rootDir.replace('example', '.temp-example-node-stub')
+  const prepareLoaderRootDir = rootDir.replace('example', '.temp-example-prepare-loader')
   const extensionlessRootDir = rootDir.replace('example', '.temp-example-extensionless-imports')
   const buildConfigRootDir = rootDir.replace('example', '.temp-example-build-config')
   const replaceRootDir = rootDir.replace('example', '.temp-example-build-config-replace')
@@ -97,6 +98,9 @@ export default defineNuxtModule({
 
     await copyExample(unpreparedRootDir, contents => contents)
     await rm(join(unpreparedRootDir, '.nuxt'), { force: true, recursive: true })
+
+    await copyExample(prepareLoaderRootDir, contents => `import { deps } from './deps.ts'\nimport { deep } from './deep/a.ts'\n${contents}\nexport const loaded = [deps, deep]\n`)
+    await rm(join(prepareLoaderRootDir, '.nuxt'), { force: true, recursive: true })
 
     await copyExample(extensionlessRootDir, contents => `${contents}\nexport { myModuleUtils } from './utils.js'\nexport { helper } from './helpers'\nexport { kit } from './kit'\nexport type { Kit } from './kit'\n`)
 
@@ -184,6 +188,19 @@ export default defineNuxtModule({
     await writeFiles(nodeStubRootDir, {
       'src/native-helper.ts': `import { inner } from './nested/inner.ts'\n\nexport const nativeValue: string = inner\n`,
       'src/nested/inner.ts': `export const inner: string = 'loaded helper'\n`,
+    })
+
+    await writeFiles(prepareLoaderRootDir, {
+      'node_modules/fake-cjs-marker/package.json': JSON.stringify({ name: 'fake-cjs-marker', version: '1.0.0', main: 'index.js' }),
+      'node_modules/fake-cjs-marker/index.js': `const marker = 'mentions import.meta in a string'\nmodule.exports = { value: marker.length }\n`,
+      'node_modules/fake-esm-split/package.json': JSON.stringify({ name: 'fake-esm-split', version: '1.0.0', type: 'module', exports: { '.': { import: './index.js', require: './index.cjs' } } }),
+      'node_modules/fake-esm-split/index.js': `export { value } from './inner.js'\nexport { other } from './other.js'\n`,
+      'node_modules/fake-esm-split/inner.js': `import cjs from 'fake-cjs-marker'\nexport const value = cjs.value\n`,
+      'node_modules/fake-esm-split/other.js': `import cjs from 'fake-cjs-marker'\nexport const other = cjs.value + 1\n`,
+      'node_modules/fake-esm-split/index.cjs': `module.exports = { value: 0, other: 1 }\n`,
+      'src/deps.ts': `// @ts-ignore untyped\nimport cjs from 'fake-cjs-marker'\n// @ts-ignore untyped\nimport { value, other } from 'fake-esm-split'\n\nexport const deps: unknown[] = [cjs, value, other]\n`,
+      'src/deep/a.ts': `export { deep } from './b.ts'\n`,
+      'src/deep/b.ts': `import pkg from '../../package.json'\n\nexport const deep: string = pkg.name\n`,
     })
 
     for (const dir of [thirdRootDir, encodedRootDir]) {
@@ -703,6 +720,15 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(new RegExp(`\\.nuxt\`? not found, running \`?nuxt-module-build prepare\`? first\\..*${guide('preparing-nuxt')}`))
     const declaration = await readFile(join(autoPrepareRootDir, 'dist/runtime/composables/useAliasedApp.d.ts'), 'utf-8')
     expect(declaration).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
+  }, 120 * 1000)
+
+  it('should prepare a module whose entry Node cannot import natively without handing it to jiti', async () => {
+    const { stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'prepare', prepareLoaderRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
+    expect(stderr).not.toContain('ERR_INTERNAL_ASSERTION')
+    expect(exitCode).toBe(0)
+    expect(await readFile(join(prepareLoaderRootDir, '.nuxt/nuxt.d.ts'), 'utf-8')).toContain('/// <reference types="my-module" />')
+    const modulesDts = await readFile(join(prepareLoaderRootDir, '.nuxt/types/modules.d.ts'), 'utf-8')
+    expect(modulesDts).toContain(`typeof import(${JSON.stringify(join(prepareLoaderRootDir, 'src/module'))}).default`)
   }, 120 * 1000)
 
   it('should explain type errors that prevent declaration generation', async () => {
