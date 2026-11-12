@@ -5,6 +5,12 @@ import { resolve } from 'pathe'
 export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
 export const DECLARATION_RE: RegExp = /\.d\.[cm]?ts$/
 export const RELATIVE_RE: RegExp = /^\.\.?(?:\/|$)/
+const JSX_RE = /\.[jt]sx$/
+
+/** The extension `file` is emitted with: `.jsx` for a JSX source when JSX is preserved, `extension` otherwise. */
+export function scriptExtension(file: string, extension: string, preserveJsx: boolean): string {
+  return preserveJsx && JSX_RE.test(file) ? '.jsx' : extension
+}
 
 const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
@@ -16,6 +22,9 @@ export function probe(path: string): string | undefined {
   const source = path.replace(/\.([cm]?)js(x?)$/, '.$1ts$2')
   if (source !== path && existsSync(source)) {
     return source
+  }
+  if (path.endsWith('.js') && existsSync(`${source}x`)) {
+    return `${source}x`
   }
   for (const extension of EXTENSIONS) {
     if (existsSync(path + extension)) {

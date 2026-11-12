@@ -8,7 +8,7 @@ import type { Transform as VueTransform } from 'vue-sfc-transformer/core'
 
 import { createDeclarationProgram, DeclarationError, declarationError, relativeSpecifier } from './declarations.ts'
 import type { DeclarationProgram } from './declarations.ts'
-import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, valueSpecifiers } from './resolve.ts'
+import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, scriptExtension, valueSpecifiers } from './resolve.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, writeDerivedTsconfig } from './tsconfig.ts'
 import { declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
@@ -73,8 +73,12 @@ export interface TranspileDirOptions {
   tsconfig?: string | false
   /** `paths` added to the tsconfig's when generating declarations. */
   paths?: Record<string, string[]>
-  /** JSX compilation for `.tsx` and `.jsx` files. Defaults to the automatic runtime from `vue`. */
-  jsx?: TransformOptions['jsx']
+  /**
+   * JSX compilation for `.tsx` and `.jsx` files, or a function of the source path that returns it.
+   * Defaults to `'preserve'`, which emits them as `.jsx` with types stripped, next to a `.d.ts`,
+   * for the consumer's JSX plugin (such as `@vitejs/plugin-vue-jsx`) to compile.
+   */
+  jsx?: TransformOptions['jsx'] | ((file: string) => TransformOptions['jsx'])
   /** The oxc `transform` to use. Defaults to the one of the `rolldown` installed. */
   transform?: Transform
   /** Emit source maps next to scripts. */
@@ -123,7 +127,7 @@ interface Emitted {
 }
 
 const EMPTY_IMPORT_RE = /^[ \t]*import\s*\{\s*\}\s*from\s*(['"])[^'"\n]+\1\s*;?/gm
-const DEFAULT_EXCLUDE = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}', '**/node_modules/**']
+export const DEFAULT_EXCLUDE: string[] = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}', '**/node_modules/**']
 const STYLESHEET_RE = /\.(?:css|s[ac]ss)$/
 const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
 const TYPESCRIPT_RE = /\.(?:[cm]?ts|tsx)$/
@@ -239,7 +243,7 @@ class DirectoryBuild {
       }
       else if (SCRIPT_RE.test(file) && !DECLARATION_RE.test(file)) {
         this.scripts.push(file)
-        this.outputs.set(file, path.replace(SCRIPT_RE, this.extension))
+        this.outputs.set(file, path.replace(SCRIPT_RE, this.scriptExtension(file)))
       }
       else if (options.stylesheets === false) {
         this.assets.push(file)
@@ -287,8 +291,18 @@ class DirectoryBuild {
     return [...scripts, ...assets, ...vue, ...declarations]
   }
 
+  private jsx(file: string) {
+    const { jsx } = this.options
+    return (typeof jsx === 'function' ? jsx(file) : jsx) ?? 'preserve'
+  }
+
+  private scriptExtension(file: string) {
+    return scriptExtension(file, this.extension, this.jsx(file) === 'preserve')
+  }
+
   private declarationOutput(source: string) {
-    return this.outputs.get(source)!.replace(SCRIPT_RE, this.dtsExtension)
+    const output = this.outputs.get(source)!
+    return output.replace(SCRIPT_RE, output.endsWith('.jsx') ? '.d.ts' : this.dtsExtension)
   }
 
   private async plan() {
@@ -350,10 +364,10 @@ class DirectoryBuild {
   private proposedOutput(importer: string, target: string, taken: Set<string>) {
     const mirrored = stem(join(dirname(this.outputs.get(importer)!), relative(dirname(importer), target)))
     if (!mirrored.startsWith('..') && !taken.has(mirrored)) {
-      return mirrored + this.extension
+      return mirrored + this.scriptExtension(target)
     }
     const segments = stem(relative(this.options.cwd, target)).split('/').map(segment => segment === '..' ? '_' : segment)
-    return join('_external', ...segments) + this.extension
+    return join('_external', ...segments) + this.scriptExtension(target)
   }
 
   private edgesOf(importer: string) {
@@ -398,7 +412,7 @@ class DirectoryBuild {
     const result = await transform(file, /\.[cm]?tsx?$/.test(file) ? source.replace(EMPTY_IMPORT_RE, match => ' '.repeat(match.length)) : source, {
       lang: file.match(/\.[cm]?([jt]sx?)$/)![1],
       sourcemap,
-      jsx: this.options.jsx ?? { runtime: 'automatic', importSource: 'vue' },
+      jsx: this.jsx(file),
       typescript: { onlyRemoveTypeImports: false },
     })
     if (result.errors.length) {

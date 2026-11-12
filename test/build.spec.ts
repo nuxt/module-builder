@@ -18,7 +18,10 @@ import { useWrappedFetch } from './runtime/composables/useWrappedFetch.ts'
 import { useAppFromNuxt } from '~~/src/runtime/composables/useAppNuxt'
 import { useShape } from './runtime/composables/useShape.ts'
 import TestMe from './runtime/components/TestMe.vue'
-export const runtimeRefs = [useWrappedFetch, useAppFromNuxt, useShape, TestMe]
+import type JsxComponent from './runtime/components/JsxComponent.tsx'
+import { label } from './runtime/utils/label.tsx'
+export const runtimeRefs = [useWrappedFetch, useAppFromNuxt, useShape, TestMe, label]
+export type JsxComponentType = typeof JsxComponent
 export { useFetch, useNuxtApp as useApp } from '#app'
 export { useNuxtApp as useDeepApp } from '#app/nuxt'
 export { type NuxtApp, useRuntimeConfig } from '#app'
@@ -207,6 +210,13 @@ export default defineNuxtModule({
       await writeFiles(dir, {
         'src/runtime/composables/useShape.ts': `import { shape } from '../utils/shape'\n\nexport const useShape = (): string => shape\n`,
         'src/runtime/utils/shape.ts': `export const shape: string = 'shape'\n`,
+        'src/runtime/components/JsxCard.vue': `<script setup lang="ts">\nimport JsxComponent from './JsxComponent'\n</script>\n\n<template>\n  <JsxComponent />\n</template>\n`,
+        'src/runtime/components/JsxSlot.tsx': `import { defineComponent } from 'vue'\nimport { useNuxtApp } from '#app'\nimport JsxComponent from './JsxComponent'\n\nexport const useSlotApp = () => useNuxtApp()\n\nexport default defineComponent((_, { slots }) => () => <section><JsxComponent />{slots.default?.()}</section>)\n`,
+        'src/runtime/server/render.tsx': `import { useSlotApp } from '../components/JsxSlot'\nimport { strong } from '../utils/strong'\n\nexport type SlotApp = ReturnType<typeof useSlotApp>\n\nexport const render = (label: string) => <p>{strong(label)}</p>\n`,
+        'src/runtime/server/render.spec.ts': `import JsxSlot from '../components/JsxSlot'\n\nexport const tested = JsxSlot\n`,
+        'src/runtime/utils/strong.tsx': `import { bold } from './bold'\n\nexport const strong = (label: string) => <strong>{bold(label)}</strong>\n`,
+        'src/runtime/utils/bold.tsx': `export const bold = (label: string) => <b>{label}</b>\n`,
+        'src/runtime/utils/label.tsx': `export const label = <span>label</span>\n`,
       })
     }
 
@@ -1325,6 +1335,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
         "./runtime/composables/useAppNuxt.js",
         "./runtime/composables/useShape.js",
         "./runtime/composables/useWrappedFetch.js",
+        "./runtime/utils/label.js",
       ]
     `)
   })
@@ -1344,6 +1355,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       './runtime/composables/useAppNuxt.js',
       './runtime/composables/useShape.js',
       './runtime/composables/useWrappedFetch.js',
+      './runtime/utils/label.js',
     ])
     expect(JSON.parse(await readFile(join(encodedDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
     expect(await readFile(join(encodedDistDir, 'types.d.mts'), 'utf-8')).toContain('from \'./module.mjs\'')
@@ -1399,12 +1411,50 @@ export const defineOptions = (options: Options) => ({ options, helper })
     )
   })
 
-  it('should handle JSX correctly', async () => {
+  it('should preserve JSX in runtime files for the app to compile', async () => {
     const [component, declaration] = await Promise.all([
-      readFile(join(distDir, 'runtime/components/JsxComponent.js'), 'utf-8'),
+      readFile(join(distDir, 'runtime/components/JsxComponent.jsx'), 'utf-8'),
       readFile(join(distDir, 'runtime/components/JsxComponent.d.ts'), 'utf-8'),
     ])
-    await expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.js')
+    expect(existsSync(join(distDir, 'runtime/components/JsxComponent.js'))).toBe(false)
+    await expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.jsx')
     await expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
+  })
+
+  it('should point imports of a runtime JSX file at its `.jsx` output', async () => {
+    const runtime = join(thirdDistDir, 'runtime')
+    expect(await readFile(join(runtime, 'components/JsxCard.vue'), 'utf-8')).toContain(`import JsxComponent from "./JsxComponent.jsx";`)
+    expect(await readFile(join(runtime, 'components/JsxSlot.jsx'), 'utf-8')).toMatchInlineSnapshot(`
+      "import { defineComponent } from "vue";
+      import { useNuxtApp } from "#app";
+      import JsxComponent from "./JsxComponent.jsx";
+      export const useSlotApp = () => useNuxtApp();
+      export default defineComponent((_, { slots }) => () => <section><JsxComponent />{slots.default?.()}</section>);
+      "
+    `)
+    expect(await readFile(join(runtime, 'components/JsxSlot.d.ts'), 'utf-8')).toContain('export declare const useSlotApp: () => import("nuxt/app").NuxtApp;')
+    const moduleDts = await readFile(join(thirdDistDir, 'module.d.mts'), 'utf-8')
+    expect(findStaticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
+  })
+
+  it('should compile JSX in server runtime files, module entry imports, and the files they import', async () => {
+    const runtime = join(thirdDistDir, 'runtime')
+    expect(existsSync(join(runtime, 'server/render.jsx'))).toBe(false)
+    for (const file of ['utils/strong.js', 'utils/bold.js', 'utils/label.js']) {
+      expect(await readFile(join(runtime, file), 'utf-8'), file).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
+    }
+    expect(JSON.parse(await readFile(join(thirdDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module' })
+    expect(await readFile(join(runtime, 'server/render.js'), 'utf-8')).toMatchInlineSnapshot(`
+      "import { strong } from "../utils/strong.js";
+      import { jsx as _jsx } from "vue/jsx-runtime";
+      export const render = (label) => /* @__PURE__ */ _jsx("p", { children: strong(label) });
+      "
+    `)
+    expect(await readFile(join(runtime, 'server/render.d.ts'), 'utf-8')).toMatchInlineSnapshot(`
+      "import { useSlotApp } from '../components/JsxSlot.jsx';
+      export type SlotApp = ReturnType<typeof useSlotApp>;
+      export declare const render: (label: string) => import("vue/jsx-runtime").JSX.Element;
+      "
+    `)
   })
 })

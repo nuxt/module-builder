@@ -43,6 +43,9 @@ function declarationsOf(output: string) {
   if (output.endsWith('.vue')) {
     return [`${output}.d.ts`, output.replace(/\.vue$/, '.d.vue.ts')]
   }
+  if (output.endsWith('.jsx')) {
+    return [output.replace(/\.jsx$/, '.d.ts')]
+  }
   return /\.[cm]?js$/.test(output) ? [output.replace(/\.(m?)js$/, '.d.$1ts')] : []
 }
 
