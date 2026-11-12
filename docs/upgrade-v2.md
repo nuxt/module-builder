@@ -246,7 +246,7 @@ import { helper } from './utils.ts'
 import { kit } from './kit/index.ts'
 ```
 
-Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added. The same rule applies to `build.config.ts` and to `nuxt-module-build prepare`, which loads `src/module.ts` the same way.
+Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added. The same rule applies to `build.config.ts` and to `nuxt-module-build prepare`, which loads `src/module.ts` the same way. Add the extensions before you run `prepare` or `dev:prepare`: until they're in place, `prepare` stops with this list and `.nuxt` isn't generated, so the module's type check and editor types have nothing to extend.
 
 ## Declaration errors
 
@@ -421,7 +421,7 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
 4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Set the top-level `types` field to `./dist/types.d.mts`, or remove it. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
-6. Add the `.ts` extension to relative imports in `src/module.ts` and the files it imports outside `src/runtime` (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`). The build lists each one that is missing.
+6. Add the `.ts` extension to relative imports in `src/module.ts` and the files it imports outside `src/runtime` (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`). Do this before step 8: `prepare` lists each one that is missing and doesn't generate `.nuxt` until they're in place.
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
 8. Run `nuxt-module-build prepare`, then `nuxt-module-build build`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.
 9. Run your module's own type check (for example, `nuxt typecheck` or `vue-tsc --noEmit`) and fix what it reports. A build warning about type errors that the type check doesn't reproduce is safe to ignore. Annotate exports whose type is inferred through a `#build/*` alias; otherwise `dist` declares them as `any`.
