@@ -10,12 +10,14 @@
 ## Features
 
 - Compatible with Nuxt 3 and Nuxt Kit
-- Unified build with [unjs/unbuild](https://github.com/unjs/unbuild)
+- Unified build with [tsdown](https://tsdown.dev)
 - Automated build config using last module spec
 - Typescript and ESM support
 - Auto generated types and shims for `@nuxt/schema`
 
 We recommend to checkout the [Nuxt modules author guide](https://nuxt.com/docs/guide/going-further/modules) before starting with the module-builder.
+
+If you're upgrading a module from v1, follow the [upgrade guide](./docs/upgrade-v2.md).
 
 ## Requirements
 
@@ -84,7 +86,7 @@ export default defineNuxtModule<ModuleOptions>({
 
 Any runtime file and code that we need to provide by module including plugins, composables and server api, should be in this directory.
 
-Each file will be transformed individually using [unjs/mkdist](https://github.com/unjs/mkdist) to `dist/runtime/`.
+Each file is transpiled individually to `dist/runtime/`.
 
 <!-- TODO: Docs about how to address runtime from within setup -->
 
@@ -121,24 +123,37 @@ A minimum `package.json` should look like this:
     "@nuxt/kit": "latest"
   },
   "devDependencies": {
-    "@nuxt/module-builder": "latest"
+    "@nuxt/module-builder": "latest",
+    "tsdown": "^0.23.7"
   }
 }
 ```
 
-### `build.config.ts` (optional)
+`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`.
 
-Module builder is essentially a preset for [unjs/unbuild](https://github.com/unjs/unbuild), check out the [build command](./src/commands/build.ts#L51) for reference.
+### Additional entrypoints (optional)
 
-To customize/extend the unbuild configuration you can add a `build.config.ts` in the root of your project:
+Module builder is a preset for [tsdown](https://tsdown.dev). See [`src/build/build.ts`](./src/build/build.ts) for the options it passes to tsdown.
 
-```ts
-import { defineBuildConfig } from 'unbuild'
+To build entrypoints other than `src/module`, list them in the `build.entries` field of `package.json`:
 
-export default defineBuildConfig({
-  // set additional configuration or customize using hooks
-})
+```json [package.json]
+{
+  "build": {
+    "entries": [
+      "./src/utils"
+    ]
+  }
+}
 ```
+
+> [!WARNING]
+> `build.config.ts` and the `unbuild` field of `package.json` are deprecated.
+> The build still applies their `entries`, `externals`, `replace`, `rollup.replace`, and `sourcemap` options,
+> and the `build:before`, `rollup:done`, and `build:done` hooks. `mkdist:*` hooks are ignored, a few options
+> are accepted at their defaults, and any other option fails the build. Import `defineBuildConfig` from
+> `@nuxt/module-builder` instead of `unbuild`. See [Build configuration](./docs/upgrade-v2.md#build-configuration)
+> in the upgrade guide for the full list.
 
 ## Dist files
 
@@ -147,10 +162,33 @@ Module builder generates dist files in `dist/` directory:
 - `module.mjs`: Module entrypoint build from `src/module`
 - `module.json`: Module meta extracted from `module.mjs` + `package.json`
 - `types.d.mts`: Exported types in addition to shims for `nuxt.config` auto completion.
-- `runtime/*`: Individually transformed files using [unjs/mkdist](https://github.com/unjs/mkdist)
-  - Javascript and `.ts` files will be transformed to `.js` with extracted types on `.d.ts` file with same name
-  - `.vue` files will be transformed with extracted `.d.ts` file
-  - Other files will be copied as is
+- `runtime/*`: Individually transpiled files
+  - JavaScript and `.ts` files are transpiled to `.js`, with their types extracted to a `.d.ts` file of the same name
+  - `.vue` files are transpiled to `.vue`, with their types extracted to `.vue.d.ts` and `.d.vue.ts` files
+  - `.css` files have their nesting flattened, and are vendor-prefixed and minified
+  - `.scss` and `.sass` files are compiled to `.css` with the module's `sass` or `sass-embedded`; `_` partials aren't emitted
+  - Other files are copied as they are
+
+## Transpiling a directory with tsdown
+
+The runtime build is a rolldown plugin, `transpileDir`, exported from `@nuxt/module-builder/rolldown`. Use it in any tsdown or rolldown build that transpiles a directory file by file instead of bundling it:
+
+```ts
+// tsdown.config.ts
+import { defineConfig } from 'tsdown'
+import { transpileDir } from '@nuxt/module-builder/rolldown'
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  plugins: [
+    transpileDir({ srcDir: 'src/runtime', outBase: 'runtime' }),
+  ],
+})
+```
+
+Every file under `srcDir` is emitted under `outBase` in the build's output directory, with its name intact apart from the extension. Scripts become `.js` (or `.mjs`), and compiled Sass becomes `.css`. Test and story files are excluded by default. Scripts are transpiled with oxc and keep their imports as written, apart from relative imports, which get the emitted extension. `.vue` files are transpiled with `vue-sfc-transformer`, stylesheets are processed as described in [Dist files](#dist-files), and other files are copied. Declarations come from one TypeScript program that uses the nearest `tsconfig.json`.
+
+The options are documented on the `TranspileDirOptions` type. The `resolveExternal` option controls what happens to relative imports that resolve outside `srcDir`. A build with nothing to bundle can pass `emptyEntry`, from the same export, as its `entry`.
 
 ## 💻 Development
 

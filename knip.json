@@ -4,12 +4,6 @@
     "test/__snapshots__/**"
   ],
   "workspaces": {
-    ".": {
-      "ignoreDependencies": [
-        "mkdist",
-        "vue-sfc-transformer"
-      ]
-    },
     "example": {
       "entry": [
         "src/module.ts",

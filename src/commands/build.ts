@@ -1,23 +1,20 @@
-import { existsSync, promises as fsp } from 'node:fs'
-import { pathToFileURL } from 'node:url'
-import { basename, dirname, extname, join, normalize, resolve } from 'pathe'
-import { filename } from 'pathe/utils'
-import { readPackageJSON } from 'pkg-types'
-import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
-import { defu } from 'defu'
-import { createJiti } from 'jiti'
-import { anyOf, createRegExp } from 'magic-regexp'
-import { consola } from 'consola'
-import type { NuxtModule } from '@nuxt/schema'
-import { findExports, resolvePath, findTypeExports } from 'mlly'
-import type { ESMExport } from 'mlly'
+import { existsSync } from 'node:fs'
 import { defineCommand } from 'citty'
-import { convertCompilerOptionsFromJson } from 'typescript'
+import { consola } from 'consola'
+import { resolve } from 'pathe'
 
 import pkg from '../../package.json' with { type: 'json' }
+import { guide } from '../build/guide.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
+import { prepareModule } from './prepare.ts'
 
-const { name, version } = pkg
+export const MISSING_TSDOWN_HINT = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
+
+function isMissingTsdown(error: unknown) {
+  return error instanceof Error
+    && (error as Error & { code?: string }).code === 'ERR_MODULE_NOT_FOUND'
+    && error.message.includes('\'tsdown\'')
+}
 
 export default defineCommand({
   meta: {
@@ -43,284 +40,24 @@ export default defineCommand({
     },
   },
   async run(context) {
-    const { build } = await import('unbuild')
-
     const cwd = resolveCwdArg(context.args)
 
-    const jiti = createJiti(cwd)
+    if (context.args.stub) {
+      const { stub } = await import('../build/stub.ts')
+      return stub(cwd, { outDir: context.args.outDir })
+    }
 
-    await build(cwd, false, {
-      declaration: 'node16',
-      sourcemap: context.args.sourcemap,
-      stub: context.args.stub,
-      stubOptions: { absoluteJitiPath: true },
-      outDir: context.args.outDir,
-      entries: [
-        'src/module',
-        {
-          input: 'src/runtime/',
-          outDir: `${context.args.outDir}/runtime`,
-          addRelativeDeclarationExtensions: true,
-          ext: 'js',
-          pattern: [
-            '**',
-            '!**/*.stories.{js,cts,mts,ts,jsx,tsx}', // ignore storybook files
-            '!**/*.{spec,test}.{js,cts,mts,ts,jsx,tsx}', // ignore tests
-          ],
-          esbuild: {
-            jsxImportSource: 'vue',
-            jsx: 'automatic',
-            jsxFactory: 'h',
-          },
-        },
-      ],
-      rollup: {
-        esbuild: {
-          target: 'esnext',
-        },
-        emitCJS: false,
-        cjsBridge: false,
-      },
-      externals: [
-        /dist[\\/]runtime[\\/]/,
-        '@nuxt/schema',
-        '@nuxt/schema-nightly',
-        '@nuxt/schema-edge',
-        '@nuxt/kit',
-        '@nuxt/kit-nightly',
-        '@nuxt/kit-edge',
-        '#app',
-        '#app/nuxt',
-        'nuxt',
-        'nuxt-nightly',
-        'nuxt-edge',
-        'nuxt3',
-        'vue',
-        'vue-demi',
-      ],
-      hooks: {
-        async 'mkdist:entry:options'(_ctx, entry, options) {
-          options.typescript = defu(options.typescript, {
-            compilerOptions: loadTSCompilerOptions(entry.input),
-          }) as typeof options.typescript
-        },
-        async 'rollup:options'(ctx, options) {
-          const [entry] = ctx.buildEntries
-          const mergedCompilerOptions = defu({
-            noEmit: false,
-            paths: {
-              '#app/nuxt': ['./node_modules/nuxt/dist/app/nuxt'],
-            },
-          }, ctx.options.rollup.dts.compilerOptions, loadTSCompilerOptions(entry!.path))
-          ctx.options.rollup.dts.compilerOptions = convertCompilerOptionsFromJson(mergedCompilerOptions, entry!.path).options
-          options.plugins ||= []
-          if (!Array.isArray(options.plugins))
-            options.plugins = [options.plugins]
+    if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
+      consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
+      await prepareModule(cwd)
+    }
 
-          const runtimeEntries = ctx.options.entries.filter(entry => entry.builder === 'mkdist')
-
-          const runtimeDirs = runtimeEntries.map(entry => basename(entry.input))
-          const RUNTIME_RE = createRegExp(anyOf(...runtimeDirs).and(anyOf('/', '\\')))
-
-          // Add extension for imports of runtime files in build
-          options.plugins.unshift({
-            name: 'nuxt-module-builder:runtime-externals',
-            async resolveId(id, importer) {
-              if (!RUNTIME_RE.test(id))
-                return
-
-              const resolved = await this.resolve(id, importer, { skipSelf: true })
-              if (!resolved)
-                return
-
-              const normalizedId = normalize(resolved.id)
-              for (const entry of runtimeEntries) {
-                if (!entry.outDir || !normalizedId.includes(entry.input))
-                  continue
-
-                const name = filename(normalizedId) || basename(normalizedId, extname(normalizedId))
-                const distFile = await resolvePath(join(dirname(pathToFileURL(normalizedId.replace(entry.input, entry.outDir)).href), name))
-                if (distFile) {
-                  return {
-                    external: true,
-                    id: distFile,
-                  }
-                }
-              }
-            },
-          })
-        },
-        async 'rollup:done'(ctx) {
-          // Load module meta
-          const moduleEntryPath = resolve(ctx.options.outDir, 'module.mjs')
-          const moduleFn = await jiti.import<NuxtModule<Record<string, unknown>>>(pathToFileURL(moduleEntryPath).toString(), { default: true }).catch((err) => {
-            consola.error(err)
-            consola.error('Cannot load module. Please check dist:', moduleEntryPath)
-            return null
-          })
-
-          if (!moduleFn) {
-            return
-          }
-          const moduleMeta = await moduleFn.getMeta?.() || {}
-
-          // Enhance meta using package.json
-          if (ctx.pkg) {
-            if (!moduleMeta.name) {
-              moduleMeta.name = ctx.pkg.name
-            }
-            if (!moduleMeta.version) {
-              moduleMeta.version = ctx.pkg.version
-            }
-          }
-
-          // Add module builder metadata
-          moduleMeta.builder = {
-            [name]: version,
-            unbuild: await readPackageJSON('unbuild').then(r => r.version).catch(() => 'unknown'),
-          }
-
-          // Write meta
-          const metaFile = resolve(ctx.options.outDir, 'module.json')
-          await fsp.writeFile(metaFile, JSON.stringify(moduleMeta, null, 2), 'utf8')
-
-          // Generate types
-          await writeTypes(ctx.options.outDir, ctx.options.stub)
-
-          if (!ctx.options.stub) {
-            await rewriteRuntimeTypeAliases(resolve(ctx.options.outDir, 'runtime'))
-          }
-        },
-        async 'build:done'(ctx) {
-          const logs = [...ctx.warnings].filter(l => l.startsWith('Potential missing package.json files:'))
-          if (logs.filter(l => l.match(/\.d\.ts/)).length > 0) {
-            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`.d.ts\` declaration files. You can update these paths to use the \`.d.mts\` extension instead.`)
-          }
-
-          if (logs.filter(l => l.match(/module\.cjs/)).length > 0) {
-            consola.warn(`\`@nuxt/module-builder\` will no longer generate \`module.cjs\` as this is not required for Nuxt v3+. You can safely remove replace this with \`module.mjs\` in your \`package.json\`.`)
-          }
-
-          const pkg = await readPackageJSON(cwd)
-          if (pkg?.types && !existsSync(resolve(cwd, pkg.types))) {
-            consola.warn(`Please remove the \`types\` field from package.json as it is no longer required for Bundler TypeScript module resolution. Instead, you can use \`typesVersions\` to support subpath export types for Node10, if required.`)
-          }
-        },
-      },
+    const { build } = await import('../build/build.ts').catch((error) => {
+      if (isMissingTsdown(error)) {
+        consola.error(MISSING_TSDOWN_HINT)
+      }
+      throw error
     })
+    return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap })
   },
 })
-
-async function writeTypes(distDir: string, isStub: boolean) {
-  const dtsFile = resolve(distDir, 'types.d.mts')
-  if (existsSync(dtsFile)) {
-    return
-  }
-
-  const moduleReExports: ESMExport[] = []
-  if (!isStub) {
-    // Read generated module types
-    const moduleTypesFile = resolve(distDir, 'module.d.mts')
-    const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
-    const normalisedModuleTypes = moduleTypes
-      // Replace `export { type Foo }` with `export { Foo }`
-      .replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
-    for (const e of findExports(normalisedModuleTypes)) {
-      moduleReExports.push(e)
-    }
-    for (const i of findTypeExports(normalisedModuleTypes)) {
-      moduleReExports.push(i)
-    }
-  }
-
-  const appShims: string[] = []
-  const schemaShims: string[] = []
-  const moduleImports: string[] = []
-  const schemaImports: string[] = []
-  const moduleExports: string[] = []
-
-  const hasTypeExport = (name: string) => isStub || moduleReExports.find(exp => exp.names?.includes(name))
-
-  if (!hasTypeExport('ModuleOptions')) {
-    schemaImports.push('NuxtModule')
-    moduleImports.push('default as Module')
-    moduleExports.push(`export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
-  }
-
-  if (hasTypeExport('ModuleHooks')) {
-    moduleImports.push('ModuleHooks')
-    schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
-  }
-
-  if (hasTypeExport('ModuleRuntimeHooks')) {
-    moduleImports.push('ModuleRuntimeHooks')
-    appShims.push(`  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}`)
-  }
-
-  if (hasTypeExport('ModuleRuntimeConfig')) {
-    moduleImports.push('ModuleRuntimeConfig')
-    schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
-  }
-  if (hasTypeExport('ModulePublicRuntimeConfig')) {
-    moduleImports.push('ModulePublicRuntimeConfig')
-    schemaShims.push('  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}')
-  }
-
-  const dtsContents = `
-  ${schemaImports.length ? `import type { ${schemaImports.join(', ')} } from '@nuxt/schema'` : ''}
-
-${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './module.mjs'` : ''}
-
-${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
-${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
-${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${isStub ? 'export * from "./module.mjs"' : ''}
-${moduleReExports.filter(e => e.type === 'named' || e.type === 'default').map(e => `\nexport { ${e.names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from '${e.specifier || './module.mjs'}'`).join('\n')}
-${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
-`.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
-
-  await fsp.writeFile(dtsFile, dtsContents, 'utf8')
-}
-
-const DECLARATION_RE = /\.d\.[^/]*ts$/
-
-// `#app`/`#app/*` are build-time-only aliases with no package resolution, so leaking
-// them into emitted declarations breaks `tsc`/`attw` for consumers. `nuxt/app` is the
-// resolvable public entry and re-exports the `#app/*` symbols.
-async function rewriteRuntimeTypeAliases(runtimeDir: string) {
-  if (!existsSync(runtimeDir)) {
-    return
-  }
-
-  const entries = await fsp.readdir(runtimeDir, { recursive: true })
-  await Promise.all(entries.map(async (entry) => {
-    if (!DECLARATION_RE.test(entry)) {
-      return
-    }
-
-    const file = join(runtimeDir, entry)
-    const contents = await fsp.readFile(file, 'utf8')
-    const rewritten = contents
-      .replace(/import\("#app(?:\/[^"]*)?"\)/g, 'import("nuxt/app")')
-      .replace(/(\bfrom\s*)(['"])#app(?:\/[^'"]*)?\2/g, '$1$2nuxt/app$2')
-
-    if (rewritten !== contents) {
-      await fsp.writeFile(file, rewritten, 'utf8')
-    }
-  }))
-}
-
-function loadTSCompilerOptions(path: string) {
-  const tsconfig = getTsconfig(path)
-  const compilerOptions = tsconfig?.config.compilerOptions ?? {}
-
-  const matchPath = tsconfig && createPathsMatcher(tsconfig)
-
-  if (matchPath && compilerOptions.paths) {
-    for (const alias in compilerOptions.paths) {
-      compilerOptions.paths[alias] = matchPath(alias)
-    }
-  }
-
-  return compilerOptions
-}

@@ -62,3 +62,23 @@ jobs:
 
       - name: 💪 Type check
         run: pnpm test:types
+
+  engines-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@22.18.0
+          cache: true
+
+      - name: 🔍 Check Node.js version
+        run: pnpm exec node -e "if (process.version !== 'v22.18.0') { console.error('Expected v22.18.0, got ' + process.version); process.exit(1) }"
+
+      - run: pnpm dev:prepare
+
+      - name: 🧪 Test project
+        run: pnpm test
+
+      - name: 🛠 Build project (example)
+        run: pnpm example:build
