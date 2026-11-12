@@ -66,6 +66,7 @@ const files: Record<string, string> = {
   'project/src/lib/model.ts': `import type { Collection, Common, Shape } from '../model'\n\nexport const describe = (collection: Collection, shape: Shape, common: Common): string => [collection.items.length, shape.kind, common.id].join()\n`,
   'project/src/lib/nested/index.ts': `export const nested = true\n`,
   'project/src/lib/components/Button.tsx': `export default function Button() {\n  return <button>Click</button>\n}\n`,
+  'project/src/lib/components/Toolbar.tsx': `import Button from './Button.js'\n\nexport default function Toolbar() {\n  return <nav><Button /></nav>\n}\n`,
   'project/src/lib/components/Hello.vue': `<script setup lang="ts">\nimport type { Options } from '../../types'\nimport { defaults } from '../options'\nimport { helper } from '../../../../shared/helper'\ndefineProps<{ options: Options }>()\ndefineExpose({ defaults, helper })\n</script>\n\n<template>\n  <div>{{ options.enabled }}</div>\n</template>\n`,
   'project/src/lib/components/Other.vue': `<script setup lang="ts">\ndefineProps<{ label: string }>()\n</script>\n\n<template>\n  <span>{{ label }}</span>\n</template>\n`,
   'project/src/lib/routes/[id].get.ts': `export default (id: string) => id\n`,
@@ -126,13 +127,15 @@ describe('transpileDir', () => {
         "index.mjs",
         "lib/assets/data.json",
         "lib/components/Button.d.ts",
-        "lib/components/Button.js",
+        "lib/components/Button.jsx",
         "lib/components/Hello.d.vue.ts",
         "lib/components/Hello.vue",
         "lib/components/Hello.vue.d.ts",
         "lib/components/Other.d.vue.ts",
         "lib/components/Other.vue",
         "lib/components/Other.vue.d.ts",
+        "lib/components/Toolbar.d.ts",
+        "lib/components/Toolbar.jsx",
         "lib/index.d.ts",
         "lib/index.js",
         "lib/lazy.d.ts",
@@ -170,7 +173,7 @@ describe('transpileDir', () => {
       import { helper } from "../_external/_/shared/helper.js";
       import { config } from "#virtual/config";
       import Hello from "./components/Hello.vue";
-      import Button from "./components/Button.js";
+      import Button from "./components/Button.jsx";
       import { nested } from "./nested/index.js";
       import data from "./assets/data.json";
       import "./styles/main.css";
@@ -181,7 +184,8 @@ describe('transpileDir', () => {
       "
     `)
     expect(await read('lib/options.js')).toBe(`export const defaults = { enabled: true };\n`)
-    expect(await read('lib/components/Button.js')).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
+    expect(await read('lib/components/Button.jsx')).toBe(`export default function Button() {\n\treturn <button>Click</button>;\n}\n`)
+    expect(await read('lib/components/Toolbar.jsx')).toContain(`import Button from "./Button.jsx";`)
   })
 
   it('should generate declarations with the same specifiers', async () => {
@@ -193,7 +197,7 @@ describe('transpileDir', () => {
       import { helper } from '../_external/_/shared/helper.js';
       import { config } from '#virtual/config';
       import Hello from './components/Hello.vue';
-      import Button from './components/Button.js';
+      import Button from './components/Button.jsx';
       import { nested } from './nested/index.js';
       import data from './assets/data.json';
       import './styles/main.css';
@@ -254,6 +258,37 @@ describe('transpileDir', () => {
     ])
     expect(await readFile(join(raw, 'styles/theme.scss'), 'utf8')).toBe(files['project/src/lib/styles/theme.scss'])
     expect(await readFile(join(raw, 'components/Hello.vue'), 'utf8')).toContain('defineProps')
+  })
+
+  it('should compile JSX with the `jsx` option, per file when it is a function', async () => {
+    const outDir = join(cwd, 'dist-jsx')
+    const automatic = { runtime: 'automatic', importSource: 'vue' } as const
+    await build({
+      cwd,
+      config: false,
+      entry: emptyEntry,
+      format: 'esm',
+      dts: false,
+      report: false,
+      outDir,
+      plugins: [
+        transpileDir({ srcDir: 'src/lib', outBase: 'preserved', include: ['components/Button.tsx'], extension: 'mjs' }),
+        transpileDir({ srcDir: 'src/lib', outBase: 'compiled', include: ['components/Button.tsx'], declaration: false, jsx: automatic }),
+        transpileDir({ srcDir: 'src/lib', outBase: 'mixed', include: ['index.ts', 'components/*.tsx'], declaration: false, jsx: file => file.endsWith('Button.tsx') ? automatic : 'preserve' }),
+      ],
+    })
+    expect((await listFiles(outDir)).filter(file => file.includes('.')).sort()).toEqual([
+      'compiled/components/Button.js',
+      'mixed/components/Button.js',
+      'mixed/components/Toolbar.jsx',
+      'mixed/index.js',
+      'preserved/components/Button.d.ts',
+      'preserved/components/Button.jsx',
+    ])
+    expect(await readFile(join(outDir, 'compiled/components/Button.js'), 'utf8')).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
+    expect(await readFile(join(outDir, 'mixed/components/Button.js'), 'utf8')).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
+    expect(await readFile(join(outDir, 'mixed/components/Toolbar.jsx'), 'utf8')).toBe(`import Button from "./Button.js";\nexport default function Toolbar() {\n\treturn <nav><Button /></nav>;\n}\n`)
+    expect(await readFile(join(outDir, 'mixed/index.js'), 'utf8')).toContain(`import Button from "./components/Button.js";`)
   })
 
   it('should emit a source map next to each script that links back to its source', async () => {

@@ -55,6 +55,22 @@ describe('runtimeExternals', () => {
     })
   })
 
+  it('should point runtime JSX imports at their `.jsx` output unless their JSX is compiled', async () => {
+    await expect(createResolver()('./runtime/components/JsxComponent')).resolves.toEqual({
+      id: '/dist/runtime/components/JsxComponent.jsx',
+      external: true,
+    })
+    await expect(createResolver('my-module')('my-module/runtime/components/JsxComponent')).resolves.toEqual({
+      id: '/dist/runtime/components/JsxComponent.jsx',
+      external: true,
+    })
+    const resolveId = runtimeExternals({ ...directories(), packageName: 'my-module', preserveJsx: () => false }).resolveId as (this: unknown, id: string, importer?: string) => Promise<unknown>
+    await expect(resolveId.call({}, 'my-module/runtime/components/JsxComponent', importer)).resolves.toEqual({
+      id: '/dist/runtime/components/JsxComponent.js',
+      external: true,
+    })
+  })
+
   it('should keep the name of non-code runtime files', async () => {
     await expect(createResolver()('./runtime/assets/config.json')).resolves.toEqual({
       id: '/dist/runtime/assets/config.json',

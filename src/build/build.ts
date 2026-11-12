@@ -8,7 +8,8 @@ import { build as tsdownBuild } from 'tsdown'
 import type { InlineConfig } from 'tsdown'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
+import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
+import { DEFAULT_EXCLUDE, transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
@@ -46,6 +47,7 @@ const TYPE_ERROR_HINT = [
 ].join('\n')
 
 const SCRIPT_RE = /\.[cm]?[jt]sx?$/
+const SERVER_DIR_RE = /(?:^|\/)server\//
 
 export function shouldNudge(isolatedDeclarations: boolean): boolean {
   return !isolatedDeclarations && shouldAdvise('isolated-declarations')
@@ -100,6 +102,11 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
     }
   }
   const reserved = new Set([...Object.keys(entries), 'types'])
+  // Nitro and Node do not transform files in `node_modules`, so JSX that runs there is compiled.
+  const runtimeFiles = await Promise.all(directories.map(directory => glob(['**/*'], { cwd: directory.srcDir, ignore: DEFAULT_EXCLUDE, absolute: true, onlyFiles: true })))
+  const serverFiles = runtimeFiles.flat().map(file => normalize(file)).filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
+  const compiledJsx = await valueImports([...serverFiles, ...bundledSources.keys()])
+  const preserveJsx = (file: string) => !compiledJsx.has(normalize(file))
   const nuxtDir = findPackageDir('nuxt', cwd)
   const vue = { cacheVersion: await hashGeneratedTypes(cwd) }
   const directoryPlugins = directories.map(directory => transpileDir({
@@ -111,6 +118,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
     transform: loadOxc()?.transform,
     sourcemap,
     vue,
+    jsx: file => preserveJsx(file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
     // Bundled entries and other directories keep their own output. Any other file is
     // mirrored where the specifier already points, or under `_external/` when that would
     // take the name of a bundled entry or `types`.
@@ -121,10 +129,10 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
       }
       const other = directories.find(directory => !relative(directory.srcDir, file).startsWith('..'))
       if (other) {
-        return relativeSpecifier(from, join(relative(outDir, other.outDir), relative(other.srcDir, file).replace(SCRIPT_RE, `.${other.ext}`)))
+        return relativeSpecifier(from, join(relative(outDir, other.outDir), relative(other.srcDir, file).replace(SCRIPT_RE, scriptExtension(file, `.${other.ext}`, preserveJsx(file)))))
       }
       if (reserved.has(output.replace(SCRIPT_RE, ''))) {
-        const segments = relative(cwd, file).replace(SCRIPT_RE, `.${directory.ext}`).split('/').map(segment => segment === '..' ? '_' : segment)
+        const segments = relative(cwd, file).replace(SCRIPT_RE, scriptExtension(file, `.${directory.ext}`, preserveJsx(file))).split('/').map(segment => segment === '..' ? '_' : segment)
         return { mirror: kind, output: join('_external', ...segments) }
       }
       return { mirror: kind }
@@ -153,7 +161,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
     }),
     plugins: [
       externalDependencyDeclarations(),
-      runtimeExternals({ outDir, directories, packageName: pkg.name }),
+      runtimeExternals({ outDir, directories, packageName: pkg.name, preserveJsx }),
       ...config.replace ? [await replacePlugin(config.replace)] : [],
       ...directoryPlugins,
     ],
@@ -193,6 +201,30 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
 
   await checkDeprecatedPackageFields(cwd)
   await callBuildHook(config, 'build:done', ctx)
+}
+
+async function valueImports(roots: string[]) {
+  const transform = loadOxc()?.transform
+  const queue = roots.filter(file => SCRIPT_RE.test(file))
+  const found = new Set<string>()
+  while (queue.length) {
+    const file = queue.pop()!
+    if (found.has(file)) {
+      continue
+    }
+    found.add(file)
+    const source = await readFile(file, 'utf8')
+    const code = transform
+      ? (await transform(file, source, { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })).code
+      : source
+    for (const specifier of valueSpecifiers(code)) {
+      const target = probeSource(resolve(dirname(file), specifier))
+      if (target && SCRIPT_RE.test(target)) {
+        queue.push(normalize(target))
+      }
+    }
+  }
+  return found
 }
 
 function isDirectoryError(error: unknown) {

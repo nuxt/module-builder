@@ -365,6 +365,8 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 - Relative imports get the emitted extension (`../utils/merge` becomes `../utils/merge.js`). Non-relative specifiers (`#imports`, `#build/*`, and dependencies) are kept as written.
 - Imports used only as types are removed from the JavaScript output.
+- `.tsx` and `.jsx` files are emitted as `.jsx` with a `.d.ts`, with types stripped and the JSX kept, so the app compiles them with its own Vue JSX plugin. Pass paths to them without an extension, as in `resolver.resolve('./runtime/components/Foo')`.
+- JSX that runs in Nitro or Node is still compiled to `vue/jsx-runtime` calls, as neither transforms files in `node_modules`. This covers files under a `server/` directory, and runtime files that these or `src/module.ts` import values from through relative paths. An import through an alias or the module's own package name isn't followed.
 - A relative import of a file outside `src/runtime` is emitted where the import points (`src/shared/x.ts` becomes `dist/shared/x.js`). When that would leave `dist` or collide with another output, it's emitted under `dist/_external/` instead. A file that is only imported as a type gets a `.d.ts` and no script.
 - Your module's own package name and `#` subpath imports are never bundled into `module.mjs`.
 

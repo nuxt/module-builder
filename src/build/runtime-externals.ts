@@ -1,9 +1,7 @@
-import { existsSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, join, normalize, relative } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
-const CODE_EXTENSION_RE = /\.[cm]?[tj]sx?$/
-const CODE_EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
+import { probe, SCRIPT_RE, scriptExtension } from '../rolldown/resolve.ts'
 
 export interface RuntimeExternalsOptions {
   /** Absolute path of the build's output directory. */
@@ -12,6 +10,8 @@ export interface RuntimeExternalsOptions {
   directories: Array<{ srcDir: string, outDir: string, ext: 'js' | 'mjs' }>
   /** The module's own package name, so self-referencing imports are caught. */
   packageName?: string
+  /** Whether a JSX source is emitted with its JSX preserved, as `.jsx`. Defaults to always. */
+  preserveJsx?: (file: string) => boolean
 }
 
 /**
@@ -23,8 +23,18 @@ export interface RuntimeExternalsOptions {
  * `this.resolve()` is used rather than pattern-matching the specifier so that
  * tsconfig path aliases resolving into `src/runtime/` are handled too.
  */
-export function runtimeExternals({ outDir, directories, packageName }: RuntimeExternalsOptions): Rolldown.Plugin {
+export function runtimeExternals({ outDir, directories, packageName, preserveJsx = () => true }: RuntimeExternalsOptions): Rolldown.Plugin {
   const selfPrefix = packageName ? `${packageName}/` : undefined
+  const distSubpath = (subpath: string, { srcDir, ext }: { srcDir: string, ext: string }) => {
+    const source = probe(join(srcDir, subpath))
+    if (source && SCRIPT_RE.test(source)) {
+      return relative(srcDir, source).replace(SCRIPT_RE, scriptExtension(source, `.${ext}`, preserveJsx(source)))
+    }
+    if (source || subpath.endsWith('.vue')) {
+      return subpath
+    }
+    return `${subpath.replace(SCRIPT_RE, '')}.${ext}`
+  }
 
   return {
     name: 'nuxt-module-builder:runtime-externals',
@@ -71,22 +81,4 @@ export function runtimeExternals({ outDir, directories, packageName }: RuntimeEx
       return result === code ? undefined : { code: result, map: null }
     },
   }
-}
-
-function distSubpath(subpath: string, { srcDir, ext }: { srcDir: string, ext: string }) {
-  if (CODE_EXTENSION_RE.test(subpath)) {
-    return subpath.replace(CODE_EXTENSION_RE, `.${ext}`)
-  }
-  const source = join(srcDir, subpath)
-  if (subpath.endsWith('.vue') || isFile(source)) {
-    return subpath
-  }
-  if (!CODE_EXTENSIONS.some(extension => isFile(source + extension)) && CODE_EXTENSIONS.some(extension => isFile(join(source, `index${extension}`)))) {
-    return `${subpath}/index.${ext}`
-  }
-  return `${subpath}.${ext}`
-}
-
-function isFile(path: string) {
-  return existsSync(path) && statSync(path).isFile()
 }
