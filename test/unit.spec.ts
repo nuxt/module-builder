@@ -24,7 +24,7 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, ch
 import { importsKeyFor, publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { guide } from '../src/build/guide.ts'
+import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
@@ -305,6 +305,15 @@ describe('translateBuildConfig', () => {
       warn.mockRestore()
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('upgrade guide', () => {
+  it('should have a heading for every section that build messages link to', async () => {
+    const markdown = await readFile(new URL('../docs/upgrade-v2.md', import.meta.url), 'utf8')
+    const anchors = [...markdown.replace(/^```.*\n[\s\S]*?^```/gm, '').matchAll(/^#{2,6} (.+)$/gm)]
+      .map(([, heading]) => heading!.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replaceAll(' ', '-'))
+    expect(GUIDE_SECTIONS.filter(section => !anchors.includes(section))).toEqual([])
   })
 })
 
