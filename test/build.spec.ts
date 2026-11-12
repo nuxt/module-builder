@@ -481,7 +481,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
     await copyExample(runtimeShapeRootDir, contents => contents)
     const runtimeShapePkg = JSON.parse(await readFile(join(runtimeShapeRootDir, 'package.json'), 'utf-8'))
-    await writeFile(join(runtimeShapeRootDir, 'package.json'), JSON.stringify({ ...runtimeShapePkg, build: { entries: ['./src/utils', './src/utils/merge.ts'] } }, null, 2))
+    await writeFile(join(runtimeShapeRootDir, 'package.json'), JSON.stringify({ ...runtimeShapePkg, build: { entries: ['./src/utils', './src/utils/merge.ts', './src/data.json'] } }, null, 2))
     await writeFile(join(runtimeShapeRootDir, '.nuxt/app.config.ts'), `export default { theme: { buildMachineOnly: 'must-not-be-published' as const } }\n`)
     await writeFile(join(runtimeShapeRootDir, 'external.ts'), `export const answer = 42\n`)
     for (const name of ['fake-polyfill', 'fake-register']) {
@@ -492,6 +492,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       })
     }
     await writeFiles(join(runtimeShapeRootDir, 'src'), {
+      'data.json': `{ "answer": 42 }\n`,
       'utils/merge.ts': `export const merge = <T extends object>(a: T, b: T): T => ({ ...a, ...b })\n`,
       'shared/constants.ts': `import { LIMIT } from './limits'\n\nexport const CONSTANT = LIMIT\n`,
       'shared/limits.ts': `export const LIMIT = 10\n`,
@@ -1067,6 +1068,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
         "_external/external.js",
         "_external/src",
         "_external/src/types.d.ts",
+        "data.d.mts",
+        "data.mjs",
         "module.d.mts",
         "module.json",
         "module.mjs",

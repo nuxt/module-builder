@@ -205,7 +205,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
 
 async function valueImports(roots: string[]) {
   const transform = loadOxc()?.transform
-  const queue = [...roots]
+  const queue = roots.filter(file => SCRIPT_RE.test(file))
   const found = new Set<string>()
   while (queue.length) {
     const file = queue.pop()!
