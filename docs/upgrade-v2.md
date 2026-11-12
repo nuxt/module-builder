@@ -374,6 +374,32 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 The build empties `--outDir` (`dist` by default) before writing to it, so the directory must be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
 
+## Size report
+
+`nuxt-module-build build` prints a summary of what the build wrote: one total per bundled entry and per directory, split into shipped code and type declarations, plus a grand total. The same numbers can be printed as a single JSON object for CI with `--json`:
+
+```bash
+nuxt-module-build build --json > size.json
+```
+
+```json
+{
+  "code": 1772,
+  "types": 4015,
+  "gzip": 1438,
+  "total": 5787,
+  "entries": {
+    "module": { "code": 436, "types": 1158, "gzip": 274 }
+  },
+  "directories": {
+    "runtime": { "code": 1262, "types": 2810, "gzip": 1085 }
+  },
+  "other": { "code": 0, "types": 0, "gzip": 0 }
+}
+```
+
+`code` counts the shipped output (scripts, components, stylesheets and assets); `types` counts `.d.ts` and `.d.mts` declarations, which consumers compile against but which don't end up in their bundles. `gzip` is the compressed size of the shipped output. `total` is the sum of `code` and `types`. With `--json`, the build's other logs go to stderr, so stdout carries only the report. `--json` cannot be combined with `--stub`.
+
 ## Module tsconfig
 
 Declarations are generated with your module's own `.nuxt`, which `nuxt-module-build prepare` writes from a Nuxt instance that runs the module alone. Extend it from the module's `tsconfig.json`, and leave the playground to its own `tsconfig.json`:

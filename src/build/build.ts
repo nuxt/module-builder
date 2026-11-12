@@ -5,7 +5,7 @@ import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 import { glob } from 'tinyglobby'
 import { build as tsdownBuild } from 'tsdown'
-import type { InlineConfig } from 'tsdown'
+import type { InlineConfig, Logger } from 'tsdown'
 
 import builderPkg from '../../package.json' with { type: 'json' }
 import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
@@ -20,6 +20,7 @@ import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
 import { assertResolvableImports, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
+import { reportSize } from './report.ts'
 import { replacePlugin } from './replace.ts'
 import { runtimeExternals } from './runtime-externals.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
@@ -28,6 +29,25 @@ import { writeTypes } from './types.ts'
 export interface BuildOptions {
   outDir: string
   sourcemap: boolean
+  json: boolean
+}
+
+const jsonLogger: Logger = {
+  level: 'info',
+  options: { failOnWarn: false },
+  info: (...args) => consola.info(formatJsonLog(args)),
+  warn: (...args) => consola.warn(formatJsonLog(args)),
+  warnOnce: (...args) => consola.warn(formatJsonLog(args)),
+  error: (...args) => {
+    consola.error(formatJsonLog(args))
+    process.exitCode = 1
+  },
+  success: (...args) => consola.success(formatJsonLog(args)),
+  clearScreen: () => {},
+}
+
+function formatJsonLog(args: unknown[]) {
+  return args.filter(arg => arg !== undefined && arg !== false).join(' ')
 }
 
 const ISOLATED_DECLARATIONS_HINT = [
@@ -73,6 +93,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
 
   const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const sourcemap = options.sourcemap || config.sourcemap
+  const { json } = options
   const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: false, sourcemap })
 
   const entries = bundledEntries(cwd, config)
@@ -140,7 +161,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
   }))
 
   const start = Date.now()
-  await tsdownBuild({
+  const result = await tsdownBuild({
     cwd,
     config: false,
     format: 'esm',
@@ -148,6 +169,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
     clean: false,
     report: false,
     sourcemap,
+    ...(json ? { customLogger: jsonLogger, logLevel: 'silent' } : {}),
     deps: { neverBundle: [...NUXT_EXTERNALS, ...config.neverBundle] },
     entry: entries,
     dts: moduleDts,
@@ -194,6 +216,16 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
   await callBuildHook(config, 'rollup:done', ctx)
   const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
   await rewriteRuntimeDeclarations(outDir, outputs.flatMap(map => [...map.values()]))
+
+  try {
+    await reportSize({ cwd, outDir, entries: Object.keys(entries), directories, chunks: result.bundles.flatMap(bundle => bundle.chunks), json })
+  }
+  catch (error) {
+    if (json) {
+      throw error
+    }
+    consola.warn('Cannot measure the output size:', error)
+  }
 
   if (shouldNudge(isolatedDeclarations)) {
     consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in your \`tsconfig.json\` to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)

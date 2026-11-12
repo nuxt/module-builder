@@ -6,6 +6,7 @@ import { resolve } from 'pathe'
 
 import pkg from '../../package.json' with { type: 'json' }
 import { guide } from '../build/guide.ts'
+import { redirectLogsToStderr } from '../build/report.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
 import { prepareModule } from './prepare.ts'
 
@@ -33,6 +34,11 @@ const buildArgs = {
     default: false,
     description: 'Stub dist instead of actually building it for development',
   },
+  json: {
+    type: 'boolean',
+    default: false,
+    description: 'Print the build size as JSON to stdout',
+  },
 } as const
 
 const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand({
@@ -47,7 +53,14 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
   async run(context) {
     const cwd = resolveCwdArg(context.args)
 
+    if (context.args.json) {
+      redirectLogsToStderr()
+    }
+
     if (context.args.stub) {
+      if (context.args.json) {
+        throw new Error('`--json` cannot be combined with `--stub`: a stub build has no bundle to report.')
+      }
       const { stub } = await import('../build/stub.ts')
       return stub(cwd, { outDir: context.args.outDir })
     }
@@ -63,7 +76,7 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
       }
       throw error
     })
-    return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap })
+    return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap, json: context.args.json })
   },
 })
 

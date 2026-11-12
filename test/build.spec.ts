@@ -58,6 +58,7 @@ describe('module builder', () => {
   const runtimeShapeRootDir = rootDir.replace('example', '.temp-example-runtime-shape')
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
   let routesBuild = ''
+  let exampleBuild = ''
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
   const distDir = join(rootDir, 'dist')
   const secondDistDir = join(secondRootDir, 'dist')
@@ -579,7 +580,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
         .then(({ stdout, stderr }) => { routesBuild = stdout + stderr }),
       exec('pnpm', ['nuxt-module-build', 'build', stylesheetsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', runtimeShapeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir }, throwOnError: true }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir }, throwOnError: true })),
+      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir }, throwOnError: true }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir, env: { ...process.env, NODE_ENV: '', TEST: '' } }, throwOnError: true }).then(({ stdout, stderr }) => { exampleBuild = stdout + stderr })),
       exec('pnpm', ['nuxt-module-build', 'build', '--stub', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
         .then(() => exec('pnpm', ['nuxt-module-build', 'prepare', secondRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
         .then(() => exec('pnpm', ['nuxt-module-build', 'build', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
@@ -1275,6 +1276,104 @@ export const defineOptions = (options: Options) => ({ options, helper })
         version: '1.0.0',
       },
     )
+  })
+
+  it('should print a size report after a build', () => {
+    expect(exampleBuild).toContain('Size report:')
+    expect(exampleBuild).toContain('dist/module.mjs')
+    expect(exampleBuild).toContain('dist/runtime')
+    expect(exampleBuild).toContain('exports: default')
+    expect(exampleBuild).toContain('gzip ')
+    expect(exampleBuild).toContain('Total')
+  })
+
+  it('should print the size report as JSON with --json', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', rootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+    expect(exitCode).toBe(0)
+    expect(stdout).not.toContain('Size report:')
+    expect(stderr).toContain('Build complete')
+
+    const report = JSON.parse(stdout)
+    const { stat } = await import('node:fs/promises')
+    const files: string[] = []
+    for (const path of await listFiles(distDir)) {
+      if (path !== 'module.json' && (await stat(join(distDir, path))).isFile()) {
+        files.push(path)
+      }
+    }
+    const sizeOf = Object.fromEntries(await Promise.all(files.map(async path => [path, (await stat(join(distDir, path))).size] as const)))
+    const split = (paths: string[]) => ({
+      code: paths.filter(path => !/\.d\.(?:[cm]?ts|vue\.ts)$/.test(path)).reduce((sum, path) => sum + sizeOf[path]!, 0),
+      types: paths.filter(path => /\.d\.(?:[cm]?ts|vue\.ts)$/.test(path)).reduce((sum, path) => sum + sizeOf[path]!, 0),
+    })
+
+    expect(report.code).toBe(split(files).code)
+    expect(report.types).toBe(split(files).types)
+    expect(report.total).toBe(report.code + report.types)
+    expect(report.entries.module).toMatchObject(split(['module.mjs', 'module.d.mts', 'types.d.mts']))
+    expect(report.directories.runtime).toMatchObject(split(files.filter(path => path.startsWith('runtime/'))))
+
+    const { gzipSync } = await import('node:zlib')
+    const gzipOf = Object.fromEntries(await Promise.all(files
+      .filter(path => !/\.d\.(?:[cm]?ts|vue\.ts)$/.test(path))
+      .map(async path => [path, gzipSync(await readFile(join(distDir, path))).length] as const)))
+    expect(report.gzip).toBe(Object.values(gzipOf).reduce((sum, size) => sum + size, 0))
+    expect(report.entries.module.gzip).toBe(gzipOf['module.mjs'])
+    expect(report.directories.runtime.gzip).toBe(files
+      .filter(path => path.startsWith('runtime/') && !/\.d\.(?:[cm]?ts|vue\.ts)$/.test(path))
+      .reduce((sum, path) => sum + gzipOf[path]!, 0))
+    expect(report.other).toEqual({ code: 0, types: 0, gzip: 0 })
+  }, 60 * 1000)
+
+  it('should attribute entries and directories in the size report', async () => {
+    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', buildConfigRootDir], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).toBe(0)
+    const report = JSON.parse(stdout)
+    const { stat } = await import('node:fs/promises')
+    const { gzipSync } = await import('node:zlib')
+    const outDir = join(buildConfigRootDir, 'dist')
+    const files: string[] = []
+    for (const path of await listFiles(outDir)) {
+      if (path !== 'module.json' && (await stat(join(outDir, path))).isFile()) {
+        files.push(path)
+      }
+    }
+    const measured = Object.fromEntries(await Promise.all(files.map(async (path) => {
+      const contents = await readFile(join(outDir, path))
+      const types = /\.d\.(?:[cm]?ts|vue\.ts)$/.test(path)
+      return [path, { size: contents.length, types, gzip: types ? 0 : gzipSync(contents).length }] as const
+    })))
+    const breakdown = (paths: string[]) => paths.reduce((total, path) => {
+      const file = measured[path]!
+      return {
+        code: total.code + (file.types ? 0 : file.size),
+        types: total.types + (file.types ? file.size : 0),
+        gzip: total.gzip + file.gzip,
+      }
+    }, { code: 0, types: 0, gzip: 0 })
+
+    const entries = ['content', 'module', 'nested/helper', 'utils', 'vite']
+    expect(Object.keys(report.entries).sort()).toEqual(entries.slice().sort())
+    for (const name of entries) {
+      expect(report.entries[name]).toEqual(breakdown([`${name}.mjs`, `${name}.d.mts`, ...(name === 'module' ? ['types.d.mts'] : [])]))
+    }
+
+    const directories = ['features', 'runtime', 'shared']
+    expect(Object.keys(report.directories).sort()).toEqual(directories)
+    for (const name of directories) {
+      expect(report.directories[name]).toEqual(breakdown(files.filter(path => path.startsWith(`${name}/`))))
+    }
+
+    const total = breakdown(files)
+    expect(report).toMatchObject({ ...total, total: total.code + total.types })
+    expect(report.other).toEqual({ code: 0, types: 0, gzip: 0 })
+  }, 60 * 1000)
+
+  it('should reject --json with --stub', async () => {
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', '--stub', noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).not.toBe(0)
+    expect(stdout).toBe('')
+    expect(stderr).toContain('`--json` cannot be combined with `--stub`')
   })
 
   it('should generate module metadata when the module entry imports runtime code', async () => {
