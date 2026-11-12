@@ -133,7 +133,7 @@ A minimum `package.json` should look like this:
 
 ### Additional entrypoints (optional)
 
-Module builder is a preset for [tsdown](https://tsdown.dev). See the [build command](./src/build/build.ts) for the details.
+Module builder is a preset for [tsdown](https://tsdown.dev). See [`src/build/build.ts`](./src/build/build.ts) for the options it passes to tsdown.
 
 To build entrypoints other than `src/module`, list them in the `build.entries` field of `package.json`:
 
@@ -165,7 +165,7 @@ Module builder generates dist files in `dist/` directory:
 - `runtime/*`: Individually transpiled files
   - JavaScript and `.ts` files are transpiled to `.js`, with their types extracted to a `.d.ts` file of the same name
   - `.vue` files are transpiled to `.vue`, with their types extracted to `.vue.d.ts` and `.d.vue.ts` files
-  - `.css` files have their nesting flattened, and are prefixed and minified
+  - `.css` files have their nesting flattened, and are vendor-prefixed and minified
   - `.scss` and `.sass` files are compiled to `.css` with the module's `sass` or `sass-embedded`; `_` partials aren't emitted
   - Other files are copied as they are
 
@@ -186,9 +186,9 @@ export default defineConfig({
 })
 ```
 
-Every file under `srcDir` is emitted under `outBase` in the build's output directory, with its name intact apart from the extension: scripts become `.js` (or `.mjs`), and compiled Sass becomes `.css`. Test and story files are excluded by default. Scripts are transpiled with oxc and keep their imports as written, apart from relative imports, which get the emitted extension. `.vue` files are transpiled with `vue-sfc-transformer`, stylesheets are processed as described in [Dist files](#dist-files), and other files are copied. Declarations come from one TypeScript program that uses the nearest `tsconfig.json`.
+Every file under `srcDir` is emitted under `outBase` in the build's output directory, with its name intact apart from the extension. Scripts become `.js` (or `.mjs`), and compiled Sass becomes `.css`. Test and story files are excluded by default. Scripts are transpiled with oxc and keep their imports as written, apart from relative imports, which get the emitted extension. `.vue` files are transpiled with `vue-sfc-transformer`, stylesheets are processed as described in [Dist files](#dist-files), and other files are copied. Declarations come from one TypeScript program that uses the nearest `tsconfig.json`.
 
-The options are documented on the `TranspileDirOptions` type. The `resolveExternal` option decides what happens to relative imports that resolve outside `srcDir`. A build with nothing to bundle can pass `emptyEntry`, from the same export, as its `entry`.
+The options are documented on the `TranspileDirOptions` type. The `resolveExternal` option controls what happens to relative imports that resolve outside `srcDir`. A build with nothing to bundle can pass `emptyEntry`, from the same export, as its `entry`.
 
 ## 💻 Development
 

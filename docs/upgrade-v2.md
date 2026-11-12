@@ -6,7 +6,7 @@ Most modules upgrade by running the build and following its output. Every messag
 
 ## Node engines
 
-v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Build your module with Node 22.18 or later, or Node 24.11 or later:
+v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Use Node 22.18+, 24.11+, or 26+ locally and in CI:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -38,11 +38,12 @@ Then remove the packages that you don't need any more (see [Removed dependencies
 
 `build.config.ts` and the `unbuild` field of `package.json` are deprecated. The build still reads them and applies these options:
 
-- `entries`: strings and `{ input, name }` objects are bundled as extra entries. Entries with `builder: 'mkdist'`, or with an input that ends in `/`, are transpiled file by file.
+- `entries`: bundled entries and directory entries, in the shapes described below.
 - `externals`: package names and regular expressions that are never bundled.
 - `replace` and `rollup.replace`: compile-time replacements in the module entry.
-- `hooks['build:before']`, `hooks['rollup:done']`, and `hooks['build:done']`.
-- `declaration`, `sourcemap`, `failOnWarn`, `name`, `parallel`, `clean: true`, and `rootDir` and `outDir` at their defaults.
+- `sourcemap`: `true` emits source maps next to the output.
+- `hooks['build:before']`, `hooks['rollup:done']`, and `hooks['build:done']`: run with the context described in [Hooks](#hooks).
+- `declaration`, `failOnWarn`, `name`, and `parallel`: accepted and ignored. `clean: true`, and `rootDir` and `outDir` at their defaults, are accepted too.
 
 `unbuild` is no longer installed with `@nuxt/module-builder`. After [installing v2](#install-tsdown), change the import:
 
@@ -98,7 +99,7 @@ export default defineBuildConfig({})
 
 ### Rollup options
 
-The module entry is bundled with tsdown's defaults for a Node library. `rollup.*` options and the `rollup:options` hook have no equivalent and fail the build. Remove them. These exceptions are accepted: `rollup.replace` is applied, and `rollup.emitCJS: false`, `rollup.cjsBridge: false`, and `rollup.output.exports` describe the default output.
+The module entry is bundled with tsdown's defaults for a Node library. `rollup.*` options and the `rollup:options` hook have no equivalent and fail the build. Remove them. These exceptions are accepted: `rollup.replace` is applied; `rollup.emitCJS: false` and `rollup.cjsBridge: false` describe the default output; and `rollup.output.exports` only affects CommonJS output, which isn't emitted.
 
 ```ts
 // before
@@ -129,11 +130,11 @@ The build emits ES modules only, so `rollup.emitCJS: true` fails the build. Remo
 }
 ```
 
-The `.d.ts` files that `typesVersions` entries relied on go with the CommonJS output. See [typesVersions paths](#typesversions-paths).
+The `.d.ts` declarations of bundled entries aren't generated either, so `typesVersions` entries that pointed at them need updating. See [typesVersions paths](#typesversions-paths).
 
 ### mkdist options
 
-Runtime files are transpiled with oxc, one file at a time, with their imports kept as written. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, `declaration` on an entry, and `format`. Remove them. Postcss plugins passed through `mkdist:entry:options` are ignored with a warning, so a build can pass without them. Replace that processing as described in [Runtime stylesheets](#runtime-stylesheets). `ext` and `addRelativeDeclarationExtensions` on a directory entry are accepted when they match what the build produces anyway.
+Runtime files are transpiled with oxc, one file at a time. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, `declaration` on an entry, and `format`. Remove them. Postcss plugins passed through `mkdist:entry:options` are ignored with a warning. Replace that processing as described in [Runtime stylesheets](#runtime-stylesheets). On a directory entry, `ext` (`mjs` or `js`) is applied, and `addRelativeDeclarationExtensions` is accepted and ignored: relative imports in declarations always get their extension.
 
 ```ts
 // before
@@ -152,7 +153,7 @@ export default defineBuildConfig({})
 These options also fail the build:
 
 - `stub` and `stubOptions`: use `nuxt-module-build build --stub` instead.
-- `clean: false`: `dist` is always cleaned.
+- `clean: false`: the output directory is always emptied.
 - `rootDir` or `outDir` set to anything other than the module root and `dist`.
 - An array of more than one config: keep a single config object.
 - A config that exports a function.
@@ -188,7 +189,7 @@ With `"moduleResolution": "bundler"`, which Nuxt projects use, TypeScript reads 
 
 ### typesVersions paths
 
-TypeScript resolves `typesVersions` entries with node10 rules. A path without an extension is probed as `.ts`, `.tsx`, `.d.ts`, and `/index.d.ts`, never as `.d.mts`. The build produces `.d.mts` for every bundled entry, so an entry without an extension stops resolving. The build warns with the file to use. Write each path with its extension:
+TypeScript resolves `typesVersions` entries with `node10` rules. A path without an extension is probed as `.ts`, `.tsx`, `.d.ts`, and `/index.d.ts`, never as `.d.mts`. The build produces `.d.mts` for every bundled entry, so an entry without an extension stops resolving. The build warns with the file to use. Write each path with its extension:
 
 ```json
 {
@@ -208,9 +209,9 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 
 ## Stub builds
 
-`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub loads the TypeScript sources with its own loader. The builder loads them with Node's own type stripping. Only the files that type stripping can't load, those with JSX or with syntax that erasing types doesn't remove, are transpiled with oxc, and only when `tsdown` is installed. Plain Node only strips types, so `enum`, `namespace`, parameter properties, `<T>value` assertions, and legacy decorators fail to load there.
+`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub, such as a playground's Nuxt, loads the TypeScript sources with its own loader. The builder loads them with Node's type stripping, which only erases types. Files with JSX, `enum`, `namespace`, parameter properties, `<T>value` assertions, `import =`, `export =`, or decorators are transpiled with oxc, which comes with `tsdown`.
 
-The build lists every file, line, and column that uses such syntax, so the sources stay loadable by Node alone. Set `erasableSyntaxOnly` so the type checker reports it too, then rewrite each occurrence:
+Without `tsdown`, the stub build fails and lists every file, line, and column that uses such syntax. Rewriting it keeps the sources loadable by Node alone. Set `erasableSyntaxOnly` so the type checker reports it too, then rewrite each occurrence:
 
 ```json
 {
@@ -231,7 +232,7 @@ export type Mode = typeof Mode[keyof typeof Mode]
 
 ## Import extensions in module code
 
-Relative imports in `src/module.ts`, and in every file it imports outside the runtime directories, carry the imported file's extension: `./utils.ts`, not `./utils`, `./utils.js` or `./dir`. The stub re-exports these sources as they are, and Node resolves relative specifiers literally. The generated `.nuxt/tsconfig.json` sets `allowImportingTsExtensions`, so the `.ts` form type checks without further settings.
+Relative imports in `src/module.ts`, and in every file it imports outside the runtime directories, carry the imported file's extension: `./utils.ts`, not `./utils`, `./utils.js`, or `./dir`. The stub re-exports these sources as they are, and Node resolves relative specifiers as written. The generated `.nuxt/tsconfig.json` sets `allowImportingTsExtensions`, so the `.ts` form type checks without further settings.
 
 The build lists every specifier that doesn't name a file, with the one to write instead, and stops:
 
@@ -245,7 +246,7 @@ import { helper } from './utils.ts'
 import { kit } from './kit/index.ts'
 ```
 
-Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added, as before. The same rule applies to `build.config.ts`.
+Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added. The same rule applies to `build.config.ts` and to `nuxt-module-build prepare`, which loads `src/module.ts` the same way.
 
 ## Declaration errors
 
@@ -285,7 +286,9 @@ nuxt typecheck
 vue-tsc --noEmit
 ```
 
-If the type check reports the same errors, fix them there. If it passes, the warning is safe to ignore. Its errors come from build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`), which are typed as `any` while declarations are generated. The types in your module's `.nuxt` also reflect the module's default options. Code that only type-checks under a playground's configuration (a provider the playground enables, for example) warns here as well. An explicit annotation on the export removes that warning.
+If the type check reports the same errors, fix them there. If it passes, the warning is safe to ignore.
+
+Its errors come from build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`), which are typed as `any` while declarations are generated. The types in your module's `.nuxt` also reflect the module's default options. Code that only type-checks under a playground's configuration (a provider the playground enables, for example) warns here as well. An explicit annotation on the export removes that warning.
 
 Those aliases are `any` in the emitted declarations too. An export whose type is inferred through one of them is declared as `any`, or as `string | number | symbol` for a key type. This includes a module's own generated alias, such as `#mdc-highlighter`. Annotate such an export with a type that refers to it by name, such as a component's props type or a type imported from the alias. The type then resolves against the consuming app's `.nuxt`:
 
@@ -346,7 +349,7 @@ Without `isolatedDeclarations`, the build is slower and prints a reminder once p
 
 Stylesheets under `src/runtime` are processed with lightningcss instead of postcss:
 
-- `.css` files are kept one to one. Nesting is flattened, vendor prefixes are added for the project's browserslist targets, and the output is minified. `@import` statements are kept as written.
+- `.css` files are emitted one to one. Nesting is flattened, vendor prefixes are added for the project's browserslist targets, and the output is minified. `@import` statements are kept as written.
 - `.scss` and `.sass` files are compiled with your module's own `sass` or `sass-embedded`, written as `.css`, and not minified. Partials (`_name.scss`) aren't emitted. Install one of the two compilers when the runtime contains Sass:
 
   ```bash
@@ -362,7 +365,7 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 - Relative imports get the emitted extension (`../utils/merge` becomes `../utils/merge.js`). Non-relative specifiers (`#imports`, `#build/*`, and dependencies) are kept as written.
 - Imports used only as types are removed from the JavaScript output.
-- A relative import of a file outside `src/runtime` is emitted where the import points (`src/shared/x.ts` becomes `dist/shared/x.js`). When that would leave `dist` or collide with another output, it's emitted under `dist/_external/` instead. Files that are used as types only get a `.d.ts`.
+- A relative import of a file outside `src/runtime` is emitted where the import points (`src/shared/x.ts` becomes `dist/shared/x.js`). When that would leave `dist` or collide with another output, it's emitted under `dist/_external/` instead. A file that is only imported as a type gets a `.d.ts` and no script.
 - Your module's own package name and `#` subpath imports are never bundled into `module.mjs`.
 
 ## Output directory
@@ -380,13 +383,15 @@ Declarations are generated with your module's own `.nuxt`, which `nuxt-module-bu
 }
 ```
 
-The tsconfig that covers your module might extend or reference a playground's `.nuxt/tsconfig.json` instead. This can be the module's own tsconfig or a monorepo root's, such as `../../tsconfig.json`. In that case, the build generates declarations with `./.nuxt/tsconfig.json` plus that tsconfig's own `compilerOptions`, and prints a note saying so. `types` and `paths` are included, apart from paths into the playground's `.nuxt`. In a monorepo, give the module a `tsconfig.json` of its own as shown above. Move any `compilerOptions.types` the module relies on into it, such as `"types": ["youtube"]` for a global namespace. They then apply to the module's own type check as well as to the build.
+The tsconfig that covers your module might extend or reference a playground's `.nuxt/tsconfig.json` instead. This can be the module's own tsconfig or a monorepo root's, such as `../../tsconfig.json`. In that case, the build generates declarations with `./.nuxt/tsconfig.json` plus that tsconfig's own `compilerOptions`, and prints a note saying so. `types` and `paths` are included, apart from paths into the playground's `.nuxt`.
+
+In a monorepo, give the module a `tsconfig.json` of its own as shown above. Move any `compilerOptions.types` the module relies on into it, such as `"types": ["youtube"]` for a global namespace. They then apply to the module's own type check as well as to the build.
 
 The declaration program starts from your module's own files only. Files the tsconfig includes outside the module root (a workspace, with `typescript.includeWorkspace`) are left out. So are files under the module's `playground*`, `docs`, `test`, `tests`, `fixtures`, `example`, and `examples` directories. Their routes and type augmentations therefore don't end up in `dist`. Files that your module's sources import are still followed, wherever they are.
 
 ## Preparing .nuxt
 
-Declarations are generated against `.nuxt/tsconfig.json`, so `nuxt-module-build build` runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with the same loader as `--stub`, so it checks [import extensions](#import-extensions-in-module-code) too. Keep `prepare` in your module's `dev:prepare` script so the build doesn't have to:
+Declarations are generated against `.nuxt/tsconfig.json`, so `nuxt-module-build build` runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with the same loader as `--stub`, so [import extensions](#import-extensions-in-module-code) are checked there too. Keep `prepare` in your module's `dev:prepare` script so the build doesn't have to:
 
 ```json
 {
@@ -411,7 +416,7 @@ pnpm remove unbuild
 
 Follow these steps in order to upgrade a module. Each step is mechanical until the build runs. Use your module's own package manager where `pnpm` is written.
 
-1. Use Node 22.18+, 24.11+ or 26+ locally and in CI.
+1. Use Node 22.18+, 24.11+, or 26+ locally and in CI.
 2. Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`, then `pnpm remove unbuild` (and `mkdist` and `jiti`, if they only served the builder). Do this before step 3.
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
 4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Set the top-level `types` field to `./dist/types.d.mts`, or remove it. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
