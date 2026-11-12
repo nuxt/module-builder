@@ -2,14 +2,14 @@ import { existsSync, statSync } from 'node:fs'
 import { findDynamicImports, findExports, findStaticImports, findTypeExports } from 'mlly'
 import { resolve } from 'pathe'
 
-export const SCRIPT_RE = /\.[cm]?[jt]sx?$/
-export const DECLARATION_RE = /\.d\.[cm]?ts$/
-export const RELATIVE_RE = /^\.\.?(?:\/|$)/
+export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
+export const DECLARATION_RE: RegExp = /\.d\.[cm]?ts$/
+export const RELATIVE_RE: RegExp = /^\.\.?(?:\/|$)/
 
 const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
 /** The file an extensionless or `.js`-suffixed specifier for a TypeScript source resolves to. */
-export function probe(path: string) {
+export function probe(path: string): string | undefined {
   if (existsSync(path) && statSync(path).isFile()) {
     return path
   }
@@ -70,7 +70,7 @@ export function moduleSpecifiers(code: string): Specifier[] {
 }
 
 /** `code` with each specifier replaced by what `replace` returns for it, when that differs. */
-export function rewriteSpecifiers(code: string, replace: (specifier: string) => string | undefined) {
+export function rewriteSpecifiers(code: string, replace: (specifier: string) => string | undefined): string {
   let result = ''
   let cursor = 0
   for (const { specifier, start, end } of moduleSpecifiers(code)) {
@@ -87,7 +87,7 @@ export function rewriteSpecifiers(code: string, replace: (specifier: string) => 
 const TYPE_ONLY_RE = /^\s*(?:import|export)\s+type\b/
 
 /** The relative specifiers of `code` that are not `import type` or `export type` statements. */
-export function valueSpecifiers(code: string) {
+export function valueSpecifiers(code: string): Set<string> {
   const values = new Set<string>()
   for (const statement of [...findStaticImports(code), ...findExports(code)]) {
     if (statement.specifier && RELATIVE_RE.test(statement.specifier) && !TYPE_ONLY_RE.test(statement.code)) {

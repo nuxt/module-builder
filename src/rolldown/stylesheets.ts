@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { resolvePath } from 'mlly'
 import { join, relative } from 'pathe'
 
-export const SASS_RE = /\.s[ac]ss$/
+export const SASS_RE: RegExp = /\.s[ac]ss$/
 
 interface SassCompiler {
   compileString: (source: string, options: { loadPaths: string[], url: URL, syntax: 'scss' | 'indented' }) => { css: string }
@@ -16,7 +16,7 @@ let lightningcss: Promise<typeof import('lightningcss')> | undefined
  * minify. Other syntax is left alone, whatever the targets. Unknown at-rules pass through
  * silently; other problems go to `warn`.
  */
-export async function transformCss(file: string, cwd: string, warn: (message: string) => void) {
+export async function transformCss(file: string, cwd: string, warn: (message: string) => void): Promise<Uint8Array> {
   const { browserslistToTargets, Features, transform } = await (lightningcss ??= import('lightningcss'))
   const { default: browserslist } = await import('browserslist')
 
@@ -44,7 +44,7 @@ export async function transformCss(file: string, cwd: string, warn: (message: st
 const sassCompilers = new Map<string, Promise<SassCompiler>>()
 
 /** Compile a Sass stylesheet with the `sass` or `sass-embedded` installed under `cwd`. */
-export async function compileSass(file: string, cwd: string) {
+export async function compileSass(file: string, cwd: string): Promise<string> {
   let compiler = sassCompilers.get(cwd)
   if (!compiler) {
     compiler = loadSass(cwd)

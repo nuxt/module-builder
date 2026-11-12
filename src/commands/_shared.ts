@@ -1,4 +1,3 @@
-import type { ArgDef } from 'citty'
 import { resolve } from 'pathe'
 
 export const sharedArgs = {
@@ -15,6 +14,6 @@ export const sharedArgs = {
     required: false,
     default: '.',
   },
-} as const satisfies Record<string, ArgDef>
+} as const
 
-export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }) => resolve(args.cwd || args.rootDir || '.')
+export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }): string => resolve(args.cwd || args.rootDir || '.')

@@ -6,7 +6,7 @@ import { readPackageJSON } from 'pkg-types'
 import { guide } from './guide.ts'
 
 /** Warn about `package.json` fields that point at output this builder no longer produces. */
-export async function checkDeprecatedPackageFields(cwd: string, { stub = false } = {}) {
+export async function checkDeprecatedPackageFields(cwd: string, { stub = false }: { stub?: boolean } = {}): Promise<void> {
   const pkg = await readPackageJSON(cwd).catch(() => undefined)
   if (!pkg) {
     return
@@ -26,7 +26,7 @@ type PackageJSON = Awaited<ReturnType<typeof readPackageJSON>>
 const DECLARATION_RE = /(?:^|\/)(?:module|types)\.d\.ts$/
 const CJS_MODULE_RE = /module\.cjs$/
 
-export function checkLegacyDeclarationPaths(cwd: string, pkg: PackageJSON) {
+export function checkLegacyDeclarationPaths(cwd: string, pkg: PackageJSON): boolean {
   if (!missingPaths(cwd, pkg).some(path => DECLARATION_RE.test(path))) {
     return false
   }
@@ -34,7 +34,7 @@ export function checkLegacyDeclarationPaths(cwd: string, pkg: PackageJSON) {
   return true
 }
 
-export function checkLegacyCJSPaths(cwd: string, pkg: PackageJSON) {
+export function checkLegacyCJSPaths(cwd: string, pkg: PackageJSON): boolean {
   if (!missingPaths(cwd, pkg).some(path => CJS_MODULE_RE.test(path))) {
     return false
   }
@@ -42,7 +42,7 @@ export function checkLegacyCJSPaths(cwd: string, pkg: PackageJSON) {
   return true
 }
 
-export function checkStaleTypesField(cwd: string, pkg: PackageJSON) {
+export function checkStaleTypesField(cwd: string, pkg: PackageJSON): boolean {
   if (!pkg.types || resolvesForTypeScript(cwd, pkg.types)) {
     return false
   }
@@ -54,7 +54,7 @@ export function checkStaleTypesField(cwd: string, pkg: PackageJSON) {
  * Warn about `typesVersions` paths that TypeScript's node10 resolution cannot find because
  * they rely on probing for `.d.ts`, where the build now produces `.d.mts`.
  */
-export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJSON) {
+export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJSON): boolean {
   const entries = typesVersionsPaths(pkg).flatMap((path) => {
     const replacement = node10Replacement(cwd, path)
     return replacement ? [`\`${path}\` (use \`${replacement}\`)`] : []
@@ -67,7 +67,7 @@ export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJSON) {
 }
 
 /** Warn about paths in `package.json` that the build did not produce, other than those the checks above explain. */
-export function checkMissingPaths(cwd: string, pkg: PackageJSON) {
+export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
   const paths = [...new Set(missingPaths(cwd, pkg))]
     .filter(path => !path.includes('*') && !DECLARATION_RE.test(path) && !CJS_MODULE_RE.test(path) && path !== pkg.types && !node10Replacement(cwd, path))
   if (!paths.length) {

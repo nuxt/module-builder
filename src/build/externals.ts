@@ -1,7 +1,7 @@
 import { isAbsolute } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
-export const NUXT_EXTERNALS = [
+export const NUXT_EXTERNALS: (string | RegExp)[] = [
   '@nuxt/schema',
   '@nuxt/schema-nightly',
   '@nuxt/schema-edge',

@@ -146,7 +146,7 @@ const FOREIGN_DIR_RE = /^(?:playgrounds?(?:-.*)?|docs|tests?|fixtures|examples?|
  * its playground, docs, test, fixture and example directories, and not generated for
  * another app.
  */
-export function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: string) {
+export function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: string): string[] {
   return (parsed?.fileNames ?? []).filter((file) => {
     const path = relative(dir, file)
     if (path.startsWith('..') || isAbsolute(path) || FOREIGN_DIR_RE.test(path.split('/')[0]!) || NODE_MODULES_RE.test(file)) {
@@ -224,7 +224,7 @@ function serverRoutesTable(paths: Record<string, string[]>, cwd: string) {
 }
 
 /** The directory of an installed package, found the way Node looks up `node_modules`. */
-export function findPackageDir(name: string, cwd: string) {
+export function findPackageDir(name: string, cwd: string): string | undefined {
   for (let dir = cwd; ; dir = dirname(dir)) {
     const packageDir = join(dir, 'node_modules', name)
     if (existsSync(join(packageDir, 'package.json'))) {
@@ -264,7 +264,7 @@ async function writeCached(cwd: string, extension: string, contents: string) {
 }
 
 /** An ambient declaration file declaring each alias as a module. */
-export function writeAmbientModules(cwd: string, ambient: string[]) {
+export function writeAmbientModules(cwd: string, ambient: string[]): Promise<string> {
   return writeCached(cwd, '.d.ts', ambient.map(alias => `declare module '${alias}'\n`).join(''))
 }
 
@@ -303,7 +303,7 @@ export type RouteTypesEngine = 'generated'
 `
 
 /** Writes {@link SERVER_ROUTES_STUB} where {@link declarationPaths} maps `#build/server-routes`. */
-export function writeServerRoutesStub(cwd: string) {
+export function writeServerRoutesStub(cwd: string): Promise<string> {
   return writeCached(cwd, '.d.ts', SERVER_ROUTES_STUB)
 }
 

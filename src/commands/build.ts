@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { defineCommand } from 'citty'
+import type { CommandDef } from 'citty'
 import { consola } from 'consola'
 import { resolve } from 'pathe'
 
@@ -8,7 +9,7 @@ import { guide } from '../build/guide.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
 import { prepareModule } from './prepare.ts'
 
-export const MISSING_TSDOWN_HINT = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
+export const MISSING_TSDOWN_HINT: string = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
 
 function isMissingTsdown(error: unknown) {
   return error instanceof Error
@@ -16,28 +17,32 @@ function isMissingTsdown(error: unknown) {
     && error.message.includes('\'tsdown\'')
 }
 
-export default defineCommand({
+const buildArgs = {
+  outDir: {
+    type: 'string',
+    default: 'dist',
+    description: 'Build directory',
+  },
+  sourcemap: {
+    type: 'boolean',
+    default: false,
+    description: 'Generate sourcemaps',
+  },
+  stub: {
+    type: 'boolean',
+    default: false,
+    description: 'Stub dist instead of actually building it for development',
+  },
+} as const
+
+const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand({
   meta: {
     name: 'build',
     description: 'Build module for distribution',
   },
   args: {
     ...sharedArgs,
-    outDir: {
-      type: 'string',
-      default: 'dist',
-      description: 'Build directory',
-    },
-    sourcemap: {
-      type: 'boolean',
-      default: false,
-      description: 'Generate sourcemaps',
-    },
-    stub: {
-      type: 'boolean',
-      default: false,
-      description: 'Stub dist instead of actually building it for development',
-    },
+    ...buildArgs,
   },
   async run(context) {
     const cwd = resolveCwdArg(context.args)
@@ -61,3 +66,5 @@ export default defineCommand({
     return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap })
   },
 })
+
+export default command

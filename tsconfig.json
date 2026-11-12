@@ -2,8 +2,7 @@
   "compilerOptions": {
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "target": "es2022",
-    "allowJs": true,
+    "target": "es2024",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
@@ -13,10 +12,11 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "module": "Preserve",
+    "module": "preserve",
     "noEmit": true,
-    "moduleResolution": "Bundler",
-    "declaration": true
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "isolatedDeclarations": true
   },
   "include": [
     "src",
