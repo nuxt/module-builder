@@ -216,6 +216,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
   await callBuildHook(config, 'rollup:done', ctx)
   const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
   await rewriteRuntimeDeclarations(outDir, outputs.flatMap(map => [...map.values()]))
+  await callBuildHook(config, 'build:done', ctx)
 
   try {
     await reportSize({ cwd, outDir, entries: Object.keys(entries), directories, chunks: result.bundles.flatMap(bundle => bundle.chunks), json })
@@ -232,7 +233,6 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
   }
 
   await checkDeprecatedPackageFields(cwd)
-  await callBuildHook(config, 'build:done', ctx)
 }
 
 async function valueImports(roots: string[]) {

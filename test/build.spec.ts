@@ -41,6 +41,7 @@ describe('module builder', () => {
   const prepareLoaderRootDir = rootDir.replace('example', '.temp-example-prepare-loader')
   const extensionlessRootDir = rootDir.replace('example', '.temp-example-extensionless-imports')
   const buildConfigRootDir = rootDir.replace('example', '.temp-example-build-config')
+  const sizeHookRootDir = rootDir.replace('example', '.temp-example-size-hook')
   const replaceRootDir = rootDir.replace('example', '.temp-example-build-config-replace')
   const unsupportedRootDir = rootDir.replace('example', '.temp-example-build-config-unsupported')
   const stylesheetsRootDir = rootDir.replace('example', '.temp-example-stylesheets')
@@ -415,6 +416,21 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await writeFile(transpileNuxtTsconfig, JSON.stringify(transpileNuxtConfig))
 
     await copyExample(solutionRootDir, contents => contents)
+    await copyExample(sizeHookRootDir, contents => contents)
+    await writeFiles(sizeHookRootDir, {
+      'build.config.ts': `import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { defineBuildConfig } from '@nuxt/module-builder'
+
+export default defineBuildConfig({
+  hooks: {
+    'build:done'(ctx) {
+      writeFileSync(join(ctx.options.outDir, 'extra.txt'), 'x'.repeat(100))
+    },
+  },
+})
+`,
+    })
     await writeFiles(solutionRootDir, {
       'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.server.json' }] }),
       'tsconfig.app.json': JSON.stringify({ extends: './.nuxt/tsconfig.json', include: ['.nuxt/nuxt.d.ts', 'src/**/*'], exclude: ['src/runtime/server/**'] }),
@@ -1286,6 +1302,12 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(exampleBuild).toContain('gzip ')
     expect(exampleBuild).toContain('Total')
   })
+
+  it('should count files written by the build:done hook', async () => {
+    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', sizeHookRootDir], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).toBe(0)
+    expect(JSON.parse(stdout).other.code).toBe(100)
+  }, 60 * 1000)
 
   it('should print the size report as JSON with --json', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', rootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
