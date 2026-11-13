@@ -51,7 +51,7 @@ npm install
 npm run dev:prepare
 ```
 
-`dev:prepare` stubs the module's `dist` directory and generates the `.nuxt` directories that type the module and its playground. See [Commands](/docs/guide/modules/module-builder/commands) for what each step does.
+`dev:prepare` stubs the module's `dist` directory and generates the `.nuxt` directories that type the module and its playground. See [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish) for what each step does.
 
 ## Manual installation
 
@@ -78,6 +78,7 @@ Your module also needs the `exports` and `files` fields described in [Project st
 
 - [Project structure](/docs/guide/modules/module-builder/project-structure): the files the builder reads.
 - [Commands](/docs/guide/modules/module-builder/commands): `build`, `build --stub`, and `prepare`.
+- [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish): the playground, and releasing to npm.
 - [Configuration](/docs/guide/modules/module-builder/configuration): extra entries and directories.
 - [TypeScript](/docs/guide/modules/module-builder/typescript): the module's `tsconfig.json` and its declarations.
 - [Build output](/docs/guide/modules/module-builder/output): what ends up in `dist`.
