@@ -372,6 +372,9 @@ export type BuilderEntry
     | { input: string, name?: string, builder?: 'rollup' }
     | { input: string, builder?: 'mkdist', outDir?: string, ext?: 'mjs' | 'js' }
 
+/** The key `builder()` keeps its options under, so `--stub` and `prepare` can find them in a tsdown config. */
+export const BUILDER_OPTIONS: unique symbol = Symbol.for('@nuxt/module-builder:builder-options')
+
 export interface BuilderOptions {
   /**
    * Entries built besides `src/module`. A path, or `{ input, name }`, is bundled. An `input`

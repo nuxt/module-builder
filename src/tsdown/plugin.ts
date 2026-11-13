@@ -1,7 +1,12 @@
 import type { TsdownPlugin } from 'tsdown'
 
+import { BUILDER_OPTIONS } from '../build/build-config.ts'
 import type { BuilderOptions } from '../build/build-config.ts'
 import type { BuilderSession, SetupOptions } from './setup.ts'
+
+export interface BuilderPlugin extends TsdownPlugin {
+  [BUILDER_OPTIONS]: BuilderOptions
+}
 
 /**
  * A tsdown plugin that builds a Nuxt module: `src/module` and `entries` are bundled,
@@ -21,15 +26,16 @@ import type { BuilderSession, SetupOptions } from './setup.ts'
  * It sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`, so the config leaves
  * them out apart from additional `deps.neverBundle` entries.
  */
-export function builder(options: BuilderOptions = {}): TsdownPlugin {
+export function builder(options: BuilderOptions = {}): BuilderPlugin {
   return createBuilder(options, { legacy: false })
 }
 
-export function createBuilder(options: BuilderOptions, setupOptions: SetupOptions): TsdownPlugin {
+export function createBuilder(options: BuilderOptions, setupOptions: SetupOptions): BuilderPlugin {
   let session: BuilderSession | undefined
   let claimed = false
   return {
     name: 'nuxt-module-builder',
+    [BUILDER_OPTIONS]: options,
     async tsdownConfig(config, inline) {
       // A watcher that restarts resolves the config again once the first build has started.
       if (claimed && !session?.started) {

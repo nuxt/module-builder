@@ -1613,7 +1613,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   }`)
     }
 
-    it('should build the same `dist` as `nuxt-module-build build` for every module that builds', async () => {
+    it('should build the same `dist` as `nuxt-module-build build` did without it, for every module that builds', async () => {
       await rm(ejectedExampleRootDir, { recursive: true, force: true })
       await cp(rootDir, ejectedExampleRootDir, { recursive: true })
       const fixtures: Array<[dir: string, eject: (dir: string) => Promise<void>]> = [
@@ -1628,6 +1628,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
         expect(Object.keys(built), dir).toContain('module.json')
         await ejectFixture(dir)
         await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env }, throwOnError: true })
+        expect(await hashDir(join(dir, 'dist')), dir).toEqual(built)
+        await exec('pnpm', ['nuxt-module-build', 'build', dir], { nodeOptions: { cwd: repoRoot, env }, throwOnError: true })
         expect(await hashDir(join(dir, 'dist')), dir).toEqual(built)
       }))
     }, 300 * 1000)

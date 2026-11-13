@@ -6,7 +6,8 @@ import { findExports } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, warnDeprecatedBuildConfig } from './build-config.ts'
+import { assertNoLegacyBuildConfig, bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, warnDeprecatedBuildConfig } from './build-config.ts'
+import type { BuilderOptions } from './build-config.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
 import { assertResolvableImports, findNonErasableSyntax, listNonErasableSyntax } from './loader.ts'
@@ -16,6 +17,10 @@ import { writeTypes } from './types.ts'
 
 export interface StubOptions {
   outDir: string
+  /** Whether `outDir` comes from the tsdown config rather than `--outDir`. */
+  outDirFromConfig?: boolean
+  /** The options of `builder()` in the tsdown config, which replace `build.config.*` and `package.json`'s `build` field. */
+  moduleOptions?: BuilderOptions
 }
 
 export function erasableSyntaxHint(found: NonErasableSyntax[]): string {
@@ -33,9 +38,12 @@ export function erasableSyntaxHint(found: NonErasableSyntax[]): string {
  */
 export async function stub(cwd: string, options: StubOptions): Promise<void> {
   const pkg = await readPackageJSON(cwd)
-  const outDir = resolveOutDir(cwd, options.outDir)
+  const outDir = resolveOutDir(cwd, options.outDir, options.outDirFromConfig ? `outDir: '${options.outDir}'` : undefined)
 
-  const config = await loadBuildConfig(cwd, pkg, outDir)
+  if (options.moduleOptions) {
+    assertNoLegacyBuildConfig(cwd, pkg)
+  }
+  const config = options.moduleOptions ? resolveModuleOptions(cwd, pkg, outDir, options.moduleOptions) : await loadBuildConfig(cwd, pkg, outDir)
   // The stub only re-exports sources, so options the full build rejects do not affect it.
   if (config.unsupported.length) {
     consola.warn(formatUnsupportedOptions(config.unsupported))

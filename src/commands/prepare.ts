@@ -3,15 +3,26 @@ import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
-import { bundledEntries, loadBuildConfig } from '../build/build-config.ts'
+import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
 import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertResolvableImports, importModule } from '../build/loader.ts'
-import { resolveCwdArg, sharedArgs } from './_shared.ts'
+import { loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
+
+async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
+  const pkg = await readPackageJSON(cwd)
+  const moduleConfig = await loadModuleConfig(cwd)
+  const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
+  if (!moduleConfig) {
+    return loadBuildConfig(cwd, pkg, outDir)
+  }
+  assertNoLegacyBuildConfig(cwd, pkg)
+  return resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options)
+}
 
 export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildConfig): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
-  const config = buildConfig ?? await loadBuildConfig(cwd, await readPackageJSON(cwd), resolve(cwd, 'dist'))
+  const config = buildConfig ?? await loadPrepareConfig(cwd)
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
   assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
