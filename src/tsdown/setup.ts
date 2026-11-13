@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
@@ -97,6 +98,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   let watch = false
   let resolvedConfig: ResolvedConfig | undefined
   let failed = false
+  let written: Set<string> | undefined
   const fail = async (error: unknown, directory?: boolean) => {
     if (!failed) {
       failed = true
@@ -198,6 +200,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       }
     },
     async onWriteBundle(bundle) {
+      const current = new Set(Object.keys(bundle))
+      if (watch && written) {
+        await Promise.all([...written].filter(file => !current.has(file)).map(file => rm(resolve(outDir, file), { force: true })))
+      }
+      written = current
       if (resolvedConfig && reportsSummary(resolvedConfig.report)) {
         for (const line of sizeBreakdown(bundle, { cwd, outDir, entries: plan.entries, directories: plan.directories })) {
           resolvedConfig.logger.info(resolvedConfig.nameLabel, line)

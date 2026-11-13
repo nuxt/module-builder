@@ -231,6 +231,22 @@ export default {
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual(['first-session', 'second-session'])
   }, 120 * 1000)
 
+  it('should remove the output of a runtime file deleted while watching', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-deleted', `export default {\n  plugins: [builder()],\n}\n`)
+    await writeFile(join(dir, 'src/runtime/removed.ts'), `export const removed: string = 'removed'\n`)
+    const outputs = ['dist/runtime/removed.js', 'dist/runtime/removed.d.ts'].map(output => join(dir, output))
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    try {
+      await waitFor(async () => existsSync(join(dir, 'dist/module.json')) && outputs.every(output => existsSync(output)))
+      await rm(join(dir, 'src/runtime/removed.ts'))
+      await waitFor(async () => outputs.every(output => !existsSync(output)))
+      expect(existsSync(join(dir, 'dist/runtime/plugins/plugin.js'))).toBe(true)
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
   it.each([
     ['the module entry', 'module', 'src/module.ts', 'types.d.mts'],
     ['a runtime file', 'runtime', 'src/runtime/plugins/plugin.ts', 'runtime/plugins/plugin.js'],
