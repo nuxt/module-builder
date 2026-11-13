@@ -117,7 +117,8 @@ A minimum `package.json` should look like this:
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt-module-build build"
+    "dev:prepare": "nuxt-module-build prepare --stub && nuxi prepare playground",
+    "prepack": "tsdown"
   },
   "dependencies": {
     "@nuxt/kit": "latest"
@@ -129,11 +130,13 @@ A minimum `package.json` should look like this:
 }
 ```
 
-`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`.
+`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. With pnpm, the playground can also load the module from its sources without a stub: see [Developing without a stub](./docs/upgrade-v2.md#developing-without-a-stub).
 
-### Build configuration (optional)
+Module code (`src/module.ts`, the files it imports by value, and the build config) has to load with Node as it is: relative imports carry their `.ts` extension, and TypeScript syntax that stripping types doesn't remove, tsconfig `paths` aliases, value imports of `.vue` and `.tsx` files, JSON without `with { type: 'json' }`, and value imports of `#app`, `#imports`, and `#build/*` aren't allowed. See [Module code loads with Node](./docs/upgrade-v2.md#module-code-loads-with-node).
 
-Module builder builds with [tsdown](https://tsdown.dev), through the `builder()` plugin. Without a config, `nuxt-module-build build` builds `src/module` and `src/runtime`. To configure the build, add the plugin to a `tsdown.config.ts`:
+### Build configuration
+
+Module builder builds with [tsdown](https://tsdown.dev), through the `builder()` plugin. Add it to a `tsdown.config.ts`, and build with `tsdown`:
 
 ```ts [tsdown.config.ts]
 import { builder } from '@nuxt/module-builder/tsdown'
@@ -149,7 +152,7 @@ export default defineConfig({
 })
 ```
 
-`nuxt-module-build build` then builds with this config, and so does running `tsdown` itself. `builder()` also takes `externals` and `replace`, and other tsdown options apply as usual apart from the ones the plugin sets. See [tsdown config](./docs/upgrade-v2.md#tsdown-config) in the upgrade guide.
+`nuxt-module-build build` builds the same `dist`, with this config or, without one, with no options. `builder()` also takes `externals` and `replace`, and other tsdown options apply as usual apart from the ones the plugin sets. See [tsdown config](./docs/upgrade-v2.md#tsdown-config) in the upgrade guide.
 
 > [!WARNING]
 > `build.config.ts` and the `unbuild` field of `package.json` are deprecated. Without a `tsdown.config.ts`,
@@ -170,6 +173,14 @@ Module builder generates dist files in `dist/` directory:
   - `.css` files have their nesting flattened, and are vendor-prefixed and minified
   - `.scss` and `.sass` files are compiled to `.css` with the module's `sass` or `sass-embedded`; `_` partials aren't emitted
   - Other files are copied as they are
+
+## Output size
+
+Each build reports its output size: a summary plus one line per bundled entry and runtime directory for a module with runtime directories, or one line per file otherwise. Set `report` in `tsdown.config.ts` to change it (`{ summary: true }`, `{ gzip: false }`, `{ brotli: true }`, or `false`). For size checks in CI, `npm pack --dry-run --json` lists exactly what gets published: each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`:
+
+```bash
+npm pack --dry-run --json | jq '.[0] | { size, unpackedSize }'
+```
 
 ## Transpiling a directory with tsdown
 
