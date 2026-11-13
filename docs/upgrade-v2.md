@@ -96,7 +96,7 @@ Build with `tsdown` itself, for example from the `prepack` script:
 }
 ```
 
-`nuxt-module-build build` stays the zero-config way to build: it builds with this config when there is one, and produces the same `dist`, with the same checks and warnings. `nuxt-module-build build --stub` and `nuxt-module-build prepare` read the options of `builder()` from the config as well. `tsdown --watch` rebuilds `dist` when a source file changes.
+`nuxt-module-build build` stays the zero-config way to build: it builds with this config when there is one, and produces the same `dist`, with the same checks and warnings. `nuxt-module-build build --stub` and `nuxt-module-build prepare` read the options of `builder()` from the config as well, and fail when the config sets `cwd` to another directory. `tsdown --watch` rebuilds `dist` when a source file changes.
 
 `builder()` takes these options:
 

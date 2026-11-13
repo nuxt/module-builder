@@ -512,6 +512,17 @@ export default {
       expect(existsSync(join(dir, 'out'))).toBe(false)
     }, 60 * 1000)
 
+    it('should fail to stub or prepare with a tsdown config whose `cwd` is another directory', async () => {
+      const dir = await copyExample('.temp-tsdown-config-cwd', `export default {\n  cwd: './elsewhere',\n  plugins: [builder()],\n}\n`)
+      for (const args of [['build', '--stub'], ['prepare']]) {
+        const { exitCode, stdout, stderr } = await cli([...args, dir])
+        expect(exitCode, args.join(' ')).not.toBe(0)
+        expect(stdout + stderr, args.join(' ')).toContain('`tsdown.config.ts` sets `cwd`, but `build --stub` and `prepare` read the module in the directory of the tsdown config.')
+      }
+      await writeFile(join(dir, 'tsdown.config.ts'), `${builderImport}\nexport default {\n  cwd: '.',\n  plugins: [builder()],\n}\n`)
+      expect((await cli(['build', '--stub', dir])).exitCode).toBe(0)
+    }, 120 * 1000)
+
     it('should fail on a tsdown config that Node cannot load', async () => {
       const dir = await copyExample('.temp-tsdown-config-enum', `enum Mode { Build }\nexport default {\n  define: { __MODE__: String(Mode.Build) },\n  plugins: [builder()],\n}\n`)
       for (const args of [['build'], ['build', '--stub'], ['prepare']]) {

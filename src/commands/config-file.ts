@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { basename, resolve } from 'pathe'
+import { basename, dirname, resolve } from 'pathe'
 
 import { BUILDER_OPTIONS } from '../build/build-config.ts'
 import type { BuilderOptions } from '../build/build-config.ts'
@@ -49,9 +49,12 @@ export async function loadBuilderConfig(cwd: string, file: string): Promise<Buil
     : await importModule(file, { cwd }).then(module => module.default ?? module)
   const resolved = typeof exported === 'function' ? await exported({ cwd, config: file }, { ci: !!process.env.CI }) : await exported
   const found: BuilderConfig[] = []
-  for (const config of [resolved].flat() as Array<{ plugins?: unknown, outDir?: string } | undefined>) {
+  for (const config of [resolved].flat() as Array<{ plugins?: unknown, outDir?: string, cwd?: string } | undefined>) {
     for (const plugin of await flattenPlugins(config?.plugins)) {
       if (plugin && typeof plugin === 'object' && BUILDER_OPTIONS in plugin) {
+        if (config?.cwd !== undefined && resolve(dirname(file), config.cwd) !== resolve(cwd)) {
+          throw new Error(`\`${basename(file)}\` sets \`cwd\`, but \`build --stub\` and \`prepare\` read the module in the directory of the tsdown config. Move the tsdown config into the module, or remove \`cwd\`. ${guide('tsdown-config')}`)
+        }
         found.push({ options: plugin[BUILDER_OPTIONS] as BuilderOptions, outDir: config?.outDir })
       }
     }
