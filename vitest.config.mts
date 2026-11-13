@@ -1,8 +1,10 @@
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+const config: ReturnType<typeof defineConfig> = defineConfig({
   test: {
     coverage: {},
     fileParallelism: false,
   },
 })
+
+export default config
