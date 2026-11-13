@@ -304,8 +304,6 @@ export interface LoadedBuildConfig extends TranslatedBuildConfig {
   file?: string
   /** Whether that file still imports from `unbuild`. */
   importsUnbuild?: boolean
-  /** Whether that file sets `entries`. */
-  fileHasEntries?: boolean
   /** The `package.json` field that was read, if any. */
   field?: 'unbuild' | 'build'
 }
@@ -334,7 +332,6 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   const fieldSource = field ? [{ name: `package.json "${field}"`, config: pkg[field] }] : []
 
   let importsUnbuild: boolean | undefined
-  let fileHasEntries: boolean | undefined
   const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
   if (file) {
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
@@ -353,7 +350,6 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     const configs = (Array.isArray(config) ? config : [config]).filter(Boolean)
     sources.push(...configs.map(config => ({ name: file, config })))
     configCount = configs.length
-    fileHasEntries = configs.some(config => isPlainObject(config) && config.entries !== undefined)
   }
 
   sources.push(...fieldSource)
@@ -363,7 +359,7 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   if (configCount > 1) {
     translated.unsupported.unshift(`${file}: an array of ${configCount} configs`)
   }
-  return { file, importsUnbuild, fileHasEntries, field, ...translated }
+  return { file, importsUnbuild, field, ...translated }
 }
 
 /** An entry of `builder({ entries })`. */
@@ -436,8 +432,8 @@ export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
     consola.warn([
       `\`${config.file}\` is deprecated. Its options are still applied.`,
       ...config.importsUnbuild ? ['Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`.'] : [],
-      ...config.fileHasEntries ? ['Move `entries` to the `build.entries` field of `package.json`.'] : [],
-      guide('build-configuration'),
+      'Move them into `builder()` in `tsdown.config.ts`.',
+      guide('moving-from-buildconfigts'),
     ].join(' '))
   }
   if (config.field === 'unbuild') {

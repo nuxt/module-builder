@@ -747,7 +747,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
     expect(exitCode).toBe(0)
-    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('build-configuration')}`))
+    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('moving-from-buildconfigts')}`))
     expect(stdout + stderr).not.toContain('instead of')
     expect(stdout + stderr).not.toContain('`unbuild` field')
     const files = await listFiles(join(buildConfigRootDir, '.stub'))

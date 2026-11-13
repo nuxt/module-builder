@@ -208,7 +208,6 @@ describe('translateBuildConfig', () => {
       const config = await loadBuildConfig(dir, { build: { externals: ['b'] } }, join(dir, 'dist'))
       expect(config.file).toBe('build.config.mjs')
       expect(config.importsUnbuild).toBe(false)
-      expect(config.fileHasEntries).toBe(false)
       expect(config.field).toBe('build')
       expect(config.neverBundle.map(String)).toEqual(['/^a(?:\\/|$)/', '/^b(?:\\/|$)/'])
       expect(config.unsupported).toEqual([])
@@ -218,7 +217,7 @@ describe('translateBuildConfig', () => {
       await writeFile(join(dir, 'node_modules/unbuild/package.json'), JSON.stringify({ name: 'unbuild', type: 'module', exports: './index.js' }))
       await writeFile(join(dir, 'node_modules/unbuild/index.js'), 'export const defineBuildConfig = config => config\n')
       await writeFile(join(dir, 'build.config.js'), `import { defineBuildConfig } from 'unbuild'\nexport default [defineBuildConfig({ externals: ['a'] }), { entries: ['src/utils'] }]\n`)
-      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ importsUnbuild: true, fileHasEntries: true, field: undefined, unsupported: ['build.config.js: an array of 2 configs'] })
+      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ importsUnbuild: true, field: undefined, unsupported: ['build.config.js: an array of 2 configs'] })
 
       await rm(join(dir, 'build.config.js'))
       await writeFile(join(dir, 'build.config.mts'), 'export default () => ({})\n')
@@ -287,13 +286,13 @@ describe('translateBuildConfig', () => {
     vi.stubEnv('CI', 'true')
     const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
     try {
-      const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, fileHasEntries: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
+      const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
       warnDeprecatedBuildConfig(config)
-      warnDeprecatedBuildConfig({ ...config, importsUnbuild: false, fileHasEntries: false, ignoredHooks: [], field: 'unbuild' })
+      warnDeprecatedBuildConfig({ ...config, importsUnbuild: false, ignoredHooks: [], field: 'unbuild' })
       expect(warn.mock.calls.map(([message]) => message)).toEqual([
         expect.stringMatching(new RegExp(`^Ignoring build\\.config\\.ts: hooks\\['mkdist:entry:options'\\]: .*Remove the hook\\. ${guide('hooks')}$`)),
-        expect.stringMatching(new RegExp(`^\`build\\.config\\.ts\` is deprecated\\. .*instead of \`unbuild\`\\. Move \`entries\` to the \`build\\.entries\` field of \`package\\.json\`\\. ${guide('build-configuration')}$`)),
-        `\`build.config.ts\` is deprecated. Its options are still applied. ${guide('build-configuration')}`,
+        expect.stringMatching(new RegExp(`^\`build\\.config\\.ts\` is deprecated\\. .*instead of \`unbuild\`\\. Move them into \`builder\\(\\)\` in \`tsdown\\.config\\.ts\`\\. ${guide('moving-from-buildconfigts')}$`)),
+        `\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`,
         expect.stringMatching(new RegExp(`^The \`unbuild\` field of \`package\\.json\` is deprecated\\. .*Rename the field to \`build\`\\. ${guide('build-configuration')}$`)),
       ])
     }
