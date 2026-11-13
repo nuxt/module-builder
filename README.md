@@ -131,29 +131,31 @@ A minimum `package.json` should look like this:
 
 `tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`.
 
-### Additional entrypoints (optional)
+### Build configuration (optional)
 
-Module builder is a preset for [tsdown](https://tsdown.dev). See [`src/build/build.ts`](./src/build/build.ts) for the options it passes to tsdown.
+Module builder builds with [tsdown](https://tsdown.dev), through the `builder()` plugin. Without a config, `nuxt-module-build build` builds `src/module` and `src/runtime`. To configure the build, add the plugin to a `tsdown.config.ts`:
 
-To build entrypoints other than `src/module`, list them in the `build.entries` field of `package.json`:
+```ts [tsdown.config.ts]
+import { builder } from '@nuxt/module-builder/tsdown'
+import { defineConfig } from 'tsdown'
 
-```json [package.json]
-{
-  "build": {
-    "entries": [
-      "./src/utils"
-    ]
-  }
-}
+export default defineConfig({
+  plugins: [
+    builder({
+      // entrypoints other than `src/module`
+      entries: ['./src/utils'],
+    }),
+  ],
+})
 ```
 
+`nuxt-module-build build` then builds with this config, and so does running `tsdown` itself. `builder()` also takes `externals` and `replace`, and other tsdown options apply as usual apart from the ones the plugin sets. See [tsdown config](./docs/upgrade-v2.md#tsdown-config) in the upgrade guide.
+
 > [!WARNING]
-> `build.config.ts` and the `unbuild` field of `package.json` are deprecated.
-> The build still applies their `entries`, `externals`, `replace`, `rollup.replace`, and `sourcemap` options,
-> and the `build:before`, `rollup:done`, and `build:done` hooks. `mkdist:*` hooks are ignored, a few options
-> are accepted at their defaults, and any other option fails the build. Import `defineBuildConfig` from
-> `@nuxt/module-builder` instead of `unbuild`. See [Build configuration](./docs/upgrade-v2.md#build-configuration)
-> in the upgrade guide for the full list.
+> `build.config.ts` and the `unbuild` field of `package.json` are deprecated. Without a `tsdown.config.ts`,
+> the build still applies their `entries`, `externals`, `replace`, `rollup.replace`, and `sourcemap` options,
+> and the `build:before`, `rollup:done`, and `build:done` hooks, and reads `build.entries` from `package.json`.
+> See [Moving from build.config.ts](./docs/upgrade-v2.md#moving-from-buildconfigts) in the upgrade guide.
 
 ## Dist files
 
