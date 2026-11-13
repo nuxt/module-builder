@@ -30,11 +30,12 @@ Building a module requires Node `^22.18.0 || >=24.0.0`, with `tsdown` and `types
 - [Getting started](./docs/index.md)
 - [Project structure](./docs/1.project-structure.md)
 - [Commands](./docs/2.commands.md): `build`, `build --stub`, and `prepare`
-- [Configuration](./docs/3.configuration.md): extra entries, and the deprecated `build.config.ts`
-- [TypeScript](./docs/4.typescript.md): the module's `tsconfig.json`, and its declarations
-- [Build output](./docs/5.output.md)
-- [Exports](./docs/6.exports.md): subpath exports, including runtime components
-- [Transpiling a directory](./docs/7.transpile-dir.md): the `transpileDir` rolldown plugin
+- [Develop and publish](./docs/3.develop-and-publish.md): the playground, and releasing to npm
+- [Configuration](./docs/4.configuration.md): extra entries, and the deprecated `build.config.ts`
+- [TypeScript](./docs/5.typescript.md): the module's `tsconfig.json`, and its declarations
+- [Build output](./docs/6.output.md)
+- [Exports](./docs/7.exports.md): subpath exports, including runtime components
+- [Transpiling a directory](./docs/8.transpile-dir.md): the `transpileDir` rolldown plugin
 - [Upgrading to v2](./docs/upgrade-v2.md)
 
 For writing the module itself, read the [Nuxt Module Author Guide](https://nuxt.com/docs/guide/modules).
