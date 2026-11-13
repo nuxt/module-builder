@@ -638,6 +638,27 @@ describe('selfReferencePaths', () => {
 })
 
 describe('importModule', () => {
+  it('should import files in an output directory outside the module afresh for each version', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-versions-'))
+    await mkdir(join(root, 'module'))
+    await mkdir(join(root, 'out/runtime'), { recursive: true })
+    await writeFile(join(root, 'out/module.mjs'), `export { name } from './runtime/name.js'\n`)
+    await writeFile(join(root, 'out/runtime/name.js'), `export const name = 'one'\n`)
+    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
+    const options = JSON.stringify({ cwd: join(root, 'module'), outDir: join(root, 'out') })
+    const script = [
+      `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)})`,
+      `const { writeFile } = await import('node:fs/promises')`,
+      `const first = await importModule(${JSON.stringify(join(root, 'out/module.mjs'))}, { ...${options}, version: 1 })`,
+      `await writeFile(${JSON.stringify(join(root, 'out/runtime/name.js'))}, "export const name = 'two'\\n")`,
+      `const second = await importModule(${JSON.stringify(join(root, 'out/module.mjs'))}, { ...${options}, version: 2 })`,
+      `console.log(JSON.stringify([first.name, second.name]))`,
+    ].join('\n')
+    const { stdout } = await exec('node', ['--input-type=module', '-e', script])
+    expect(JSON.parse(stdout)).toEqual(['one', 'two'])
+    await rm(root, { recursive: true, force: true })
+  })
+
   it('should leave TypeScript to Node\'s type stripping', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-strip-'))
     const line = `export const location: string = ((): string => new Error('here').stack!.split('\\n')[1]!)()`

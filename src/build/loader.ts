@@ -19,6 +19,8 @@ const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx'
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
   cwd?: string
+  /** The build's output directory, inside which `version` also applies. */
+  outDir?: string
   /** Source code to serve in place of these bare specifiers. */
   stubs?: Record<string, string>
   /**
@@ -43,7 +45,7 @@ export async function importModule(path: string, options: ImportModuleOptions = 
         return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
       }
       const resolved = nextResolve(specifier, context)
-      if (!options.version || !resolved.url.startsWith('file:') || !isInside(cwd, fileURLToPath(resolved.url)) || NODE_MODULES_RE.test(resolved.url)) {
+      if (!options.version || !resolved.url.startsWith('file:') || ![cwd, options.outDir ?? cwd].some(root => isInside(root, fileURLToPath(resolved.url))) || NODE_MODULES_RE.test(resolved.url)) {
         return resolved
       }
       const url = new URL(resolved.url)
