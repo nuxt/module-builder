@@ -48,6 +48,8 @@ describe('module builder', () => {
   const solutionRootDir = rootDir.replace('example', '.temp-example-solution-tsconfig')
   const parentTsconfigRootDir = rootDir.replace('example', '.temp-example-parent-tsconfig')
   const portableRootDir = rootDir.replace('example', '.temp-example-portable-types')
+  const valueExportsRootDir = rootDir.replace('example', '.temp-example-value-exports')
+  const valueExportsIsolatedRootDir = rootDir.replace('example', '.temp-example-value-exports-isolated')
   const isolatedRootDir = rootDir.replace('example', '.temp-example-isolated-declarations')
   const typeErrorRootDir = rootDir.replace('example', '.temp-example-type-error')
   const semanticErrorRootDir = rootDir.replace('example', '.temp-example-semantic-error')
@@ -124,6 +126,51 @@ export default defineNuxtModule({
 
     await copyExample(isolatedRootDir, contents => contents)
     await enableIsolatedDeclarations(isolatedRootDir)
+
+    const valueExports = `export function defineMyModuleConfig(): void {}
+export const myModuleVersion = '1.0.0'
+export const Mode = { Light: 0, Dark: 1 } as const
+export type Mode = typeof Mode[keyof typeof Mode]`
+    const valueExportsConsumer = `import { Mode, defineMyModuleConfig, myModuleVersion } from 'my-module'
+import type { ModuleOptions } from 'my-module'
+
+defineMyModuleConfig()
+const options: ModuleOptions = { apiKey: myModuleVersion }
+const light: number = Mode.Light
+const dark: Mode = Mode.Dark
+void [light, dark, options]
+`
+    const valueExportsConsumerConfig = JSON.stringify({
+      compilerOptions: {
+        moduleResolution: 'bundler',
+        module: 'ESNext',
+        target: 'ESNext',
+        lib: ['ESNext'],
+        strict: true,
+        noEmit: true,
+        skipLibCheck: true,
+      },
+      include: ['consumer.ts'],
+    }, null, 2)
+    const prepareValueExportsConsumer = async (target: string) => {
+      await rm(join(target, 'playground/node_modules/my-module'), { force: true })
+      await symlink(target, join(target, 'playground/node_modules/my-module'))
+      await writeFile(join(target, 'playground/consumer.ts'), valueExportsConsumer)
+      await writeFile(join(target, 'playground/consumer.tsconfig.json'), valueExportsConsumerConfig)
+    }
+
+    await copyExample(valueExportsRootDir, contents => `${contents}\n${valueExports}\n`)
+    await prepareValueExportsConsumer(valueExportsRootDir)
+
+    await copyExample(valueExportsIsolatedRootDir, contents => [
+      `import type { NuxtModule } from '@nuxt/schema'`,
+      contents.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
+      'export default module',
+      valueExports,
+    ].join('\n'))
+    await prepareValueExportsConsumer(valueExportsIsolatedRootDir)
+    await writeFile(join(valueExportsIsolatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
+    await enableIsolatedDeclarations(valueExportsIsolatedRootDir)
 
     await copyExample(stubSyntaxRootDir, contents => `import { name as packageName } from '../package.json'
 import { Level } from './levels.ts'
@@ -598,6 +645,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
       exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', join(parentTsconfigRootDir, 'packages/mod')], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', portableRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', valueExportsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', valueExportsIsolatedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
     ])
   }, 180 * 1000)
 
@@ -1245,6 +1294,33 @@ export const defineOptions = (options: Options) => ({ options, helper })
       "
     `)
   })
+
+  it('should keep value exports as values in `types.d.mts`', async () => {
+    const types = await readFile(join(valueExportsRootDir, 'dist/types.d.mts'), 'utf-8')
+    expect(types).toMatchInlineSnapshot(`
+      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
+
+      declare module '#app' {
+        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
+      }
+
+      declare module '@nuxt/schema' {
+        interface NuxtHooks extends ModuleHooks {}
+        interface RuntimeConfig extends ModuleRuntimeConfig {}
+        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
+      }
+
+      export { defineMyModuleConfig, Mode, type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, myModuleVersion, default } from './module.mjs'
+      "
+    `)
+    expect(await readFile(join(valueExportsIsolatedRootDir, 'dist/types.d.mts'), 'utf-8')).toBe(types)
+
+    for (const root of [valueExportsRootDir, valueExportsIsolatedRootDir]) {
+      const { stdout, stderr, exitCode } = await exec('pnpm', ['exec', 'tsc', '--noEmit', '-p', join(root, 'playground/consumer.tsconfig.json')], { nodeOptions: { cwd: repoRoot } })
+      expect(stdout + stderr, root).toBe('')
+      expect(exitCode).toBe(0)
+    }
+  }, 60 * 1000)
 
   it('should generate types when no ModuleOptions are exported', async () => {
     const types = await readFile(join(secondDistDir, 'types.d.mts'), 'utf-8')
