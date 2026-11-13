@@ -24,6 +24,10 @@ interface DeclarationEmit {
 export interface DeclarationProgram {
   paths: DeclarationPaths
   emit: (files: string[]) => Promise<DeclarationEmit>
+  /** The program's source files other than declaration files. */
+  sources: () => string[]
+  /** The file `specifier` resolves to from `importer`, with the program's options. */
+  resolve: (specifier: string, importer: string) => string | undefined
 }
 
 /**
@@ -58,11 +62,14 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
     declarationDir: undefined,
   }
   let program: ts.Program | undefined
+  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, projectReferences: parsed?.projectReferences })
 
   return {
     paths: declaration,
+    sources: () => createProgram().getSourceFiles().filter(source => !source.isDeclarationFile).map(source => source.fileName),
+    resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
-      program ??= ts.createProgram({ rootNames: [...rootNames], options, projectReferences: parsed?.projectReferences })
+      program = createProgram()
       const { isDeclarationEmitDiagnostic } = await classifier
       const declarations = new Map<string, string>()
       const errors: ts.Diagnostic[] = []

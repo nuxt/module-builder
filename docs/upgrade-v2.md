@@ -384,17 +384,18 @@ Both scripts start with `nuxt-module-build prepare`, also where the old one had 
 
 The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Node never loads type-only imports, so they don't stop the module loading. A type check that resolves imports like Node still requires their extensions, such as the playground's check of its `nuxt.config.ts` context when the playground sets `future.compatibilityVersion: 5`: write them with extensions too. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
 
-Set `erasableSyntaxOnly` so your editor and type check report the syntax as well:
+Set `erasableSyntaxOnly` in the tsconfig for module code, `tsconfig.module.json` in [Module tsconfig](#module-tsconfig), so your editor and type check report the syntax as well:
 
 ```json
 {
+  "extends": "./.nuxt/tsconfig.node.json",
   "compilerOptions": {
     "erasableSyntaxOnly": true
   }
 }
 ```
 
-Relative imports carry the imported file's extension: `./utils.ts`, not `./utils`, `./utils.js`, or `./dir`. The generated `.nuxt/tsconfig.json` sets `allowImportingTsExtensions`, so the `.ts` form type checks:
+Relative imports carry the imported file's extension: `./utils.ts`, not `./utils`, `./utils.js`, or `./dir`. The generated tsconfigs set `allowImportingTsExtensions`, so the `.ts` form type checks:
 
 ```ts
 // before
@@ -488,7 +489,7 @@ Fix the list before you run `prepare` or `dev:prepare`. Until it's empty, `prepa
 
 ## Declaration errors
 
-Declarations for the module entry and for `src/runtime` are generated with TypeScript, using your module's own `tsconfig.json`. Run `nuxt-module-build prepare` first, as described in [Preparing .nuxt](#preparing-nuxt). Errors that would leave the declarations missing or wrong fail the build. Every other type error, in `.ts` and `.vue` files alike, is reported as a warning.
+Declarations for the module entry and for `src/runtime` are generated with TypeScript, using the tsconfig project that includes each file, as described in [Module tsconfig](#module-tsconfig). Run `nuxt-module-build prepare` first, as described in [Preparing .nuxt](#preparing-nuxt). Errors that would leave the declarations missing or wrong fail the build. Every other type error, in `.ts` and `.vue` files alike, is reported as a warning.
 
 ### Portability errors
 
@@ -521,7 +522,7 @@ Type errors that don't change the declarations, such as a wrong argument type or
 ```bash
 nuxt typecheck
 # or
-vue-tsc --noEmit
+vue-tsc -b --noEmit
 ```
 
 If the type check reports the same errors, fix them there. If it passes, the warning is safe to ignore.
@@ -561,7 +562,7 @@ export const fetchItems = () => $fetch<Item[]>('/api/items')
 
 ### Isolated declarations
 
-With `isolatedDeclarations: true` in `tsconfig.json`, the module entry's declarations come from oxc. This is faster than TypeScript but requires an explicit type on every export. Write the module entry as follows:
+With `isolatedDeclarations: true` in the tsconfig that includes `src/module.ts`, the module entry's declarations come from oxc. This is faster than TypeScript but requires an explicit type on every export. Write the module entry as follows:
 
 ```ts
 import type { NuxtModule } from '@nuxt/schema'
@@ -614,24 +615,92 @@ A one-off build empties `--outDir` (`dist` by default) before it writes to it. `
 
 ## Module tsconfig
 
-Declarations are generated with your module's own `.nuxt`, which `nuxt-module-build prepare` writes from a Nuxt instance that runs the module alone. Extend it from the module's `tsconfig.json`, and leave the playground to its own `tsconfig.json`:
+`nuxt-module-build prepare` writes the module's own `.nuxt` from a Nuxt instance that runs the module alone. It has one tsconfig for each part of the module: `tsconfig.node.json` for `src/module.ts` and the files next to it, `tsconfig.app.json` for `src/runtime`, `tsconfig.server.json` for `src/runtime/server`, and `tsconfig.shared.json` for code that both the app and the server use. Reference them from the module's `tsconfig.json`, and leave the playground to its own `tsconfig.json`:
+
+```json
+{
+  "files": [],
+  "exclude": ["dist", "node_modules", "playground"],
+  "references": [
+    { "path": "./tsconfig.module.json" },
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" }
+  ]
+}
+```
+
+To change the options of one part, reference a tsconfig of your own that extends the generated one, in its place. Here `tsconfig.module.json` takes the place of `./.nuxt/tsconfig.node.json` for module code:
+
+```json
+{
+  "extends": "./.nuxt/tsconfig.node.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true,
+    "tsBuildInfoFile": "./.nuxt/tsconfig.module.tsbuildinfo"
+  }
+}
+```
+
+`vue-tsc -b` writes a `.tsbuildinfo` file for each project, next to its tsconfig unless `tsBuildInfoFile` says otherwise. Those of the generated tsconfigs go in `.nuxt`, and `tsBuildInfoFile` puts this one there too.
+
+Keep `./.nuxt/tsconfig.app.json` itself in `references`, and put options for the runtime in the root's `compilerOptions`, as described in [Generated tsconfigs](#generated-tsconfigs). The build infers the runtime types of single-file component props, such as a prop typed through one of the module's aliases, through the generated app tsconfig itself.
+
+Type check with `vue-tsc -b --noEmit`. It checks each part as its own program, so it takes longer than `vue-tsc --noEmit` with a single tsconfig: between about 1.1 and 2.4 times as long, for the modules it was measured on. The build generates each file's declarations with the project that includes it, trying the module's own tsconfigs before the generated ones and the app's last. tsdown reads the project that includes `src/module.ts`, unless the tsdown config sets `tsconfig`.
+
+Auto-imports are off in the module's own `.nuxt`, so runtime code imports what it uses, such as `defineEventHandler` from `h3` or `useNuxtApp` from `#imports`.
+
+### Generated tsconfigs
+
+`prepare` adapts the generated tsconfigs to a module:
+
+- The app's tsconfig covers `src/runtime` and the module's other runtime directories rather than the whole module root, less the root's `exclude`.
+- The root's `compilerOptions`, with those of the tsconfigs it extends, are copied into all four, apart from path options such as `paths` and `rootDir`. Its `types` are added to those Nuxt sets. Put options that every part needs there, such as `"types": ["youtube"]` for a global namespace.
+- The module's `.d.ts` files are added as well, apart from those in the runtime directories, in the output directory (`dist` by default), in the root's `exclude`, and in the `playground*`, `docs`, `test`, `tests`, `fixtures`, `example` and `examples` directories. Those that only declare globals and ambient modules, with no top-level `import` or `export`, go to all four. Module augmentations, with a top-level `import` or `export` and a `declare module` or `declare global`, go to the app and to module code, the parts that Nuxt gives an installed module's types. Other `.d.ts` modules only apply to the files that import them.
+- Module code gets the app's aliases, declarations (with the type templates that the app's tsconfig includes) and JSX options, for the runtime files it imports.
+- Module code also gets `.nuxt/module-builder/types.d.mts`, so the augmentations for the `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` that `src/module.ts` exports apply to it, as they do in an app that installs the module.
+- In the app, server and shared tsconfigs, the module's own package name resolves to declarations of module code that `prepare` writes into `.nuxt/module-builder/declarations`, with a `types.d.mts` that has the same augmentations, and the subpath of each other bundled entry resolves to that entry's declarations. A type template or a runtime file that imports from the module's own name then gets the types an app that installs the module gets, without type checking module code in that part. A declaration error there, such as an export whose type can't be named, is a warning: the build reports it as an error.
+
+Other files, such as most tests and fixtures, are in none of them. Reference a tsconfig of your own to type check them.
+
+### Type checking each part
+
+Each part is type checked on its own, with the files it imports and the types that part has in an app. A `tsconfig.json` that extends `./.nuxt/tsconfig.json` checks the whole module root as one program with the app's types, so it doesn't report some of the errors below. Each entry gives the error, what it means and the fix:
+
+- **Missing `types` in module code** (TS2304, TS2503, such as `Cannot find namespace 'YT'`). Runtime files that module code imports are type checked with module code too. The root's `types` apply to it, but a `types` list in `tsconfig.module.json` replaces them, so repeat them there, such as `"types": ["youtube", "google.maps"]`.
+- **An augmentation that only another file brings in** (TS2322, TS2339, TS2353). Module code that relies on a type augmentation that only a test or a config file loads needs it in its own tsconfig. A Vite plugin that returns `test` from its `config` hook needs Vitest's augmentation of the Vite config: add `"types": ["vitest/config"]` to `tsconfig.module.json`, or `/// <reference types="vitest/config" />` to that file.
+- **`erasableSyntaxOnly` outside the Node entry** (TS1294). `erasableSyntaxOnly` in `tsconfig.module.json` also applies to other bundled entries next to `src/module.ts`, such as a `src/vite.ts` or `src/unplugin.ts`, and to every file module code imports, runtime files included, which don't have to load with Node. Rewrite the syntax there too. A bundled entry that module code doesn't import can instead be left out of its `include`; a file that module code imports stays in its program either way.
+- **App code in the server part** (TS2307 for `#app`, TS2305 and TS2724 for app composables in `#imports`, TS2304 and TS2584 for `window` and `document`, TS2724 for typed routes such as `RouteMapI18n`). A server file that imports an app runtime file or module code gets that file type checked with the server's types, which have no `#app`, no app composables in `#imports`, no DOM globals, and none of the app's typed routes. Move what both parts use into files that only depend on what both have. Code in a server file that runs in a browser, such as a function passed to Playwright's `page.evaluate`, needs `/// <reference lib="dom" />` in that file.
+- **A runtime config type declared twice** (TS2322, TS2345, TS2339). A runtime config key whose type the module declares, through `ModulePublicRuntimeConfig` or its own augmentation of `RuntimeConfig` or `PublicRuntimeConfig`, is also typed by Nuxt from the value the module sets. When the two types differ, TypeScript uses the declaration it reads first, or merges the two into a type that lacks properties of either, and the result differs between the layouts. Make the two types agree, or declare the full type.
+- **`default` refers to itself** (TS7022 on the default export, TS7023 on a function in it, such as `moduleDependencies`). The module's own `.nuxt/types/modules.d.ts` types its options key and its entry in `ModuleDependencies` from `typeof import('../../src/module').default`. A `moduleDependencies` function without a return type is inferred from that same export. Give it one: `moduleDependencies(nuxt): ModuleDependencies`, with `ModuleDependencies` from `@nuxt/schema`.
+- **An ambient module declared twice** (TS2554, TS2748, or a wrong type for an export). A `.d.ts` in the module that declares an ambient module a type template also declares, such as `declare module '#my-module/bindings'` in both, applies to each part along with the template, and the two declarations merge. Keep one of them.
+- **Errors in code that relies on `.nuxt`'s declarations**. A `tsconfig.json` whose own `include` replaces the one it extends, such as `"include": ["src"]`, leaves out `.nuxt/nuxt.d.ts` and the declarations it references, such as the module's runtime config, typed routes and type templates. Each part here has them, so code that relies on them is checked against them. Fix what they report.
+
+### Extending .nuxt/tsconfig.json
+
+`prepare` also writes `.nuxt/tsconfig.json`, for a `tsconfig.json` that extends it. It type checks the whole module root as one program with the app's types, so it doesn't report the errors in [Type checking each part](#type-checking-each-part), and in it the module's own package name resolves through `package.json` rather than to declarations of module code. Set `erasableSyntaxOnly` in its own `compilerOptions`, and type check with `vue-tsc --noEmit`:
 
 ```json
 {
   "extends": "./.nuxt/tsconfig.json",
+  "compilerOptions": {
+    "erasableSyntaxOnly": true
+  },
   "exclude": ["dist", "node_modules", "playground"]
 }
 ```
 
+### Other tsconfig layouts
+
 The tsconfig that covers your module might extend or reference a playground's `.nuxt/tsconfig.json` instead. This can be the module's own tsconfig or a monorepo root's, such as `../../tsconfig.json`. In that case, the build generates declarations with `./.nuxt/tsconfig.json` plus that tsconfig's own `compilerOptions`, and prints a note saying so. `types` and `paths` are included, apart from paths into the playground's `.nuxt`.
 
-In a monorepo, give the module a `tsconfig.json` of its own as shown above. Move any `compilerOptions.types` the module relies on into it, such as `"types": ["youtube"]` for a global namespace. They then apply to the module's own type check as well as to the build.
+In a monorepo, give the module a `tsconfig.json` and a `tsconfig.module.json` of its own as shown above, in the module's directory. Copy into its `compilerOptions` the entries of the repository root's `compilerOptions.types` that the module's `src` relies on, such as `"youtube"` and `"google.maps"` for global namespaces, and leave out those only tests or other packages use, such as `"vitest/globals"`. They then apply to the module's own type check as well as to the build.
 
 The declaration program starts from your module's own files only. Files the tsconfig includes outside the module root (a workspace, with `typescript.includeWorkspace`) are left out. So are files under the module's `playground*`, `docs`, `test`, `tests`, `fixtures`, `example`, and `examples` directories. Their routes and type augmentations therefore don't end up in `dist`. Files that your module's sources import are still followed, wherever they are.
 
 ## Preparing .nuxt
 
-Declarations are generated against `.nuxt/tsconfig.json`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` first in your module's `dev:prepare` script, as in [Developing a module](#developing-a-module), so the build doesn't have to:
+Declarations are generated against the tsconfigs in `.nuxt`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` first in your module's `dev:prepare` script, as in [Developing a module](#developing-a-module), so the build doesn't have to:
 
 ```json
 {
@@ -649,7 +718,7 @@ The playground installs the module by its package name, so it loads whatever `pa
 - With pnpm or Yarn 4, `package.json` points at the module's sources, and `publishConfig` holds the `dist` paths that are published. See [Source exports](#source-exports).
 - With npm, Yarn 3 or earlier, or bun, `package.json` points at `dist`, and `tsdown --watch` rebuilds it while you develop. See [Developing against dist](#developing-against-dist).
 
-Run `dev:prepare` after you install dependencies, and again when the module registers something new for types, such as a template or a server route.
+Run `dev:prepare` after you install dependencies, and again when the module registers something new for types, such as a template or a server route. With the tsconfigs in [Module tsconfig](#module-tsconfig), the module's own app, server and shared type checks see the types of module code as of the last `prepare`.
 
 ### Source exports
 
@@ -816,7 +885,16 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
    - Replace `module.cjs` with `module.mjs`, and remove `.cjs` entries.
    - Remove the top-level `types` field and `typesVersions`, unless your module supports `node10` consumers.
    - If it does, set `types` to `./dist/types.d.mts`, in `publishConfig` with source exports (see step 8). Give every `typesVersions` path its full file name: `./dist/util.d.mts`, not `dist/util`.
-5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`. Rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion that the type check reports.
+5. Move the module to the tsconfigs in [Module tsconfig](#module-tsconfig):
+   - Replace `tsconfig.json` with the root shown there: `"files": []`, the `references` to `./tsconfig.module.json` and to `./.nuxt/tsconfig.app.json`, `tsconfig.server.json` and `tsconfig.shared.json`, and the old `exclude`.
+   - Keep the old `compilerOptions` in the root, `types` included: `prepare` copies them into every part. Path options such as `paths` and `baseUrl` aren't copied: move an alias from `paths` into the `imports` of `package.json`, as described in [Source exports](#source-exports). Move `erasableSyntaxOnly` and any other option for module code only into `tsconfig.module.json`.
+   - Create `tsconfig.module.json` as shown there, with `"erasableSyntaxOnly": true` and `tsBuildInfoFile`.
+   - Drop the old `include`. The generated tsconfigs cover `src`, and the module's `.d.ts` files are added to them, as described in [Generated tsconfigs](#generated-tsconfigs). A `.d.ts` that an `include` named in an excluded directory, such as `test/`, applies to none of them: move it into `src` or the module root.
+   - In a monorepo whose module has no tsconfig of its own, create both files in the module's directory, as described in [Other tsconfig layouts](#other-tsconfig-layouts).
+   - Set the type-check script to `vue-tsc -b --noEmit`.
+   - Run `nuxt-module-build prepare` and the type check. It checks each part with the types that part has in an app, so it can report errors that a single-program check didn't. [Type checking each part](#type-checking-each-part) lists them, with their fixes. Rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion it reports.
+
+   To keep a `tsconfig.json` that extends `./.nuxt/tsconfig.json`, set `erasableSyntaxOnly` in it instead, as described in [Extending .nuxt/tsconfig.json](#extending-nuxttsconfigjson).
 6. Make module code load with Node, before step 8. `prepare` lists each problem, and doesn't generate `.nuxt` until you fix them all. See [Module code loads with Node](#module-code-loads-with-node):
    - Add the `.ts` extension to relative imports in `src/module.ts` and the files that it imports by value, runtime files included. `./utils` becomes `./utils.ts`, and `./dir` becomes `./dir/index.ts`.
    - Replace value imports through tsconfig `paths` aliases.
@@ -828,7 +906,7 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
    - With npm, Yarn 3 or earlier, or bun, set `dev:prepare` to `nuxt-module-build prepare && tsdown && nuxt prepare playground`. See [Developing against dist](#developing-against-dist).
    - Run `nuxt-module-build prepare`, then `tsdown`.
    - Fix what the build reports. Remove each unsupported build option, and annotate each export in a portability error. Build again until the build passes.
-9. Run your module's own type check, such as `nuxt typecheck` or `vue-tsc --noEmit`, and fix what it reports:
+9. Run your module's own type check, `vue-tsc -b --noEmit` (or `vue-tsc --noEmit` with a `tsconfig.json` that extends `./.nuxt/tsconfig.json`), and fix what it reports, as described in [Type checking each part](#type-checking-each-part):
    - You can ignore a build warning about type errors that the type check doesn't reproduce.
    - Annotate exports whose type is inferred through a `#build/*` alias. Otherwise, `dist` declares them as `any`.
 10. Check the package:

@@ -17,13 +17,15 @@ const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|
 
 /**
  * Writes `module.d.mts`, which re-exports `entry`, and the `types.d.mts` that adds its type
- * augmentations, into `dir`.
+ * augmentations, into `dir`. With `reExported`, `module.d.mts` re-exports that path instead,
+ * such as where the declarations of `entry` are written.
  */
-export async function writeSourceTypes(dir: string, entry: string): Promise<void> {
+export async function writeSourceTypes(dir: string, entry: string, reExported: string = entry): Promise<void> {
   const source = await fsp.readFile(entry, 'utf8')
   const hasDefaultExport = findExports(source).some(e => e.type === 'default' || e.names?.includes('default'))
-  // TypeScript resolves the `.js` specifier to the `.ts` source without `allowImportingTsExtensions`.
-  const specifier = relative(dir, entry).replace(/\.([cm]?)tsx?$/, '.$1js')
+  // TypeScript resolves the `.js` specifier to the `.ts` source, or to its declaration, without `allowImportingTsExtensions`.
+  const path = relative(dir, reExported).replace(/\.([cm]?)tsx?$/, '.$1js')
+  const specifier = path.startsWith('.') ? path : `./${path}`
   await fsp.rm(dir, { recursive: true, force: true })
   await fsp.mkdir(dir, { recursive: true })
   await fsp.writeFile(resolve(dir, 'module.d.mts'), [
