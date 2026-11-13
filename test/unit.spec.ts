@@ -321,7 +321,7 @@ describe('command docs', () => {
   }
 
   it.each(['docs/2.commands.md', 'docs/cli/build-module/index.md'])('should list the options of each command in %s', async (file) => {
-    const markdown = await readFile(new URL(`../${file}`, import.meta.url), 'utf8')
+    const markdown = (await readFile(new URL(`../${file}`, import.meta.url), 'utf8')).replaceAll('\r\n', '\n')
     for (const [name, command] of Object.entries(commands)) {
       const args = Object.entries(command.args!).filter(([, arg]) => arg.type !== 'positional')
       expect(documentedOptions(markdown, name)).toEqual(Object.fromEntries(args.map(([key, arg]) => [key, arg.default === undefined ? '' : String(arg.default)])))
