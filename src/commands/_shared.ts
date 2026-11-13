@@ -26,3 +26,13 @@ export async function loadModuleConfig(cwd: string): Promise<BuilderConfig | und
   const file = findTsdownConfig(cwd)
   return file ? loadBuilderConfig(cwd, file) : undefined
 }
+
+/** Writes the stub `dist`, into `outDir` or the tsdown config's `outDir`. */
+export async function stubModule(cwd: string, outDir?: string): Promise<void> {
+  const [{ stub }, moduleConfig] = await Promise.all([import('../build/stub.ts'), loadModuleConfig(cwd)])
+  await stub(cwd, {
+    outDir: outDir ?? moduleConfig?.outDir ?? 'dist',
+    outDirFromConfig: outDir === undefined && moduleConfig?.outDir !== undefined,
+    moduleOptions: moduleConfig?.options,
+  })
+}

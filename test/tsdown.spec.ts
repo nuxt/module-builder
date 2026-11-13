@@ -370,6 +370,18 @@ export default {
       expect(built.stdout + built.stderr).toContain(guide('install-tsdown'))
     }, 60 * 1000)
 
+    it.each([['without a tsdown config', ''], ['with a tsdown config', `export default {\n  outDir: 'out',\n  plugins: [builder()],\n}\n`]])('should stub the module and then prepare `.nuxt` with `prepare --stub`, %s', async (_, config) => {
+      const dir = await copyExample(`.temp-tsdown-prepare-stub-${config ? 'config' : 'zero'}`, config)
+      if (!config) {
+        await rm(join(dir, 'tsdown.config.ts'))
+      }
+      await rm(join(dir, '.nuxt'), { recursive: true, force: true })
+      const { exitCode, stdout, stderr } = await cli(['prepare', '--stub', dir])
+      expect(exitCode, stdout + stderr).toBe(0)
+      expect(await readFile(join(dir, config ? 'out' : 'dist', 'module.mjs'), 'utf-8')).toContain(`from '../src/module.ts'`)
+      expect(existsSync(join(dir, '.nuxt/tsconfig.json'))).toBe(true)
+    }, 120 * 1000)
+
     it('should stub into `--outDir` over the tsdown config\'s `outDir`', async () => {
       const dir = await copyExample('.temp-tsdown-stub-out-dir', `export default {\n  outDir: 'out',\n  plugins: [builder()],\n}\n`)
       expect((await cli(['build', '--stub', '--outDir', '.stub', dir])).exitCode).toBe(0)

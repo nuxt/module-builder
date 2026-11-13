@@ -4,7 +4,7 @@ import { consola } from 'consola'
 
 import pkg from '../../package.json' with { type: 'json' }
 import { guide } from '../build/guide.ts'
-import { loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
+import { resolveCwdArg, sharedArgs, stubModule } from './_shared.ts'
 
 export const MISSING_TSDOWN_HINT: string = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
 
@@ -44,12 +44,7 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
     const cwd = resolveCwdArg(context.args)
 
     if (context.args.stub) {
-      const [{ stub }, moduleConfig] = await Promise.all([import('../build/stub.ts'), loadModuleConfig(cwd)])
-      return stub(cwd, {
-        outDir: context.args.outDir ?? moduleConfig?.outDir ?? 'dist',
-        outDirFromConfig: context.args.outDir === undefined && moduleConfig?.outDir !== undefined,
-        moduleOptions: moduleConfig?.options,
-      })
+      return stubModule(cwd, context.args.outDir)
     }
 
     const { build } = await import('../tsdown/build.ts').catch((error) => {
