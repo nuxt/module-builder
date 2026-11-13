@@ -231,6 +231,22 @@ export default {
     expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual(['first-session', 'second-session'])
   }, 120 * 1000)
 
+  it('should compile JSX in a server runtime file added while watching', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-jsx', `export default {\n  plugins: [builder()],\n}\n`)
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    try {
+      await waitFor(async () => existsSync(join(dir, 'dist/module.json')))
+      await mkdir(join(dir, 'src/runtime/server'), { recursive: true })
+      await writeFile(join(dir, 'src/runtime/server/render.tsx'), `export const render = (): unknown => <p>hi</p>\n`)
+      await waitFor(async () => existsSync(join(dir, 'dist/runtime/server/render.js')) || existsSync(join(dir, 'dist/runtime/server/render.jsx')))
+      expect(existsSync(join(dir, 'dist/runtime/server/render.jsx'))).toBe(false)
+      expect(await readFile(join(dir, 'dist/runtime/server/render.js'), 'utf-8')).toContain('vue/jsx-runtime')
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
   it('should remove the output of a runtime file deleted while watching', async () => {
     const dir = await copyExample('.temp-tsdown-watch-deleted', `export default {\n  plugins: [builder()],\n}\n`)
     await writeFile(join(dir, 'src/runtime/removed.ts'), `export const removed: string = 'removed'\n`)

@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import type { TsConfigResult } from 'get-tsconfig'
 import type { PackageJson } from 'pkg-types'
-import { glob } from 'tinyglobby'
+import { glob, globSync } from 'tinyglobby'
 
 import builderPkg from '../../package.json' with { type: 'json' }
 import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
@@ -159,6 +159,16 @@ export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
     await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, plan.declarationTsconfig)
   }
 
+  plan.prepared = analyseSources(plan)
+  return plan.prepared
+}
+
+/**
+ * Finds the bundled sources and the runtime files whose JSX is compiled, for the build about
+ * to start. Rebuilds under watch call it again, as files may have been added.
+ */
+export function analyseSources(plan: BuildPlan): PreparedBuild {
+  const { cwd, entries } = plan
   const bundledSources = new Map<string, string>()
   for (const [name, input] of Object.entries(entries)) {
     const file = probe(resolve(cwd, input))
@@ -167,12 +177,10 @@ export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
     }
   }
   // Nitro and Node do not transform files in `node_modules`, so JSX that runs there is compiled.
-  const runtimeFiles = await Promise.all(plan.directories.map(directory => glob(['**/*'], { cwd: directory.srcDir, ignore: DEFAULT_EXCLUDE, absolute: true, onlyFiles: true })))
+  const runtimeFiles = plan.directories.map(directory => globSync(['**/*'], { cwd: directory.srcDir, ignore: DEFAULT_EXCLUDE, absolute: true, onlyFiles: true }))
   const serverFiles = runtimeFiles.flat().map(file => normalize(file)).filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
-  const compiledJsx = await valueImports([...serverFiles, ...bundledSources.keys()])
-
-  plan.prepared = { bundledSources, compiledJsx, startedAt: Date.now() }
-  return plan.prepared
+  const compiledJsx = valueImports([...serverFiles, ...bundledSources.keys()])
+  return { bundledSources, compiledJsx, startedAt: Date.now() }
 }
 
 /** Whether a JSX source keeps its JSX for the app to compile. */
@@ -268,8 +276,8 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   await callBuildHook(plan.config, 'build:done', plan.ctx)
 }
 
-async function valueImports(roots: string[]) {
-  const transform = loadOxc()?.transform
+function valueImports(roots: string[]) {
+  const transform = loadOxc()?.transformSync
   const queue = roots.filter(file => SCRIPT_RE.test(file))
   const found = new Set<string>()
   while (queue.length) {
@@ -278,9 +286,9 @@ async function valueImports(roots: string[]) {
       continue
     }
     found.add(file)
-    const source = await readFile(file, 'utf8')
+    const source = readFileSync(file, 'utf8')
     const code = transform
-      ? (await transform(file, source, { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })).code
+      ? (transform(file, source, { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })).code
       : source
     for (const specifier of valueSpecifiers(code)) {
       const target = probeSource(resolve(dirname(file), specifier))

@@ -5,7 +5,7 @@ import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
-import { finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
+import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
 import type { BuildPlan } from '../build/build.ts'
 import { assertNoLegacyBuildConfig, loadBuildConfig, resolveModuleOptions, resolveOutDir } from '../build/build-config.ts'
 import type { BuilderOptions } from '../build/build-config.ts'
@@ -31,6 +31,8 @@ export interface BuilderSession {
   watchDirs: string[]
   /** Fails when the resolved config no longer matches what `builder()` set. */
   checkResolved: (resolved: ResolvedConfig) => void
+  /** Refreshes the source analysis for a rebuild, before the directory plugins start. */
+  onBuildStart: () => void
   onBuildEnd: (error?: Error) => Promise<void>
   onWriteBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
 }
@@ -99,6 +101,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   let resolvedConfig: ResolvedConfig | undefined
   let failed = false
   let written: Set<string> | undefined
+  let builds = 0
   const fail = async (error: unknown, directory?: boolean) => {
     if (!failed) {
       failed = true
@@ -189,6 +192,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       ]
       if (changed.length) {
         throw new Error(`Another tsdown plugin changed ${changed.map(option => `\`${option}\``).join(', ')}, which \`builder()\` sets. ${guide('options-builder-sets')}`)
+      }
+    },
+    onBuildStart() {
+      if (builds++) {
+        plan.prepared = analyseSources(plan)
       }
     },
     async onBuildEnd(error) {

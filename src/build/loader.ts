@@ -71,6 +71,7 @@ const SOURCE_RE = /\.[cm]?[jt]sx?$/
 
 interface Oxc {
   transform: Transform
+  transformSync: (...args: Parameters<Transform>) => Awaited<ReturnType<Transform>>
 }
 
 let oxc: Oxc | null | undefined

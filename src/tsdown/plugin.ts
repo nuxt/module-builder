@@ -46,6 +46,7 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
       session = await setupBuilder(config, inline, options, setupOptions)
     },
     buildStart() {
+      session?.onBuildStart()
       for (const dir of session?.watchDirs ?? []) {
         this.addWatchFile(dir)
       }
