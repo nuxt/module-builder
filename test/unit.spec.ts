@@ -18,7 +18,8 @@ import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkSourcePaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { publishedPackage } from '../src/build/package.ts'
 import { guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
 import { findNonErasableSyntax, findUnresolvableImports } from '../src/build/loader.ts'
@@ -427,6 +428,26 @@ describe('deprecation checks', () => {
     warn.mockClear()
     expect(checkLegacyDeclarationPaths(cwd, { exports: { '.': './dist/module.mjs' } })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('should warn about published paths that point at the module\'s sources', () => {
+    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const pkg = {
+      exports: { '.': { types: './src/module.ts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+      imports: { '#shared/*': './src/runtime/shared/*.ts', '#dep': 'some-dependency' },
+      types: './src/module.ts',
+      publishConfig: {
+        exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' } },
+        imports: { '#shared/*': './dist/runtime/shared/*.js', '#dep': 'some-dependency' },
+      },
+    }
+    expect(checkSourcePaths(cwd, publishedPackage(pkg))).toBe(true)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`These paths in \`package.json\` are published pointing at the module's sources: \`./src/module.ts\`. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('developing-without-a-stub')}`)
+    warn.mockClear()
+    expect(checkSourcePaths(cwd, publishedPackage({ ...pkg, publishConfig: { ...pkg.publishConfig, types: './dist/types.d.mts' } }))).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+    expect(checkSourcePaths(cwd, publishedPackage({ imports: { '#shared/*': './src/runtime/shared/*.ts' } }))).toBe(true)
     warn.mockRestore()
   })
 

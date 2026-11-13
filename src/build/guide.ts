@@ -28,6 +28,7 @@ export type GuideSection
     | 'module-tsconfig'
     | 'output-directory'
     | 'import-extensions-in-module-code'
+    | 'developing-without-a-stub'
 
 /** The URL of a section of the upgrade guide. */
 export function guide(section: GuideSection) {

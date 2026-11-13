@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { appendFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'pathe'
@@ -284,6 +284,72 @@ export default {
     expect(stdout + stderr).toMatch(new RegExp(`Another tsdown plugin changed \`${option}\`.*, which \`builder\\(\\)\` sets\\. ${guide('options-builder-sets')}`))
     expect(existsSync(join(dir, 'dist'))).toBe(false)
   }, 60 * 1000)
+
+  describe('with `package.json` pointing at the sources and `publishConfig` at `dist`', () => {
+    let dir: string
+
+    beforeAll(async () => {
+      dir = await copyExample('.temp-tsdown-source-exports', `export default {\n  publint: true,\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`)
+      const pkgPath = join(dir, 'package.json')
+      const { typesVersions: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify({
+        ...pkg,
+        exports: { '.': { types: './src/module.ts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+        main: './src/module.ts',
+        types: './src/module.ts',
+        scripts: { prepack: 'node ../node_modules/tsdown/dist/run.mjs' },
+        publishConfig: {
+          exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' }, './utils': { types: './dist/utils.d.mts', default: './dist/utils.mjs' } },
+          main: './dist/module.mjs',
+          types: './dist/types.d.mts',
+          typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } },
+        },
+      }, null, 2))
+      await rm(join(dir, 'playground/node_modules/my-module'), { force: true })
+      await symlink(dir, join(dir, 'playground/node_modules/my-module'))
+    }, 60 * 1000)
+
+    it('should let the playground load the module from its sources, without `dist`', async () => {
+      await rm(join(dir, 'playground/.nuxt'), { recursive: true, force: true })
+      const { exitCode, stdout, stderr } = await exec('node', [join(repoRoot, 'node_modules/nuxt/bin/nuxt.mjs'), 'prepare', 'playground'], { nodeOptions: { cwd: dir, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
+      expect(exitCode, stdout + stderr).toBe(0)
+      expect(existsSync(join(dir, 'dist'))).toBe(false)
+      expect(await readFile(join(dir, 'playground/.nuxt/types/plugins.d.ts'), 'utf-8')).toContain('src/runtime/plugins/plugin')
+    }, 120 * 1000)
+
+    it('should check the published paths of `package.json` after a build', async () => {
+      const { exitCode, stdout, stderr } = await tsdown(dir)
+      expect(exitCode).toBe(0)
+      expect(stdout + stderr).not.toContain('package.json')
+      expect(stdout + stderr).toContain('[publint] No issues found')
+
+      const pkgPath = join(dir, 'package.json')
+      const pkg = await readFile(pkgPath, 'utf-8')
+      await writeFile(pkgPath, pkg.replace('"./dist/utils.mjs"', '"./dist/missing.mjs"'))
+      try {
+        const broken = await tsdown(dir)
+        expect(broken.stdout + broken.stderr).toMatch(/do not exist after the build.*\.\/dist\/missing\.mjs/)
+      }
+      finally {
+        await writeFile(pkgPath, pkg)
+      }
+    }, 120 * 1000)
+
+    it('should pack `dist` paths that attw accepts', async () => {
+      const destination = join(dir, '.pack')
+      const packed = await exec('pnpm', ['pack', '--pack-destination', destination], { nodeOptions: { cwd: dir } })
+      expect(packed.exitCode, packed.stdout + packed.stderr).toBe(0)
+      const tarball = join(destination, 'my-module-1.0.0.tgz')
+      await exec('tar', ['-xzf', tarball, '-C', destination, 'package/package.json'], { throwOnError: true })
+      expect(JSON.parse(await readFile(join(destination, 'package/package.json'), 'utf-8'))).toMatchObject({
+        exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' } },
+        main: './dist/module.mjs',
+        types: './dist/types.d.mts',
+      })
+      const attw = await exec(join(repoRoot, 'node_modules/.bin/attw'), [tarball, '--ignore-rules', 'cjs-resolves-to-esm'], { nodeOptions: { cwd: dir } })
+      expect(attw.exitCode, attw.stdout + attw.stderr).toBe(0)
+    }, 120 * 1000)
+  })
 
   describe('with `nuxt-module-build`', () => {
     const cli = (args: string[]) => exec('pnpm', ['nuxt-module-build', ...args], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
