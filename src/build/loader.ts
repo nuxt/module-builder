@@ -283,6 +283,21 @@ function scriptKind(ts: typeof import('typescript'), filename: string) {
   return filename.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
 }
 
+function hasRuntimeCode(ts: typeof import('typescript'), node: ts.ModuleDeclaration): boolean {
+  const { body } = node
+  if (!body) {
+    return false
+  }
+  if (ts.isModuleDeclaration(body)) {
+    return hasRuntimeCode(ts, body)
+  }
+  return ts.isModuleBlock(body) && body.statements.some(statement => !(
+    ts.isInterfaceDeclaration(statement)
+    || ts.isTypeAliasDeclaration(statement)
+    || (ts.isModuleDeclaration(statement) && !hasRuntimeCode(ts, statement))
+  ))
+}
+
 function analyseSource(filename: string, source: string): SourceAnalysis {
   const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
   const { SyntaxKind, NodeFlags } = ts
@@ -308,7 +323,7 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
     if (ts.isEnumDeclaration(node)) {
       return '`enum`'
     }
-    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation))) {
+    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation)) && hasRuntimeCode(ts, node)) {
       return '`namespace`'
     }
     if (ts.isTypeAssertionExpression(node)) {

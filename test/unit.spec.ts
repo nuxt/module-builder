@@ -314,6 +314,32 @@ describe('hints', () => {
 describe('findModuleCodeIssues', () => {
   const list = (found: ModuleCodeIssue[]) => found.map(({ file, line, column, importedBy, message }) => `${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)
 
+  it('should only list namespaces that contain runtime code', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-namespaces-'))
+    try {
+      await mkdir(join(dir, 'src'))
+      await writeFile(join(dir, 'src/module.ts'), [
+        `export namespace Types {`,
+        `  export type Value = string`,
+        `  export interface Options { value: Value }`,
+        `  export namespace Nested { export type Flag = boolean }`,
+        `}`,
+        `export namespace Runtime {`,
+        `  export const value = 1`,
+        `}`,
+        `export namespace Deep.Inner { export const value = 2 }`,
+        ``,
+      ].join('\n'))
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        expect.stringMatching(/^src\/module\.ts:6:1: `namespace`/),
+        expect.stringMatching(/^src\/module\.ts:9:1: `namespace`/),
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('should list syntax Node cannot strip, tsconfig `paths` aliases and Nuxt app aliases across the imported sources, with their fixes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-erasable-'))
     try {
