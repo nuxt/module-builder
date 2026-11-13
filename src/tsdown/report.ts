@@ -30,7 +30,7 @@ export interface BreakdownOptions {
 export function sizeBreakdown(bundle: Rolldown.OutputBundle, { cwd, outDir, entries, directories }: BreakdownOptions): string[] {
   const sizes = Object.values(bundle)
     .filter(output => !output.fileName.endsWith('.map'))
-    .map(output => ({ fileName: output.fileName, size: Buffer.byteLength(output.type === 'chunk' ? output.code : output.source) }))
+    .map(output => ({ fileName: output.fileName, asset: output.type === 'asset', size: Buffer.byteLength(output.type === 'chunk' ? output.code : output.source) }))
   const sizeOf = (fileName: string) => sizes.find(output => output.fileName === fileName)?.size
   const base = relative(cwd, outDir)
   const rows: Array<[label: string, details: string]> = []
@@ -41,9 +41,11 @@ export function sizeBreakdown(bundle: Rolldown.OutputBundle, { cwd, outDir, entr
       rows.push([`${base}/${name}.mjs`, [formatSize(code), ...types === undefined ? [] : [`types ${formatSize(types)}`]].join(' · ')])
     }
   }
-  for (const directory of directories) {
-    const prefix = `${relative(outDir, directory.outDir)}/`
-    const files = sizes.filter(output => output.fileName.startsWith(prefix))
+  const entryFiles = new Set(Object.keys(entries).flatMap(name => [`${name}.mjs`, `${name}.d.mts`]))
+  const prefixes = directories.map(directory => relative(outDir, directory.outDir)).map(path => path && `${path}/`)
+  const owner = (fileName: string) => prefixes.filter(prefix => fileName.startsWith(prefix)).sort((a, b) => b.length - a.length)[0]
+  for (const prefix of prefixes) {
+    const files = sizes.filter(output => output.asset && !entryFiles.has(output.fileName) && owner(output.fileName) === prefix)
     if (files.length) {
       const total = (declarations: boolean) => files.filter(output => DECLARATION_RE.test(output.fileName) === declarations).reduce((sum, output) => sum + output.size, 0)
       rows.push([`${base}/${prefix}`, `${formatSize(total(false))} · types ${formatSize(total(true))} · ${files.length} files`])

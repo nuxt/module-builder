@@ -848,6 +848,21 @@ describe('size report', () => {
       'dist/module.mjs 436 B · types 1.16 kB',
       'dist/runtime/ 1.26 kB · types 2.81 kB · 4 files',
     ])
+
+    const rootLevel = sizeBreakdown(Object.fromEntries([
+      ...Object.entries(bundle),
+      asset('shared.js', 'x'.repeat(30)),
+      asset('shared.d.ts', 'x'.repeat(40)),
+    ]) as unknown as Rolldown.OutputBundle, {
+      cwd: '/mod',
+      outDir: '/mod/dist',
+      entries: { utils: './src/utils.ts', module: './src/module.ts' },
+      directories: [{ srcDir: '/mod/src/runtime', outDir: '/mod/dist/runtime', ext: 'js' }, { srcDir: '/mod/src/shared', outDir: '/mod/dist', ext: 'js' }],
+    })
+    expect(rootLevel.map(line => line.replace(/\s+/g, ' ')).slice(2)).toEqual([
+      'dist/runtime/ 1.26 kB · types 2.81 kB · 4 files',
+      'dist/ 30 B · types 40 B · 2 files',
+    ])
   })
 })
 
