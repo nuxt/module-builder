@@ -1,7 +1,7 @@
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { gzip } from 'node:zlib'
-import { join, relative } from 'pathe'
+import { dirname, join, relative } from 'pathe'
 import { consola } from 'consola'
 import { glob } from 'tinyglobby'
 import type { RolldownChunk } from 'tsdown'
@@ -10,9 +10,6 @@ import type { DirectoryEntry } from './build-config.ts'
 
 const gzipAsync = promisify(gzip)
 const DECLARATION_RE = /\.d\.(?:[cm]?ts|vue\.ts)$/
-
-const originalStdoutWrite = process.stdout.write.bind(process.stdout)
-let outputRedirected = false
 
 interface SizeBreakdown {
   code: number
@@ -35,8 +32,8 @@ export interface ReportSizeOptions {
   directories: DirectoryEntry[]
   /** The bundled chunks tsdown returned, used for the entries' exports. */
   chunks: RolldownChunk[]
-  /** Print the report as JSON to stdout instead of the human summary. */
-  json?: boolean
+  /** Write the report as JSON to this file, in addition to the human summary. */
+  json?: string
 }
 
 interface SizedFile {
@@ -44,8 +41,8 @@ interface SizedFile {
   gzip: number
 }
 
-/** Counts the files written to `outDir`, and prints the summary or the JSON report. */
-export async function reportSize({ cwd, outDir, entries, directories, chunks, json = false }: ReportSizeOptions): Promise<BuildSizeReport> {
+/** Counts the files written to `outDir`, prints a summary and writes the JSON report. */
+export async function reportSize({ cwd, outDir, entries, directories, chunks, json }: ReportSizeOptions): Promise<BuildSizeReport> {
   const files = await glob(['**/*'], { cwd: outDir, absolute: true, onlyFiles: true, dot: true })
   const sizedFiles = await Promise.all(files.map(async (file) => {
     const path = relative(outDir, file)
@@ -64,25 +61,12 @@ export async function reportSize({ cwd, outDir, entries, directories, chunks, js
   }
 
   const report = buildSizeReport(outDir, entries, directories, sizes)
+  printSizeReport(cwd, outDir, entries, directories, chunks, report, sizes)
   if (json) {
-    originalStdoutWrite(`${JSON.stringify(report)}\n`)
-  }
-  else {
-    printSizeReport(cwd, outDir, entries, directories, chunks, report, sizes)
+    await mkdir(dirname(json), { recursive: true })
+    await writeFile(json, `${JSON.stringify(report)}\n`, 'utf8')
   }
   return report
-}
-
-/** Send consola and `console` output to stderr so stdout carries only the JSON report. */
-export function redirectLogsToStderr(): void {
-  if (outputRedirected) {
-    return
-  }
-  outputRedirected = true
-  consola.options.stdout = process.stderr
-  consola.options.stderr = process.stderr
-  consola.wrapConsole()
-  process.stdout.write = ((chunk, encoding, callback) => process.stderr.write(chunk, encoding, callback)) as typeof process.stdout.write
 }
 
 function buildSizeReport(outDir: string, entries: string[], directories: DirectoryEntry[], sizes: Map<string, SizedFile>): BuildSizeReport {

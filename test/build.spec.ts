@@ -47,7 +47,6 @@ describe('module builder', () => {
   const unsupportedRootDir = rootDir.replace('example', '.temp-example-build-config-unsupported')
   const stylesheetsRootDir = rootDir.replace('example', '.temp-example-stylesheets')
   const transpileRootDir = rootDir.replace('example', '.temp-example-transpile-only')
-  const sizeNoiseRootDir = rootDir.replace('example', '.temp-example-size-noise')
   const solutionRootDir = rootDir.replace('example', '.temp-example-solution-tsconfig')
   const parentTsconfigRootDir = rootDir.replace('example', '.temp-example-parent-tsconfig')
   const portableRootDir = rootDir.replace('example', '.temp-example-portable-types')
@@ -62,6 +61,13 @@ describe('module builder', () => {
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
   let routesBuild = ''
   let exampleBuild = ''
+  const jsonReportPath = join(repoRoot, '.temp-size-report.json')
+  const buildSizeReport = async (cwd: string) => {
+    await rm(jsonReportPath, { force: true })
+    const { exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', jsonReportPath, cwd], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).toBe(0)
+    return JSON.parse(await readFile(jsonReportPath, 'utf-8'))
+  }
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
   const distDir = join(rootDir, 'dist')
   const secondDistDir = join(secondRootDir, 'dist')
@@ -514,20 +520,6 @@ export default defineBuildConfig({
     })
 
     await copyExample(runtimeShapeRootDir, contents => contents)
-    await copyExample(sizeNoiseRootDir, contents => contents)
-    await writeFiles(sizeNoiseRootDir, {
-      'build.config.ts': `import { defineBuildConfig } from '@nuxt/module-builder'
-
-export default defineBuildConfig({
-  hooks: {
-    'build:done'() {
-      process.stdout.write('noise')
-      console.log('noise')
-    },
-  },
-})
-`,
-    })
     const runtimeShapePkg = JSON.parse(await readFile(join(runtimeShapeRootDir, 'package.json'), 'utf-8'))
     await writeFile(join(runtimeShapeRootDir, 'package.json'), JSON.stringify({ ...runtimeShapePkg, build: { entries: ['./src/utils', './src/utils/merge.ts', './src/data.json'] } }, null, 2))
     await writeFile(join(runtimeShapeRootDir, '.nuxt/app.config.ts'), `export default { theme: { buildMachineOnly: 'must-not-be-published' as const } }\n`)
@@ -1335,18 +1327,16 @@ export default defineBuildConfig({
   })
 
   it('should count files written by the build:done hook', async () => {
-    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', sizeHookRootDir], { nodeOptions: { cwd: repoRoot } })
-    expect(exitCode).toBe(0)
-    expect(JSON.parse(stdout).other.code).toBe(100)
+    expect((await buildSizeReport(sizeHookRootDir)).other.code).toBe(100)
   }, 60 * 1000)
 
-  it('should print the size report as JSON with --json', async () => {
-    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', rootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+  it('should write the size report as JSON with --json', async () => {
+    await rm(jsonReportPath, { force: true })
+    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', jsonReportPath, rootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
     expect(exitCode).toBe(0)
-    expect(stdout).not.toContain('Size report:')
-    expect(stderr).toContain('Build complete')
+    expect(stdout).toContain('Size report:')
 
-    const report = JSON.parse(stdout)
+    const report = JSON.parse(await readFile(jsonReportPath, 'utf-8'))
     const { stat } = await import('node:fs/promises')
     const files: string[] = []
     for (const path of await listFiles(distDir)) {
@@ -1379,15 +1369,11 @@ export default defineBuildConfig({
   }, 60 * 1000)
 
   it('should count dotfiles in the output', async () => {
-    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', sizeDotfileRootDir], { nodeOptions: { cwd: repoRoot } })
-    expect(exitCode).toBe(0)
-    expect(JSON.parse(stdout).other.code).toBe(50)
+    expect((await buildSizeReport(sizeDotfileRootDir)).other.code).toBe(50)
   }, 60 * 1000)
 
   it('should attribute entries and directories in the size report', async () => {
-    const { stdout, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', buildConfigRootDir], { nodeOptions: { cwd: repoRoot } })
-    expect(exitCode).toBe(0)
-    const report = JSON.parse(stdout)
+    const report = await buildSizeReport(buildConfigRootDir)
     const { stat } = await import('node:fs/promises')
     const { gzipSync } = await import('node:zlib')
     const outDir = join(buildConfigRootDir, 'dist')
@@ -1428,19 +1414,18 @@ export default defineBuildConfig({
     expect(report.other).toEqual({ code: 0, types: 0, gzip: 0 })
   }, 60 * 1000)
 
-  it('should keep stdout JSON-only when a hook logs in --json mode', async () => {
-    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', sizeNoiseRootDir], { nodeOptions: { cwd: repoRoot } })
-    expect(exitCode).toBe(0)
-    expect(JSON.parse(stdout)).toMatchObject({ entries: { module: {} } })
-    expect(stderr).toContain('noise')
-  }, 60 * 1000)
-
   it('should reject --json with --stub', async () => {
-    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', '--stub', noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json', jsonReportPath, '--stub', noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
     expect(exitCode).not.toBe(0)
     expect(stdout).toBe('')
     expect(stderr).toContain('`--json` cannot be combined with `--stub`')
   })
+
+  it('should require a path with --json', async () => {
+    const { stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--json'], { nodeOptions: { cwd: repoRoot } })
+    expect(exitCode).not.toBe(0)
+    expect(stderr).toContain('`--json` requires a file path')
+  }, 60 * 1000)
 
   it('should generate module metadata when the module entry imports runtime code', async () => {
     const meta = await readFile(join(thirdDistDir, 'module.json'), 'utf-8')

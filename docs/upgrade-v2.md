@@ -376,10 +376,10 @@ The build empties `--outDir` (`dist` by default) before writing to it, so the di
 
 ## Size report
 
-`nuxt-module-build build` prints a summary of what the build wrote: one total per bundled entry and per directory, split into shipped code and type declarations, plus a grand total. The same numbers can be printed as a single JSON object for CI with `--json`:
+`nuxt-module-build build` prints a summary of what the build wrote: one total per bundled entry and per directory, split into shipped code and type declarations, plus a grand total. `--json <path>` additionally writes the same numbers as a single JSON object for CI, resolving the path against the module directory:
 
 ```bash
-nuxt-module-build build --json > size.json
+nuxt-module-build build --json size.json
 ```
 
 ```json
@@ -398,7 +398,7 @@ nuxt-module-build build --json > size.json
 }
 ```
 
-`code` counts the shipped output (scripts, components, stylesheets and assets); `types` counts `.d.ts` and `.d.mts` declarations, which consumers compile against but which don't end up in their bundles. `gzip` is the compressed size of the shipped output. `total` is the sum of `code` and `types`. With `--json`, the build's other logs go to stderr, so stdout carries only the report. `--json` cannot be combined with `--stub`.
+`code` counts the shipped output (scripts, components, stylesheets and assets); `types` counts `.d.ts` and `.d.mts` declarations, which consumers compile against but which don't end up in their bundles. `gzip` is the compressed size of the shipped output. `total` is the sum of `code` and `types`. The JSON file is written after measuring, so a path inside `dist` isn't counted, but it would then be published with `dist`. `--json` requires a path and cannot be combined with `--stub`.
 
 ## Module tsconfig
 
