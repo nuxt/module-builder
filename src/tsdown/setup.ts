@@ -14,6 +14,7 @@ import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { externalDependencyDeclarations } from './externals.ts'
 import { replacePlugin } from './replace.ts'
+import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { runtimeExternals } from './runtime-externals.ts'
 
 export interface SetupOptions {
@@ -30,7 +31,7 @@ export interface BuilderSession {
   /** Fails when the resolved config no longer matches what `builder()` set. */
   checkResolved: (resolved: ResolvedConfig) => void
   onBuildEnd: (error?: Error) => Promise<void>
-  onWriteBundle: () => Promise<void>
+  onWriteBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
 }
 
 const ESM_FORMATS = new Set(['es', 'esm', 'module'])
@@ -94,6 +95,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }))
 
   let watch = false
+  let resolvedConfig: ResolvedConfig | undefined
   let failed = false
   const fail = async (error: unknown, directory?: boolean) => {
     if (!failed) {
@@ -129,7 +131,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     format: 'esm',
     outDir,
     clean: false,
-    report: config.report ?? false,
+    report: defaultReport(config.report, plan.directories.some(directory => existsSync(directory.srcDir))),
     sourcemap: config.sourcemap || plan.sourcemap,
     deps: { ...config.deps, neverBundle: [...plan.neverBundle, ...userNeverBundle === undefined ? [] : [userNeverBundle].flat()] },
     dts,
@@ -171,6 +173,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     watchDirs: [...new Set(plan.runtimeDirs.map(dir => existingAncestor(dir, cwd)))],
     checkResolved(resolved) {
       watch = !!resolved.watch
+      resolvedConfig = resolved
       const changed = [
         ...resolved.format !== 'es' ? ['format'] : [],
         ...Object.keys(resolved.entry).length !== Object.keys(plan.entries).length || Object.entries(plan.entries).some(([name, input]) => !resolved.entry[name] || resolve(cwd, resolved.entry[name]) !== resolve(cwd, input)) ? ['entry'] : [],
@@ -194,7 +197,12 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         failed = false
       }
     },
-    async onWriteBundle() {
+    async onWriteBundle(bundle) {
+      if (resolvedConfig && reportsSummary(resolvedConfig.report)) {
+        for (const line of sizeBreakdown(bundle, { cwd, outDir, entries: plan.entries, directories: plan.directories })) {
+          resolvedConfig.logger.info(resolvedConfig.nameLabel, line)
+        }
+      }
       const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
       await finishBuild(plan, {
         outputs: outputs.flatMap(map => [...map.values()]),

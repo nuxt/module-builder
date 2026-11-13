@@ -11,7 +11,8 @@ import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { assertNoLegacyBuildConfig, bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
-import type { UserConfig } from 'tsdown'
+import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
+import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
@@ -760,6 +761,46 @@ describe('builder options', () => {
       '  - `deps.neverBundle`: list the imports that are never bundled',
       guide('options-builder-sets'),
     ].join('\n'))
+  })
+})
+
+describe('size report', () => {
+  it('should default to a summary when the build has runtime directories, and leave a configured `report` alone', () => {
+    expect(defaultReport(undefined, true)).toEqual({ summary: true })
+    expect(defaultReport(undefined, false)).toBe(true)
+    for (const report of [false, true, { gzip: false }, { summary: false }]) {
+      expect(defaultReport(report, true)).toBe(report)
+    }
+  })
+
+  it('should only add the breakdown to a summary', () => {
+    expect([{ summary: true }, {}, false, undefined].map(reportsSummary)).toEqual([true, false, false, false])
+  })
+
+  it('should break the output down by bundled entry and runtime directory, leaving out source maps', () => {
+    const chunk = (fileName: string, code: string) => [fileName, { type: 'chunk', fileName, code }]
+    const asset = (fileName: string, source: string) => [fileName, { type: 'asset', fileName, source }]
+    const bundle = Object.fromEntries([
+      chunk('module.mjs', 'x'.repeat(436)),
+      asset('module.d.mts', 'x'.repeat(1160)),
+      chunk('utils.mjs', 'x'.repeat(10)),
+      asset('runtime/plugin.js', 'x'.repeat(1000)),
+      asset('runtime/plugin.d.ts', 'x'.repeat(2000)),
+      asset('runtime/plugin.js.map', 'x'.repeat(5000)),
+      asset('runtime/Card.vue', 'x'.repeat(260)),
+      asset('runtime/Card.d.vue.ts', 'x'.repeat(810)),
+    ]) as unknown as Rolldown.OutputBundle
+    const lines = sizeBreakdown(bundle, {
+      cwd: '/mod',
+      outDir: '/mod/dist',
+      entries: { utils: './src/utils.ts', module: './src/module.ts' },
+      directories: [{ srcDir: '/mod/src/runtime', outDir: '/mod/dist/runtime', ext: 'js' }, { srcDir: '/mod/src/empty', outDir: '/mod/dist/empty', ext: 'mjs' }],
+    })
+    expect(lines.map(line => line.replace(/\s+/g, ' '))).toEqual([
+      'dist/utils.mjs 10 B',
+      'dist/module.mjs 436 B · types 1.16 kB',
+      'dist/runtime/ 1.26 kB · types 2.81 kB · 4 files',
+    ])
   })
 })
 

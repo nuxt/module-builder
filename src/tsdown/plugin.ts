@@ -58,8 +58,8 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
     },
     writeBundle: {
       order: 'post',
-      async handler() {
-        await session?.onWriteBundle()
+      async handler(_options, bundle) {
+        await session?.onWriteBundle(bundle)
       },
     },
   }

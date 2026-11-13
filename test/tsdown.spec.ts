@@ -251,6 +251,38 @@ export default {
     }
   }, 120 * 1000)
 
+  it('should break the size report down by entry and runtime directory only when it is a summary', async () => {
+    const rows = (output: string) => [...output.matchAll(/(dist\/(?:module\.mjs|runtime\/))\s[^\n]*types/g)].map(match => match[1]).sort()
+    const breakdown = ['dist/module.mjs', 'dist/runtime/']
+    for (const [report, expected] of [[undefined, breakdown], ['{ summary: true }', breakdown], ['{ summary: false }', []], ['false', []]] as const) {
+      const dir = await copyExample(`.temp-tsdown-report-${String(report).replace(/\W/g, '')}`, `export default {\n  ${report === undefined ? '' : `report: ${report},`}\n  plugins: [builder()],\n}\n`)
+      const built = await tsdown(dir)
+      expect(built.exitCode, String(report)).toBe(0)
+      expect(rows(built.stdout + built.stderr), String(report)).toEqual(expected)
+      if (report === undefined) {
+        const stubbed = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', dir], { nodeOptions: { cwd: repoRoot } })
+        expect(stubbed.exitCode).toBe(0)
+        expect(rows(stubbed.stdout + stubbed.stderr)).toEqual([])
+
+        const watcher = watch(dir, [tsdownBin, '--watch'])
+        const types = join(dir, 'dist/types.d.mts')
+        try {
+          await waitFor(async () => rows(watcher.output()).length >= 2 && existsSync(types))
+          await delay(1000)
+          expect(rows(watcher.output())).toEqual(breakdown)
+          const seen = watcher.output().length
+          await appendFile(join(dir, 'src/module.ts'), '\nexport const reportRebuild: string = "rebuilt"\n')
+          await waitFor(async () => rows(watcher.output().slice(seen)).length >= 2 && (await readFile(types, 'utf-8')).includes('reportRebuild'))
+          await delay(1000)
+          expect(rows(watcher.output().slice(seen))).toEqual(breakdown)
+        }
+        finally {
+          await watcher.stop()
+        }
+      }
+    }
+  }, 180 * 1000)
+
   it('should be published at `@nuxt/module-builder/tsdown`, not at the package root', async () => {
     const built = await exec('node', [tsdownBin], { nodeOptions: { cwd: repoRoot } })
     expect(built.exitCode, built.stdout + built.stderr).toBe(0)
