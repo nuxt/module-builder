@@ -9,7 +9,9 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
+import { assertNoLegacyBuildConfig, bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
+import { setupBuilder } from '../src/tsdown/setup.ts'
+import type { UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
@@ -639,6 +641,74 @@ describe('declarationPaths', () => {
     const exported = [...SERVER_ROUTES_STUB.matchAll(/^export (?:type|interface) (\w+)/gm)].map(match => match[1])
     expect(imported.length > 0).toBe(satisfies(nuxtVersion, '>=4.6.0'))
     expect(imported.filter(name => !exported.includes(name))).toEqual([])
+  })
+})
+
+describe('builder options', () => {
+  const cwd = fileURLToPath(new URL('../example', import.meta.url))
+  const outDir = join(cwd, 'dist')
+
+  it('should translate entries, externals and both shapes of replacements', () => {
+    const config = resolveModuleOptions(cwd, { name: 'my-module' }, outDir, {
+      entries: ['src/utils', { input: 'src/shared/', outDir: 'dist/shared', ext: 'js' }],
+      externals: ['fake-pkg'],
+      replace: { __A__: '"a"' },
+    })
+    expect(config.entries).toEqual({ utils: './src/utils.ts' })
+    expect(config.directories).toEqual([{ srcDir: join(cwd, 'src/shared'), outDir: join(outDir, 'shared'), ext: 'js' }])
+    expect(config.neverBundle.map(String)).toEqual(['/^fake-pkg(?:\\/|$)/', '/^my-module(?:$|\\/(?!runtime\\/))/'])
+    expect(config.replace).toEqual({ values: { __A__: '"a"' }, preventAssignment: true })
+    expect(resolveModuleOptions(cwd, {}, outDir, { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } }).replace).toEqual({ values: { __B__: '"b"' }, delimiters: ['', ''], preventAssignment: true })
+    expect(config.unsupported).toEqual([])
+  })
+
+  it('should collect options it does not accept', () => {
+    expect(resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never).unsupported).toEqual(['builder(): entries[0].ext', 'builder(): outDir'])
+  })
+
+  it('should refuse `hooks` and point at tsdown\'s own', () => {
+    expect(() => resolveModuleOptions(cwd, {}, outDir, { hooks: { 'build:before': () => {} } } as never)).toThrow(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+  })
+
+  it('should refuse a `build` or `unbuild` field of `package.json` alongside it', () => {
+    expect(() => assertNoLegacyBuildConfig(cwd, { build: {} })).toThrow(`The \`build\` field of \`package.json\` configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and remove the field. ${guide('moving-from-buildconfigts')}`)
+    expect(() => assertNoLegacyBuildConfig(cwd, { unbuild: {} })).toThrow('The `unbuild` field of `package.json`')
+    expect(() => assertNoLegacyBuildConfig(cwd, {})).not.toThrow()
+  })
+
+  it('should list every tsdown option it sets that the config sets too', async () => {
+    const config: UserConfig = {
+      entry: 'src/index.ts',
+      format: ['esm', 'cjs'],
+      dts: false,
+      clean: true,
+      unbundle: true,
+      exports: true,
+      fixedExtension: false,
+      outExtensions: () => ({}),
+      platform: 'browser',
+      workspace: true,
+      external: ['a'],
+      noExternal: ['b'],
+      deps: { neverBundle: true },
+    }
+    await expect(setupBuilder(config, {}, {}, { legacy: false })).rejects.toThrow([
+      '`builder()` sets these tsdown options itself, so the tsdown config must leave them out:',
+      '  - `entry`: list bundled entries besides `src/module` in `builder({ entries })`',
+      '  - `format`: modules are built as ES modules only',
+      '  - `dts`: declarations are generated with the module\'s own tsconfig',
+      '  - `clean`: the output directory is always emptied before the build',
+      '  - `unbundle`: the module entry is bundled, and runtime directories are transpiled file by file',
+      '  - `exports`: the exports tsdown generates leave out `types.d.mts` and the runtime directories',
+      '  - `fixedExtension`: the module entry is emitted as `module.mjs`',
+      '  - `outExtensions`: the module entry is emitted as `module.mjs`',
+      '  - `platform`: Nuxt modules run in Node',
+      '  - `workspace`: give each module a tsdown config of its own',
+      '  - `external`: use `builder({ externals })` or `deps.neverBundle`',
+      '  - `noExternal`: use `deps.alwaysBundle`',
+      '  - `deps.neverBundle`: list the imports that are never bundled',
+      guide('options-builder-sets'),
+    ].join('\n'))
   })
 })
 

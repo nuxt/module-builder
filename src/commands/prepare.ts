@@ -4,14 +4,14 @@ import type { CommandDef } from 'citty'
 import { resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
 import { bundledEntries, loadBuildConfig } from '../build/build-config.ts'
+import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertResolvableImports, importModule } from '../build/loader.ts'
 import { resolveCwdArg, sharedArgs } from './_shared.ts'
 
-export async function prepareModule(cwd: string): Promise<{ result: unknown }> {
+export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildConfig): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
-  const pkg = await readPackageJSON(cwd)
-  const config = await loadBuildConfig(cwd, pkg, resolve(cwd, 'dist'))
+  const config = buildConfig ?? await loadBuildConfig(cwd, await readPackageJSON(cwd), resolve(cwd, 'dist'))
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
   assertResolvableImports(cwd, Object.values(entries), runtimeDirs)

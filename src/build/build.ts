@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
@@ -10,7 +11,7 @@ import builderPkg from '../../package.json' with { type: 'json' }
 import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
 import { DEFAULT_EXCLUDE } from '../rolldown/transpile-dir.ts'
 import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, findPackageDir, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
 import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
@@ -74,6 +75,8 @@ export interface BuildPlan {
   moduleTsconfig: TsConfigResult | undefined
   isolatedDeclarations: boolean
   selfPaths: Record<string, string[]>
+  /** The tsconfig the module entry's declarations are generated with, written by {@link prepareBuild}, or `false` for none. */
+  declarationTsconfig: string | false
   /** `paths` the module entry's declarations are generated with. */
   declarationPaths: Record<string, string[]>
   /** `paths` each transpiled directory's declarations are generated with. */
@@ -82,11 +85,13 @@ export interface BuildPlan {
   generatedTypesHash: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
+  /** How many times {@link finishBuild} has run. */
+  builds: number
+  /** Whether {@link finishBuild} writes `types.d.mts`, rather than a bundled entry named `types`. */
+  writesTypes?: boolean
 }
 
 export interface PreparedBuild {
-  /** The tsconfig the module entry's declarations are generated with, or `false` for none. */
-  declarationTsconfig: string | false
   /** Bundled entry sources mapped to their output file. */
   bundledSources: Map<string, string>
   /** Sources whose JSX is compiled because Nitro or Node runs them. */
@@ -132,11 +137,13 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     moduleTsconfig,
     isolatedDeclarations: hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
+    declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
     // `eager` puts every file of the tsconfig in the program, so ambient declarations such
     // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
+    builds: 0,
   }
 }
 
@@ -151,7 +158,9 @@ export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
   await rm(outDir, { recursive: true, force: true })
 
   await writeServerRoutesStub(cwd)
-  const declarationTsconfig = plan.moduleTsconfig ? await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths) : false
+  if (plan.moduleTsconfig && plan.declarationTsconfig) {
+    await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, plan.declarationTsconfig)
+  }
 
   const bundledSources = new Map<string, string>()
   for (const [name, input] of Object.entries(entries)) {
@@ -165,7 +174,7 @@ export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
   const serverFiles = runtimeFiles.flat().map(file => normalize(file)).filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
   const compiledJsx = await valueImports([...serverFiles, ...bundledSources.keys()])
 
-  plan.prepared = { declarationTsconfig, bundledSources, compiledJsx, startedAt: Date.now() }
+  plan.prepared = { bundledSources, compiledJsx, startedAt: Date.now() }
   return plan.prepared
 }
 
@@ -200,10 +209,19 @@ export function resolveDirectoryExternal(plan: BuildPlan, directory: DirectoryEn
   }
 }
 
+export interface BuildErrorOptions {
+  /** Whether the error comes from a transpiled directory rather than the bundled entries. */
+  directory?: boolean
+  /** Keeps the previous output, which a watcher goes on serving. */
+  keepOutput?: boolean
+}
+
 /** Removes a partial output directory and explains declaration failures. */
-export async function onBuildError(plan: BuildPlan, error: unknown): Promise<void> {
-  await rm(plan.outDir, { recursive: true, force: true })
-  if (plan.isolatedDeclarations && !isDirectoryError(error)) {
+export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(error), keepOutput }: BuildErrorOptions = {}): Promise<void> {
+  if (!keepOutput) {
+    await rm(plan.outDir, { recursive: true, force: true })
+  }
+  if (plan.isolatedDeclarations && !directory) {
     consola.error(ISOLATED_DECLARATIONS_HINT)
   }
   else if (/\bTS\d{4}\b/.test(String((error as Error | undefined)?.message))) {
@@ -222,16 +240,23 @@ export interface FinishBuildOptions {
 export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, runtimeDirs, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
+  const version = plan.builds++ || undefined
   await writeModuleMeta({
     cwd,
     outDir,
     runtimeDirs,
     pkg,
     builder: { [builderPkg.name]: builderPkg.version, ...builder },
+    version,
   }).catch((error) => {
     consola.error(error)
     consola.error('Cannot load module. Please check dist:', resolve(outDir, 'module.mjs'))
   })
+  const typesFile = join(outDir, 'types.d.mts')
+  plan.writesTypes ??= !existsSync(typesFile)
+  if (plan.writesTypes) {
+    await rm(typesFile, { force: true })
+  }
   await writeTypes(outDir, false)
   await callBuildHook(plan.config, 'rollup:done', plan.ctx)
   await rewriteRuntimeDeclarations(outDir, outputs)

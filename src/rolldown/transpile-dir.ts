@@ -94,8 +94,8 @@ export interface TranspileDirOptions {
 }
 
 export interface TranspileDirApi {
-  /** Every discovered or mirrored source, mapped to the path it is emitted at, relative to the output directory. */
-  outputs: Promise<Map<string, string>>
+  /** Every discovered or mirrored source of the latest build, mapped to the path it is emitted at, relative to the output directory. */
+  readonly outputs: Promise<Map<string, string>>
 }
 
 const EMPTY_ENTRY_ID = '\0transpile-dir:empty-entry'
@@ -154,11 +154,16 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
     rejectOutputs = reject
   })
   outputs.catch(() => {})
+  let latestOutputs = outputs
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
 
   return {
     name: 'transpile-dir',
-    api: { outputs },
+    api: {
+      get outputs() {
+        return latestOutputs
+      },
+    },
     resolveId: {
       filter: { id: /^\0transpile-dir:empty-entry$/ },
       handler: id => id,
@@ -184,6 +189,8 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
           rejectOutputs(error)
           return { error }
         })
+      latestOutputs = work.then(result => 'error' in result ? Promise.reject(result.error) : result.build.outputs)
+      latestOutputs.catch(() => {})
     },
     async generateBundle(outputOptions, bundle) {
       for (const [fileName, output] of Object.entries(bundle)) {

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
+import type { ResolveHookSync } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { consola } from 'consola'
 import { dirname, isAbsolute, relative, resolve } from 'pathe'
@@ -13,6 +14,7 @@ import { guide } from './guide.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const ALIAS_SHAPED_RE = /^(?:#|~|@\/)/
+const NODE_MODULES_RE = /[\\/]node_modules[\\/]/
 const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
 export interface ImportModuleOptions {
@@ -22,6 +24,12 @@ export interface ImportModuleOptions {
   stubs?: Record<string, string>
   /** Directories whose files import relative sources without extensions, such as `src/runtime`. */
   runtimeDirs?: string[]
+  /**
+   * Distinguishes this import from earlier ones of the same file, which Node would serve
+   * from its cache: the file and every file it imports from inside `cwd`, outside
+   * `node_modules`, are loaded afresh for each version.
+   */
+  version?: number
 }
 
 /**
@@ -42,58 +50,70 @@ export async function importModule(path: string, options: ImportModuleOptions = 
   const stubs = options.stubs || {}
   const runtimeDirs = options.runtimeDirs || []
 
+  const resolveSpecifier: ResolveHookSync = (specifier, context, nextResolve) => {
+    if (Object.hasOwn(stubs, specifier)) {
+      return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
+    }
+
+    if (VIRTUAL_ALIAS_RE.test(specifier)) {
+      return { url: stubURL(specifier, context.parentURL), shortCircuit: true }
+    }
+
+    if (specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
+      const parentDir = dirname(fileURLToPath(context.parentURL))
+      const file = runtimeDirs.some(dir => isInside(dir, parentDir)) ? probe(resolve(parentDir, specifier)) : undefined
+      if (file) {
+        return { url: pathToFileURL(file).href, shortCircuit: true }
+      }
+    }
+
+    const fromPaths = () => {
+      for (const candidate of matchPath?.(specifier) || []) {
+        const file = probe(candidate)
+        if (file) {
+          return { url: pathToFileURL(file).href, shortCircuit: true as const }
+        }
+      }
+    }
+
+    // A wildcard `paths` entry such as `{ "*": ["./src/*"] }` matches every bare
+    // specifier, so real packages have to win over the alias table. Alias-shaped
+    // specifiers cannot name a package, so they stay paths-first.
+    if (ALIAS_SHAPED_RE.test(specifier)) {
+      return fromPaths() || nextResolve(specifier, context)
+    }
+
+    try {
+      return nextResolve(specifier, context)
+    }
+    catch (error) {
+      const resolved = fromPaths()
+      if (!resolved) {
+        throw error
+      }
+      return resolved
+    }
+  }
+
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-      if (Object.hasOwn(stubs, specifier)) {
-        return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
-      }
-
-      if (VIRTUAL_ALIAS_RE.test(specifier)) {
-        return { url: stubURL(specifier, context.parentURL), shortCircuit: true }
-      }
-
-      if (specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
-        const parentDir = dirname(fileURLToPath(context.parentURL))
-        const file = runtimeDirs.some(dir => isInside(dir, parentDir)) ? probe(resolve(parentDir, specifier)) : undefined
-        if (file) {
-          return { url: pathToFileURL(file).href, shortCircuit: true }
-        }
-      }
-
-      const fromPaths = () => {
-        for (const candidate of matchPath?.(specifier) || []) {
-          const file = probe(candidate)
-          if (file) {
-            return { url: pathToFileURL(file).href, shortCircuit: true as const }
-          }
-        }
-      }
-
-      // A wildcard `paths` entry such as `{ "*": ["./src/*"] }` matches every bare
-      // specifier, so real packages have to win over the alias table. Alias-shaped
-      // specifiers cannot name a package, so they stay paths-first.
-      if (ALIAS_SHAPED_RE.test(specifier)) {
-        return fromPaths() || nextResolve(specifier, context)
-      }
-
-      try {
-        return nextResolve(specifier, context)
-      }
-      catch (error) {
-        const resolved = fromPaths()
-        if (!resolved) {
-          throw error
-        }
+      const resolved = resolveSpecifier(specifier, context, nextResolve)
+      if (!options.version || !resolved.url.startsWith('file:') || !isInside(cwd, fileURLToPath(resolved.url)) || NODE_MODULES_RE.test(resolved.url)) {
         return resolved
       }
+      const url = new URL(resolved.url)
+      url.searchParams.set('v', String(options.version))
+      return { ...resolved, url: url.href }
     },
     // Single-file components are copied to `dist/runtime` verbatim and Node has no
     // loader for them, but a module entry only ever needs their identity here.
     load(url, context, nextLoad) {
-      if (url.endsWith('.vue')) {
+      // Other loaders, such as the one tsdown loads its config with, add a query to file URLs.
+      const file = url.startsWith('file:') ? url.replace(/[?#].*$/, '') : undefined
+      if ((file ?? url).endsWith('.vue')) {
         return { format: 'module', source: 'export default {}', shortCircuit: true }
       }
-      if (url.startsWith('file:') && TYPESCRIPT_RE.test(url)) {
+      if (file && TYPESCRIPT_RE.test(file)) {
         const result = transpile(url, cwd)
         if (result) {
           return result
@@ -103,7 +123,7 @@ export async function importModule(path: string, options: ImportModuleOptions = 
         return nextLoad(url, context)
       }
       catch (error) {
-        if ((error as { code?: string }).code === 'ERR_IMPORT_ATTRIBUTE_MISSING' && url.startsWith('file:') && url.endsWith('.json')) {
+        if ((error as { code?: string }).code === 'ERR_IMPORT_ATTRIBUTE_MISSING' && file?.endsWith('.json')) {
           return { format: 'module', source: jsonModule(readFileSync(fileURLToPath(url), 'utf8')), shortCircuit: true }
         }
         throw error
@@ -112,7 +132,11 @@ export async function importModule(path: string, options: ImportModuleOptions = 
   })
 
   try {
-    return await import(pathToFileURL(path).href)
+    const url = pathToFileURL(path)
+    if (options.version) {
+      url.searchParams.set('v', String(options.version))
+    }
+    return await import(url.href)
   }
   finally {
     hooks.deregister()

@@ -312,20 +312,20 @@ export interface LoadedBuildConfig extends TranslatedBuildConfig {
 
 const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
 
+/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
+export function resolveOutDir(cwd: string, outDir: string, label: string = `--outDir ${outDir}`): string {
+  const resolved = resolve(cwd, outDir)
+  if (!relative(resolved, cwd).startsWith('..')) {
+    throw new Error(`\`${label}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  }
+  return resolved
+}
+
 /**
  * Read `build.config.*` and `package.json`'s `unbuild` (or, failing that, `build`) field
  * and translate them. Neither `unbuild` nor this package is loaded to evaluate the file:
  * `defineBuildConfig` is replaced with the identity.
  */
-/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
-export function resolveOutDir(cwd: string, outDir: string): string {
-  const resolved = resolve(cwd, outDir)
-  if (!relative(resolved, cwd).startsWith('..')) {
-    throw new Error(`\`--outDir ${outDir}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
-  }
-  return resolved
-}
-
 export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: string): Promise<LoadedBuildConfig> {
   const sources: BuildConfigSource[] = []
   let configCount = 0
@@ -364,6 +364,59 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     translated.unsupported.unshift(`${file}: an array of ${configCount} configs`)
   }
   return { file, importsUnbuild, fileHasEntries, field, ...translated }
+}
+
+/** An entry of `builder({ entries })`. */
+export type BuilderEntry
+  = | string
+    | { input: string, name?: string, builder?: 'rollup' }
+    | { input: string, builder?: 'mkdist', outDir?: string, ext?: 'mjs' | 'js' }
+
+export interface BuilderOptions {
+  /**
+   * Entries built besides `src/module`. A path, or `{ input, name }`, is bundled. An `input`
+   * ending in `/` (or `builder: 'mkdist'`) is a directory transpiled file by file like
+   * `src/runtime`, into `outDir` (inside the build's output directory) with the `ext` scripts
+   * get: `mjs` (the default) or `js`.
+   */
+  entries?: BuilderEntry[]
+  /** Imports that are never bundled. A string matches the package and its subpaths. */
+  externals?: Array<string | RegExp>
+  /** Compile-time replacements in bundled entries, as `{ search: replacement }` or the options of rolldown's replace plugin. */
+  replace?: Record<string, string> | ReplaceOptions
+}
+
+const MODULE_OPTION_KEYS = new Set(['entries', 'externals', 'replace'])
+
+/** Resolves the options of `builder()` into bundled entries, transpiled directories and build settings. */
+export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: string, options: BuilderOptions): LoadedBuildConfig {
+  if ('hooks' in options) {
+    throw new Error(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+  }
+  const { entries, externals, replace } = options
+  const config: Record<string, unknown> = {
+    ...entries !== undefined && { entries },
+    ...externals !== undefined && { externals },
+    ...replace !== undefined && (isPlainObject(replace) && isPlainObject(replace.values) ? { rollup: { replace } } : { replace }),
+  }
+  const translated = translateBuildConfig([{ name: 'builder()', config }], { cwd, outDir })
+  translated.unsupported.push(...Object.keys(options).filter(key => !MODULE_OPTION_KEYS.has(key)).map(key => `builder(): ${key}`))
+  translated.neverBundle.push(...inferredExternals(pkg))
+  return translated
+}
+
+/**
+ * Fails when `build.config.*` or a `build` or `unbuild` field of `package.json` would
+ * configure the build alongside `builder()`.
+ */
+export function assertNoLegacyBuildConfig(cwd: string, pkg: PackageJson): void {
+  const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
+  const field = pkg.unbuild !== undefined ? 'unbuild' : pkg.build !== undefined ? 'build' : undefined
+  if (file || field) {
+    const source = file ? `\`${file}\`` : `The \`${field}\` field of \`package.json\``
+    const advice = file ? 'delete the file' : 'remove the field'
+    throw new Error(`${source} configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and ${advice}. ${guide('moving-from-buildconfigts')}`)
+  }
 }
 
 /** `src/module` plus the translated extra entries, keyed by output name. */

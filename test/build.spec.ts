@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -1545,5 +1546,102 @@ export const defineOptions = (options: Options) => ({ options, helper })
       export declare const render: (label: string) => import("vue/jsx-runtime").JSX.Element;
       "
     `)
+  })
+
+  describe('with plain `tsdown` and `builder()`', () => {
+    const env = { ...process.env, NODE_ENV: '', TEST: '' }
+    const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
+    const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
+    const ejectedExampleRootDir = rootDir.replace('example', '.temp-example-ejected')
+
+    const hashDir = async (dir: string) => {
+      const files = (await readdir(dir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return Object.fromEntries(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(dir, path), createHash('sha256').update(await readFile(path)).digest('hex')] as const
+      })))
+    }
+
+    const writeTsdownConfig = (dir: string, options: string, { imports = [] as string[], hooks = [] as string[] } = {}) => writeFile(join(dir, 'tsdown.config.ts'), [
+      builderImport,
+      ...imports,
+      '',
+      'export default {',
+      ...hooks,
+      `  plugins: [builder(${options})],`,
+      '}',
+      '',
+    ].join('\n'))
+
+    const eject = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await writeTsdownConfig(dir, build ? JSON.stringify(build) : '')
+    }
+
+    const ejectBuildConfig = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await rm(join(dir, 'build.config.ts'))
+      await writeTsdownConfig(dir, `{
+    entries: ['src/utils', './src/vite.ts', { input: 'src/content', name: 'content' }, 'src/nested/helper', { input: 'src/shared/', outDir: 'dist/shared' }, { input: 'src/features/', outDir: 'dist/features', ext: 'js' }],
+    externals,
+    replace: { __MODULE_VERSION__: JSON.stringify('1.2.3') },
+  }`, {
+        imports: [`import { writeFileSync } from 'node:fs'`, `import { join } from 'node:path'`, `import { externals } from './build/externals.ts'`],
+        hooks: [
+          `  hooks: {`,
+          `    'build:prepare'(ctx) {`,
+          `      writeFileSync(join(ctx.options.cwd, 'src/generated.ts'), 'export const generated = "from build:before"\\n')`,
+          `    },`,
+          `  },`,
+        ],
+      })
+    }
+
+    const ejectReplace = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build: _build, unbuild: _unbuild, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await rm(join(dir, 'build.config.ts'))
+      await writeTsdownConfig(dir, `{
+    entries: ['./src/unplugin'],
+    externals: ['#build/ui', 'ext-pkg'],
+    replace: { delimiters: ['', ''], values: { "process.argv.includes('--uiDev')": 'false' } },
+  }`)
+    }
+
+    it('should build the same `dist` as `nuxt-module-build build` for every module that builds', async () => {
+      await rm(ejectedExampleRootDir, { recursive: true, force: true })
+      await cp(rootDir, ejectedExampleRootDir, { recursive: true })
+      const fixtures: Array<[dir: string, eject: (dir: string) => Promise<void>]> = [
+        [ejectedExampleRootDir, eject],
+        ...[secondRootDir, thirdRootDir, fourthRootDir, encodedRootDir, noRuntimeRootDir, vueOnlyRootDir, annotatedRootDir, transpileRootDir, solutionRootDir, join(parentTsconfigRootDir, 'packages/mod'), portableRootDir, stylesheetsRootDir, runtimeShapeRootDir, routesRootDir, autoPrepareRootDir, semanticErrorRootDir].map(dir => [dir, eject] as [string, typeof eject]),
+        [buildConfigRootDir, ejectBuildConfig],
+        [replaceRootDir, ejectReplace],
+      ]
+      await Promise.all(fixtures.map(async ([dir, ejectFixture]) => {
+        await exec('pnpm', ['nuxt-module-build', 'build', dir], { nodeOptions: { cwd: repoRoot, env }, throwOnError: true })
+        const built = await hashDir(join(dir, 'dist'))
+        expect(Object.keys(built), dir).toContain('module.json')
+        await ejectFixture(dir)
+        await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env }, throwOnError: true })
+        expect(await hashDir(join(dir, 'dist')), dir).toEqual(built)
+      }))
+    }, 300 * 1000)
+
+    it('should explain failed builds and remove their partial output', async () => {
+      await Promise.all([typeErrorRootDir, vueErrorRootDir, isolatedRootDir].map(eject))
+      const [typeError, vueError, isolated] = await Promise.all([typeErrorRootDir, vueErrorRootDir, isolatedRootDir].map(dir => exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env } })))
+      for (const [result, dir] of [[typeError, typeErrorRootDir], [vueError, vueErrorRootDir]] as const) {
+        expect(result!.exitCode, dir).not.toBe(0)
+        expect(result!.stdout + result!.stderr, dir).toContain('Type declarations could not be generated')
+        expect(existsSync(join(dir, 'dist')), dir).toBe(false)
+      }
+      expect(isolated!.exitCode).not.toBe(0)
+      expect(isolated!.stdout + isolated!.stderr).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
+    }, 120 * 1000)
   })
 })

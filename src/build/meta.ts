@@ -11,10 +11,12 @@ export interface WriteModuleMetaOptions {
   runtimeDirs: string[]
   pkg: { name?: string, version?: string }
   builder: Record<string, string>
+  /** Set on rebuilds, so the rebuilt module is imported rather than the cached one. */
+  version?: number
 }
 
-export async function writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder }: WriteModuleMetaOptions): Promise<void> {
-  const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd, runtimeDirs })
+export async function writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder, version }: WriteModuleMetaOptions): Promise<void> {
+  const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd, runtimeDirs, version })
   const moduleFn = (moduleExports.default ?? moduleExports) as NuxtModule<Record<string, unknown>>
 
   const moduleMeta = await moduleFn.getMeta?.() || {}
