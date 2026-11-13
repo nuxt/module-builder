@@ -5,7 +5,7 @@ import { basename, resolve } from 'pathe'
 import { BUILDER_OPTIONS } from '../build/build-config.ts'
 import type { BuilderOptions } from '../build/build-config.ts'
 import { guide } from '../build/guide.ts'
-import { importModule } from '../build/loader.ts'
+import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 
 const TSDOWN_CONFIG_FILES = ['ts', 'mts', 'cts', 'js', 'mjs', 'cjs', 'json'].map(extension => `tsdown.config.${extension}`)
 
@@ -41,6 +41,9 @@ export interface BuilderConfig {
  * a config, an array of configs, or a function returning either.
  */
 export async function loadBuilderConfig(cwd: string, file: string): Promise<BuilderConfig> {
+  if (!file.endsWith('.json')) {
+    assertLoadableModuleCode(cwd, [file], [])
+  }
   const exported = file.endsWith('.json')
     ? JSON.parse(await readFile(file, 'utf8')) as unknown
     : await importModule(file, { cwd }).then(module => module.default ?? module)

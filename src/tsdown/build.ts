@@ -2,6 +2,7 @@ import { build as tsdownBuild } from 'tsdown'
 import type { TsdownPlugin } from 'tsdown'
 
 import { findTsdownConfig, hasBuilder, missingBuilderError } from '../commands/config-file.ts'
+import { assertLoadableModuleCode } from '../build/loader.ts'
 import { createBuilder } from './plugin.ts'
 
 export interface BuildOptions {
@@ -15,6 +16,9 @@ export interface BuildOptions {
  */
 export async function build(cwd: string, options: BuildOptions): Promise<void> {
   const file = findTsdownConfig(cwd)
+  if (file && !file.endsWith('.json')) {
+    assertLoadableModuleCode(cwd, [file], [])
+  }
   await tsdownBuild({
     cwd,
     config: file ?? false,

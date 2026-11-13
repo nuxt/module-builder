@@ -21,8 +21,8 @@ import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkSourcePaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { publishedPackage } from '../src/build/package.ts'
 import { guide } from '../src/build/guide.ts'
-import { erasableSyntaxHint } from '../src/build/stub.ts'
-import { findNonErasableSyntax, findUnresolvableImports } from '../src/build/loader.ts'
+import { findModuleCodeIssues } from '../src/build/loader.ts'
+import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
@@ -232,12 +232,12 @@ describe('translateBuildConfig', () => {
       await writeFile(join(dir, 'extensions/src/helper.ts'), `export const helper = 1\n`)
       await writeFile(join(dir, 'extensions/src/lib/index.ts'), `import { shared } from '../../options'\nexport { shared }\n`)
       await expect(loadBuildConfig(join(dir, 'extensions'), { build: { entries: ['src/lib/index'] } }, join(dir, 'dist'))).rejects.toThrow([
-        'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
+        'Module code has to load with Node, which strips types and resolves imports as written:',
         '  - build.config.ts:1:21: `./options` (use `./options.ts`)',
         '  - src/lib/index.ts:1:24: `../../options` (use `../../options.ts`)',
         '  - src/module.ts:1:24: `./helper` (use `./helper.ts`)',
         '  - src/module.ts:2:24: `./lib` (use `./lib/index.ts`)',
-        `Write each specifier as suggested. ${guide('import-extensions-in-module-code')}`,
+        `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
       ].join('\n'))
       await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options.ts'\nexport default options\n`)
       expect((await loadBuildConfig(join(dir, 'extensions'), {}, join(dir, 'dist'))).neverBundle.map(String)).toEqual(['/^o(?:\\/|$)/'])
@@ -246,10 +246,10 @@ describe('translateBuildConfig', () => {
       const fromPkg = await loadBuildConfig(dir, { unbuild: { externals: ['u'] }, build: { externals: ['b'] } }, join(dir, 'dist'))
       expect(fromPkg.neverBundle.map(String)).toEqual(['/^u(?:\\/|$)/'])
 
-      const [self, alias] = (await loadBuildConfig(dir, { name: '@nuxt/image', imports: { '#image/*': './src/*.ts' } }, join(dir, 'dist'))).neverBundle
-      expect(['@nuxt/image', '@nuxt/image/utils'].every(id => self!.test(id))).toBe(true)
-      expect(self!.test('@nuxt/image/runtime/providers/ipx')).toBe(false)
-      expect(alias!.test('#image/config')).toBe(true)
+      const inferred = (await loadBuildConfig(dir, { name: '@nuxt/image', imports: { '#image/*': './src/*.ts' } }, join(dir, 'dist'))).neverBundle
+      expect(inferred).toHaveLength(1)
+      expect(['@nuxt/image', '@nuxt/image/utils'].every(id => inferred[0]!.test(id))).toBe(true)
+      expect(inferred[0]!.test('@nuxt/image/runtime/providers/ipx')).toBe(false)
     }
     finally {
       await rm(dir, { recursive: true, force: true })
@@ -305,12 +305,15 @@ describe('translateBuildConfig', () => {
 })
 
 describe('hints', () => {
-  it('should link the missing tsdown and stub syntax hints to the upgrade guide', () => {
+  it('should link the missing tsdown hint to the upgrade guide', () => {
     expect(MISSING_TSDOWN_HINT).toMatch(new RegExp(`pnpm add -D tsdown@"\\^[\\d.]+"\`\\. ${guide('install-tsdown')}$`))
-    expect(erasableSyntaxHint([]).endsWith(guide('stub-builds'))).toBe(true)
   })
+})
 
-  it('should locate every use of syntax that Node cannot strip across the imported sources', async () => {
+describe('findModuleCodeIssues', () => {
+  const list = (found: ModuleCodeIssue[]) => found.map(({ file, line, column, importedBy, message }) => `${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)
+
+  it('should list syntax Node cannot strip, tsconfig `paths` aliases and Nuxt app aliases across the imported sources, with their fixes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-erasable-'))
     try {
       await mkdir(join(dir, 'src'))
@@ -331,6 +334,8 @@ describe('hints', () => {
         `export const level = <string>Level.High`,
         `export declare enum Ambient { A }`,
         `export { asArray, normalise, Context }`,
+        `export { useNuxtApp } from '#app'`,
+        `export type { NuxtApp } from '#app'`,
         ``,
       ].join('\n'))
       await writeFile(join(dir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
@@ -338,28 +343,29 @@ describe('hints', () => {
       await writeFile(join(dir, 'src/context.ts'), `export class Context {\n  constructor(\n    public readonly name: string,\n    public options: object,\n  ) {}\n}\n`)
       await writeFile(join(dir, 'src/shared.ts'), `export const enum Mode { On }\n`)
       await writeFile(join(dir, 'src/types.ts'), `export interface Unused { never: true }\ndeclare module 'ambient' { enum Hidden { A } }\nexport enum Skipped { A }\n`)
-      const expected = [
-        { file: 'src/module.ts', line: 11, column: 15, kind: 'parameter property' },
-        { file: 'src/module.ts', line: 11, column: 37, kind: 'parameter property' },
-        { file: 'src/module.ts', line: 13, column: 22, kind: 'angle-bracket type assertion' },
-        { file: 'src/levels.ts', line: 1, column: 1, kind: '`enum`' },
-        { file: 'src/util.ts', line: 1, column: 40, kind: 'angle-bracket type assertion' },
-        { file: 'src/util.ts', line: 3, column: 10, kind: 'angle-bracket type assertion' },
-        { file: 'src/context.ts', line: 3, column: 5, kind: 'parameter property' },
-        { file: 'src/context.ts', line: 4, column: 5, kind: 'parameter property' },
-        { file: 'src/shared.ts', line: 1, column: 1, kind: '`enum`' },
-      ]
-      expect(findNonErasableSyntax(dir, ['./src/module.ts'])).toEqual(expected)
-      expect(erasableSyntaxHint(expected)).toContain('  - src/util.ts:3:10: angle-bracket type assertion')
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/context.ts:3:5: parameter property (declare the field and assign it in the constructor)',
+        'src/context.ts:4:5: parameter property (declare the field and assign it in the constructor)',
+        'src/levels.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+        'src/module.ts:1:23: `./levels` (use `./levels.ts`)',
+        'src/module.ts:5:8: `./util` (use `./util.ts`)',
+        'src/module.ts:6:25: `~/src/context` is a tsconfig `paths` alias (use `./context.ts`, or an entry in the `imports` of `package.json`)',
+        'src/module.ts:8:15: `./shared` (use `./shared.ts`)',
+        'src/module.ts:11:15: parameter property (declare the field and assign it in the constructor)',
+        'src/module.ts:11:37: parameter property (declare the field and assign it in the constructor)',
+        'src/module.ts:13:22: angle-bracket type assertion (write `value as Type`)',
+        'src/module.ts:16:28: `#app` only exists in a Nuxt app (move the code that uses it into a runtime file the module adds, or import types only)',
+        'src/shared.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+        'src/util.ts:1:40: angle-bracket type assertion (write `value as Type`)',
+        'src/util.ts:3:10: angle-bracket type assertion (write `value as Type`)',
+      ])
     }
     finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
-})
 
-describe('findUnresolvableImports', () => {
-  it('should list relative value imports Node cannot resolve as written, skipping runtime files but not what they import', async () => {
+  it('should list relative value imports Node cannot resolve as written, including in the runtime files module code imports', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-extensions-'))
     try {
       await mkdir(join(dir, 'src/kit'), { recursive: true })
@@ -400,16 +406,82 @@ describe('findUnresolvableImports', () => {
       await writeFile(join(dir, 'src/legacy.js'), `export * from './leaf'\nexport const legacy = 1\n`)
       await writeFile(join(dir, 'src/leaf.ts'), `export const leaf = 1\n`)
       await writeFile(join(dir, 'src/lazy.ts'), `export const lazy = 1\n`)
-      expect(findUnresolvableImports(dir, ['./src/module.ts'], [join(dir, 'src/runtime')])).toEqual([
-        { file: 'src/module.ts', line: 1, column: 21, specifier: './kit', suggestion: './kit/index.ts' },
-        { file: 'src/module.ts', line: 2, column: 22, specifier: './util.js', suggestion: './util.ts' },
-        { file: 'src/module.ts', line: 6, column: 20, specifier: './runtime/plugin', suggestion: './runtime/plugin.ts' },
-        { file: 'src/module.ts', line: 9, column: 22, specifier: './more', suggestion: './more.ts' },
-        { file: 'src/module.ts', line: 11, column: 34, specifier: './lazy', suggestion: './lazy.ts' },
-        { file: 'src/ok.ts', line: 1, column: 24, specifier: './nested', suggestion: './nested.ts' },
-        { file: 'src/aliased.ts', line: 1, column: 22, specifier: '../deep', suggestion: '../deep.ts' },
-        { file: 'src/legacy.js', line: 1, column: 15, specifier: './leaf', suggestion: './leaf.ts' },
-        { file: 'src/shared.ts', line: 1, column: 22, specifier: './tail', suggestion: './tail.ts' },
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], [join(dir, 'src/runtime')]))).toEqual([
+        'src/aliased.ts:1:22: `../deep` (use `../deep.ts`)',
+        'src/legacy.js:1:15: `./leaf` (use `./leaf.ts`)',
+        'src/module.ts:1:21: `./kit` (use `./kit/index.ts`)',
+        'src/module.ts:2:22: `./util.js` (use `./util.ts`)',
+        'src/module.ts:4:25: `~/src/aliased` is a tsconfig `paths` alias (use `./aliased.ts`, or an entry in the `imports` of `package.json`)',
+        'src/module.ts:6:20: `./runtime/plugin` (use `./runtime/plugin.ts`)',
+        'src/module.ts:9:22: `./more` (use `./more.ts`)',
+        'src/module.ts:11:34: `./lazy` (use `./lazy.ts`)',
+        'src/ok.ts:1:24: `./nested` (use `./nested.ts`)',
+        'src/runtime/plugin.ts:1:24 (imported by src/module.ts:6): `./helper` (use `./helper.ts`)',
+        'src/runtime/plugin.ts:2:24 (imported by src/module.ts:6): `../shared` (use `../shared.ts`)',
+        'src/shared.ts:1:22: `./tail` (use `./tail.ts`)',
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('should list value imports of single-file components, JSX and JSON without an import attribute', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-unloadable-'))
+    try {
+      await mkdir(join(dir, 'src/runtime'), { recursive: true })
+      await writeFile(join(dir, 'src/module.ts'), [
+        `import Card from './runtime/Card.vue'`,
+        `import type CardType from './runtime/Card.vue'`,
+        `import { label } from './runtime/label'`,
+        `import data from './data.json'`,
+        `import options from './options.json' with { type: 'json' }`,
+        `export const refs = [Card, label, data, options]`,
+        `export type { CardType }`,
+        ``,
+      ].join('\n'))
+      await writeFile(join(dir, 'src/runtime/Card.vue'), `<template><div /></template>\n`)
+      await writeFile(join(dir, 'src/runtime/label.tsx'), `export const label = <span />\n`)
+      await writeFile(join(dir, 'src/data.json'), `{}\n`)
+      await writeFile(join(dir, 'src/options.json'), `{}\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], [join(dir, 'src/runtime')]))).toEqual([
+        'src/module.ts:1:18: `./runtime/Card.vue` is a single-file component, which Node cannot load (move the value the module needs into a `.ts` file, or use `import type`)',
+        'src/module.ts:3:23: `./runtime/label` is JSX, which Node cannot load (move the value the module needs into a `.ts` file, or use `import type`)',
+        'src/module.ts:4:18: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('should follow the `import` condition of the `imports` of `package.json`', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-conditional-imports-'))
+    try {
+      await mkdir(join(dir, 'src'))
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module', imports: { '#helper': { import: './src/esm.ts', require: './src/cjs.cjs' } } }))
+      await writeFile(join(dir, 'src/module.ts'), `export { Mode } from '#helper'\n`)
+      await writeFile(join(dir, 'src/esm.ts'), `export enum Mode { On }\n`)
+      await writeFile(join(dir, 'src/cjs.cjs'), `exports.Mode = { On: 0 }\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/esm.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('should follow the `imports` of `package.json` into the module\'s sources', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-imports-'))
+    try {
+      await mkdir(join(dir, 'src/internal'), { recursive: true })
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', type: 'module', imports: { '#internal/*': './src/internal/*.ts' } }))
+      await writeFile(join(dir, 'src/module.ts'), `import { helper } from '#internal/helper'\nexport default helper\n`)
+      await writeFile(join(dir, 'src/internal/helper.ts'), `import { value } from './value'\nexport const helper = value\n`)
+      await writeFile(join(dir, 'src/internal/value.ts'), `export const value = 1\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/internal/helper.ts:1:23: `./value` (use `./value.ts`)',
       ])
     }
     finally {
@@ -565,60 +637,19 @@ describe('selfReferencePaths', () => {
 })
 
 describe('importModule', () => {
-  it('should import JSON without attributes, with top-level keys as named exports', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'module-builder-json-'))
-    await writeFile(join(dir, 'data.json'), '{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}')
-    await writeFile(join(dir, 'entry.ts'), `export * from './data.json'\nexport { default as data } from './data.json'\n`)
-    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); console.log(JSON.stringify(await importModule(${JSON.stringify(join(dir, 'entry.ts'))})))`
-    const { stdout } = await exec('node', ['--input-type=module', '-e', script])
-    expect(JSON.parse(stdout)).toEqual(JSON.parse('{"name":"x","not-an-identifier":true,"__proto__":{"kept":true},"data":{"name":"x","default":1,"not-an-identifier":true,"__proto__":{"kept":true}}}'))
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('should probe extensionless relative imports only inside runtime directories', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'module-builder-probe-'))
-    await mkdir(join(dir, 'runtime'))
-    await writeFile(join(dir, 'helper.ts'), `export const value: string = 'module'\n`)
-    await writeFile(join(dir, 'entry.ts'), `export { value } from './helper'\n`)
-    await writeFile(join(dir, 'runtime/helper.ts'), `export const value: string = 'runtime'\n`)
-    await writeFile(join(dir, 'runtime/entry.ts'), `export { value } from './helper'\n`)
-    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = [
-      `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)})`,
-      `const options = { runtimeDirs: [${JSON.stringify(join(dir, 'runtime'))}] }`,
-      `const failure = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}, options).then(() => 'loaded', error => error.code)`,
-      `const runtime = await importModule(${JSON.stringify(join(dir, 'runtime/entry.ts'))}, options)`,
-      `console.log(JSON.stringify([failure, runtime.value]))`,
-    ].join('\n')
-    const { stdout } = await exec('node', ['--input-type=module', '-e', script], { throwOnError: true })
-    expect(JSON.parse(stdout)).toEqual(['ERR_MODULE_NOT_FOUND', 'runtime'])
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('should leave files that only need type stripping to Node', async () => {
+  it('should leave TypeScript to Node\'s type stripping', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-strip-'))
     const line = `export const location: string = ((): string => new Error('here').stack!.split('\\n')[1]!)()`
     await writeFile(join(dir, 'entry.ts'), `${line}\nexport { kind } from './kind.ts'\n`)
-    await writeFile(join(dir, 'kind.ts'), `export enum Kind { Stub = 'stub' }\nexport const kind: string = Kind.Stub\n`)
+    await writeFile(join(dir, 'kind.ts'), `const Kind = { Stub: 'stub' } as const\nexport const kind: string = Kind.Stub\n`)
+    await writeFile(join(dir, 'enum.ts'), `export enum Mode { Build }\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([m.location, m.kind]))`
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); const rejected = await importModule(${JSON.stringify(join(dir, 'enum.ts'))}).then(() => undefined, error => error.code); console.log(JSON.stringify([m.location, m.kind, rejected]))`
     const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { env: { ...process.env, CI: '1' } } })
-    const [location, kind] = JSON.parse(stdout) as [string, string]
+    const [location, kind, rejected] = JSON.parse(stdout) as [string, string, string]
     expect(location).toContain(`entry.ts:1:${line.indexOf('new Error') + 1}`)
     expect(kind).toBe('stub')
-    await rm(dir, { recursive: true, force: true })
-  })
-
-  it('should stand in for `#build` re-exports of `default` and of reserved words', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'module-builder-stub-'))
-    await writeFile(join(dir, 'entry.ts'), `export { default as theme, for as loop } from '#build/ui/button'\nexport { size } from './size.ts'\n`)
-    await writeFile(join(dir, 'size.ts'), `import { default as button, variants } from '#build/ui/button'\nexport const size = typeof button.slots + typeof variants\n`)
-    const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); console.log(JSON.stringify([Object.keys(m).sort(), typeof m.theme, typeof m.loop, m.size]))`
-    const { stdout, stderr } = await exec('node', ['--input-type=module', '-e', script])
-    expect(stderr).toBe('')
-    expect(JSON.parse(stdout)).toEqual([['loop', 'size', 'theme'], 'function', 'function', 'functionfunction'])
+    expect(rejected).toBe('ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX')
     await rm(dir, { recursive: true, force: true })
   })
 })

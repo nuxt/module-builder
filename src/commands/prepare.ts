@@ -5,7 +5,7 @@ import { resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
 import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
 import type { TranslatedBuildConfig } from '../build/build-config.ts'
-import { assertResolvableImports, importModule } from '../build/loader.ts'
+import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { loadModuleConfig, resolveCwdArg, sharedArgs, stubModule } from './_shared.ts'
 
 async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
@@ -25,8 +25,8 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
   const config = buildConfig ?? await loadPrepareConfig(cwd)
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
-  assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
-  const moduleExports = await importModule(resolve(cwd, entries.module), { cwd, runtimeDirs })
+  assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
+  const moduleExports = await importModule(resolve(cwd, entries.module), { cwd })
   const nuxtModule = (moduleExports.default ?? moduleExports) as NuxtModule
   const entryPath = resolve(cwd, './src/module')
 

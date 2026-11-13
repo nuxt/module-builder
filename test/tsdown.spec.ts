@@ -99,11 +99,13 @@ export default {
     await writeFile(join(hooksDir, 'node_modules/fake-ext/package.json'), JSON.stringify({ name: 'fake-ext', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }))
     await writeFile(join(hooksDir, 'node_modules/fake-ext/index.js'), `export const ext = 'bundled-fake-ext'\n`)
     await writeFile(join(hooksDir, 'node_modules/fake-ext/index.d.ts'), `export declare const ext: string\n`)
+    await mkdir(join(hooksDir, 'src/runtime/utils'), { recursive: true })
+    await writeFile(join(hooksDir, 'src/runtime/utils/answer.ts'), `export const answer: number = 42\n`)
     await appendFile(join(hooksDir, 'src/module.ts'), [
       `import { generated } from './generated.ts'`,
       `import { ext } from 'fake-ext'`,
-      `import { useWrappedFetch } from './runtime/composables/useWrappedFetch.ts'`,
-      `export const refs: unknown[] = [generated, ext, useWrappedFetch, '__USER__']`,
+      `import { answer } from './runtime/utils/answer.ts'`,
+      `export const refs: unknown[] = [generated, ext, answer, '__USER__']`,
       '',
     ].join('\n'))
   }, 60 * 1000)
@@ -119,7 +121,7 @@ export default {
     expect(module).toContain('replaced by a user plugin')
     expect(module).toContain('from "fake-ext"')
     expect(module).not.toContain('bundled-fake-ext')
-    expect(module).toContain('from "./runtime/composables/useWrappedFetch.js"')
+    expect(module).toContain('from "./runtime/utils/answer.js"')
     expect(JSON.parse(await readFile(join(hooksDir, 'dist/module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
   }, 120 * 1000)
 
@@ -365,7 +367,7 @@ export default {
       const dir = await copyExample(`.temp-tsdown-${shape}-export`, exportShapes[shape])
       await rm(join(dir, '.nuxt'), { recursive: true, force: true })
       await mkdir(join(dir, 'src/shared'), { recursive: true })
-      await writeFile(join(dir, 'src/shared/value.ts'), `export { other } from './other'\n`)
+      await writeFile(join(dir, 'src/shared/value.ts'), `export { other } from './other.ts'\n`)
       await writeFile(join(dir, 'src/shared/other.ts'), `export const other: string = 'other'\n`)
       await writeFile(join(dir, 'src/cli.ts'), `export const cli: string = 'cli'\n`)
       await appendFile(join(dir, 'src/module.ts'), `export { other } from './shared/value.ts'\n`)
@@ -454,6 +456,16 @@ export default {
       expect(existsSync(join(dir, '.stub/module.mjs'))).toBe(true)
       expect(existsSync(join(dir, 'out'))).toBe(false)
     }, 60 * 1000)
+
+    it('should fail on a tsdown config that Node cannot load', async () => {
+      const dir = await copyExample('.temp-tsdown-config-enum', `enum Mode { Build }\nexport default {\n  define: { __MODE__: String(Mode.Build) },\n  plugins: [builder()],\n}\n`)
+      for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
+        const { exitCode, stdout, stderr } = await cli([...args, dir])
+        expect(exitCode, args.join(' ')).not.toBe(0)
+        expect(stdout + stderr, args.join(' ')).toContain('tsdown.config.ts:2:1: `enum` (use an `as const` object and a union type of its values)')
+        expect(stdout + stderr, args.join(' ')).toContain(guide('module-code-loads-with-node'))
+      }
+    }, 120 * 1000)
 
     it('should fail on a tsdown config without `builder()` and show how to add it', async () => {
       const dir = await copyExample('.temp-tsdown-without-plugin', `export default {}\n`)

@@ -20,7 +20,7 @@ import type { BuildContext } from './define.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
-import { assertResolvableImports, loadOxc, probe } from './loader.ts'
+import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
@@ -154,7 +154,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
 export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
   const { cwd, outDir, entries, runtimeDirs } = plan
   await callBuildHook(plan.config, 'build:before', plan.ctx)
-  assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
+  assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
   await rm(outDir, { recursive: true, force: true })
 
   await writeServerRoutesStub(cwd)
@@ -238,13 +238,12 @@ export interface FinishBuildOptions {
 
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
 export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishBuildOptions): Promise<void> {
-  const { cwd, outDir, runtimeDirs, pkg } = plan
+  const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
   const version = plan.builds++ || undefined
   await writeModuleMeta({
     cwd,
     outDir,
-    runtimeDirs,
     pkg,
     builder: { [builderPkg.name]: builderPkg.version, ...builder },
     version,

@@ -7,7 +7,7 @@ import type { PackageJson } from 'pkg-types'
 import type { BuildContext, BuildHook } from './define.ts'
 import { guide } from './guide.ts'
 import type { GuideSection } from './guide.ts'
-import { findUnresolvableImports, formatUnresolvableImports, importModule, probe } from './loader.ts'
+import { findModuleCodeIssues, formatModuleCodeIssues, importModule, probe } from './loader.ts'
 
 const BUILD_CONFIG_FILES = ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs']
 
@@ -336,12 +336,13 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   if (file) {
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
     const stubs = { 'unbuild': DEFINE_BUILD_CONFIG_STUB, '@nuxt/module-builder': DEFINE_BUILD_CONFIG_STUB }
-    const unresolvable = findUnresolvableImports(cwd, [file], [])
+    const unresolvable = findModuleCodeIssues(cwd, [file], [])
     if (unresolvable.length) {
       const withoutFile = translateBuildConfig(fieldSource, { cwd, outDir })
       const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
-      unresolvable.push(...findUnresolvableImports(cwd, Object.values(bundledEntries(cwd, withoutFile)), runtimeDirs))
-      throw new Error(formatUnresolvableImports(unresolvable))
+      const entries = bundledEntries(cwd, withoutFile)
+      unresolvable.push(...findModuleCodeIssues(cwd, [entries.module], runtimeDirs, Object.values(entries)))
+      throw new Error(formatModuleCodeIssues(unresolvable))
     }
     const { default: config } = await importModule(resolve(cwd, file), { cwd, stubs })
     if (typeof config === 'function') {
@@ -501,20 +502,11 @@ function unsupportedOptionSection(option: string): GuideSection {
 }
 
 /**
- * The module's own package name and its `#` subpath imports, which are never bundled.
- * Self-referencing imports of the runtime tree are left to `runtimeExternals`.
+ * The module's own package name, which is never bundled. Self-referencing imports of the
+ * runtime tree are left to `runtimeExternals`.
  */
 function inferredExternals(pkg: PackageJson) {
-  const externals: RegExp[] = []
-  if (pkg.name) {
-    externals.push(new RegExp(`^${escapeRegExp(pkg.name)}(?:$|/(?!runtime/))`))
-  }
-  for (const name of Object.keys(pkg.imports || {})) {
-    if (name.startsWith('#')) {
-      externals.push(new RegExp(`^${escapeRegExp(name).replace(/\\\*/g, '.*')}$`))
-    }
-  }
-  return externals
+  return pkg.name ? [new RegExp(`^${escapeRegExp(pkg.name)}(?:$|/(?!runtime/))`)] : []
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
