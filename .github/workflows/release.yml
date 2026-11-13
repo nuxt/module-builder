@@ -44,13 +44,30 @@ jobs:
     permissions:
       contents: write       # push the `release/vX.Y.Z` branch and delete superseded ones
       pull-requests: write  # create a release PR, update its body, close superseded PRs
+
     steps:
-      - uses: danielroe/uppt/pr@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
+      - name: Resolve preview SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "short=${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - uses: danielroe/uppt/pr@427b736befa839b403dd145f2a7c16dbf3fd4482 # v0.6.13
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           base-branch: ${{ github.ref_name }}
           prerelease: ${{ inputs.prerelease }}
+          pr-notes: |
+            ## ⚡ Try the latest `{base}@${{ steps.sha.outputs.short }}` build with **pkg-pr-new**:
 
+            <details><summary><b>@nuxt/module-builder</b></summary>
+
+            ```
+            pnpm add https://pkg.pr.new/@nuxt/module-builder@${{ steps.sha.outputs.short }}
+            ```
+
+            </details>
   # The release PR was merged: tag the squash commit, cut a GitHub release
   # from the PR body, and dispatch the publish workflow. The `release/v`
   # head-ref guard keeps regular feature-PR merges from triggering this;
@@ -69,7 +86,7 @@ jobs:
       contents: write       # push the `vX.Y.Z` tag and create the GitHub release
       actions: write        # `gh workflow run release.yml --ref vX.Y.Z` chained dispatch
     steps:
-      - uses: danielroe/uppt/release@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
+      - uses: danielroe/uppt/release@427b736befa839b403dd145f2a7c16dbf3fd4482 # v0.6.13
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -88,7 +105,7 @@ jobs:
       files: ${{ steps.pack.outputs.files }}
     steps:
       - id: pack
-        uses: danielroe/uppt/pack@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
+        uses: danielroe/uppt/pack@427b736befa839b403dd145f2a7c16dbf3fd4482 # v0.6.13
 
   # `publish` downloads the prebuilt tarball from the pack job's
   # artifact and stages it for publish. `npm-tag` is set by `uppt/release`
@@ -107,7 +124,7 @@ jobs:
       id-token: write       # OIDC claim for npm trusted publisher
     environment: npm        # must match the trusted-publisher entry on npmjs.com
     steps:
-      - uses: danielroe/uppt/publish@6c1a9b480b0f02a3f535dedaf1a113f590aa56f2 # v0.6.12
+      - uses: danielroe/uppt/publish@427b736befa839b403dd145f2a7c16dbf3fd4482 # v0.6.13
         with:
           files: ${{ needs.pack.outputs.files }}
           npm-tag: ${{ inputs.npm-tag }}
