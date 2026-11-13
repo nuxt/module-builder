@@ -208,6 +208,29 @@ export default {
     }
   }, 120 * 1000)
 
+  it('should write current metadata from each build session in the same process', async () => {
+    const dir = await copyExample('.temp-tsdown-meta-sessions', '')
+    await rm(join(dir, 'tsdown.config.ts'))
+    await writeFile(join(dir, 'sessions.mjs'), [
+      `import { readFile, writeFile } from 'node:fs/promises'`,
+      `import { build } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'node_modules/tsdown/dist/index.mjs')).href)}`,
+      builderImport,
+      `const cwd = ${JSON.stringify(dir)}`,
+      `const source = await readFile(cwd + '/src/module.ts', 'utf8')`,
+      `const names = []`,
+      `for (const name of ['first-session', 'second-session']) {`,
+      `  await writeFile(cwd + '/src/module.ts', source.replace("name: 'my-module'", 'name: ' + JSON.stringify(name)))`,
+      `  await build({ cwd, config: false, logLevel: 'silent', plugins: [builder()] })`,
+      `  names.push(JSON.parse(await readFile(cwd + '/dist/module.json', 'utf8')).name)`,
+      `}`,
+      `console.log(JSON.stringify(names))`,
+      '',
+    ].join('\n'))
+    const { stdout, stderr, exitCode } = await exec('node', ['sessions.mjs'], { nodeOptions: { cwd: dir, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+    expect(exitCode, stdout + stderr).toBe(0)
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual(['first-session', 'second-session'])
+  }, 120 * 1000)
+
   it.each([
     ['the module entry', 'module', 'src/module.ts', 'types.d.mts'],
     ['a runtime file', 'runtime', 'src/runtime/plugins/plugin.ts', 'runtime/plugins/plugin.js'],

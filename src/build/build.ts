@@ -85,8 +85,6 @@ export interface BuildPlan {
   generatedTypesHash: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
-  /** How many times {@link finishBuild} has run. */
-  builds: number
   /** Whether {@link finishBuild} writes `types.d.mts`, rather than a bundled entry named `types`. */
   writesTypes?: boolean
 }
@@ -143,7 +141,6 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
-    builds: 0,
   }
 }
 
@@ -236,11 +233,14 @@ export interface FinishBuildOptions {
   builder: Record<string, string>
 }
 
+// Counted per process, as a restarted watcher imports the same files again with a new plan.
+let metaImports = 0
+
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
 export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
-  const version = plan.builds++ || undefined
+  const version = metaImports++ || undefined
   await writeModuleMeta({
     cwd,
     outDir,
