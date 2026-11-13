@@ -57,7 +57,7 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
       await prepareModule(cwd)
     }
 
-    const { build } = await import('../build/build.ts').catch((error) => {
+    const { build } = await import('../tsdown/build.ts').catch((error) => {
       if (isMissingTsdown(error)) {
         consola.error(MISSING_TSDOWN_HINT)
       }
