@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
