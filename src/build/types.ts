@@ -66,7 +66,7 @@ ${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './mo
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${isStub ? 'export * from "./module.mjs"' : ''}
+${isStub ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
 ${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexport { ${names.map(n => (n === 'default' ? '' : 'type ') + n).join(', ')} } from '${specifier}'`).join('\n')}
 ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'

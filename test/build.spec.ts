@@ -820,6 +820,15 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(stdout)).toEqual(['function', 'loaded helper', ['default', 'nativeValue']])
   })
 
+  it('should re-export the module\'s default export from stub types', async () => {
+    await exec('pnpm', ['nuxt-module-build', 'build', '--stub', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+    const probe = join(nodeStubRootDir, 'probe.ts')
+    await writeFile(probe, `import type Module from './dist/types.mjs'\n\nexport const meta: Promise<{ configKey?: string }> = ({} as typeof Module).getMeta!()\n`)
+    const { stdout, stderr, exitCode } = await exec('pnpm', ['exec', 'tsc', '--ignoreConfig', '--noEmit', '--strict', '--skipLibCheck', '--allowImportingTsExtensions', '--module', 'nodenext', '--moduleResolution', 'nodenext', probe], { nodeOptions: { cwd: repoRoot } })
+    expect(stdout + stderr).toBe('')
+    expect(exitCode).toBe(0)
+  })
+
   it('should fail when module code imports relative files without their extension', async () => {
     const sourceLine = (await readFile(join(extensionlessRootDir, 'src/module.ts'), 'utf-8')).split('\n').findIndex(line => line.includes('./utils.js')) + 1
     for (const args of [['build'], ['build', '--stub']]) {
