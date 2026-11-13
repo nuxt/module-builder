@@ -19,6 +19,10 @@ To build a module, you need:
 
 To use a module built with it, an app needs Nuxt 3 or later. The module entry is compiled for the lowest Node version in your module's `engines.node` field. Without that field, its syntax is kept as written.
 
+::note
+Nuxt 3 has reached end of life, so these docs describe Nuxt 4 and later. Where Nuxt 3 behaves differently, such as type-checking all of a module's runtime files in a single context, they don't cover it.
+::
+
 ## Quick start
 
 Create a module from the starter:
