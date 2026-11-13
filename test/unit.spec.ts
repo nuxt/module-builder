@@ -16,10 +16,11 @@ import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigP
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { guide } from '../src/build/guide.ts'
+import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
 import { erasableSyntaxHint } from '../src/build/stub.ts'
 import { findNonErasableSyntax, findUnresolvableImports } from '../src/build/loader.ts'
-import { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
+import buildCommand, { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
+import prepareCommand from '../src/commands/prepare.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
 const importer = fileURLToPath(new URL('../example/src/module.ts', import.meta.url))
@@ -297,6 +298,33 @@ describe('translateBuildConfig', () => {
     finally {
       warn.mockRestore()
       vi.unstubAllEnvs()
+    }
+  })
+})
+
+describe('upgrade guide', () => {
+  it('should have a heading for every section that build messages link to', async () => {
+    const markdown = await readFile(new URL('../docs/upgrade-v2.md', import.meta.url), 'utf8')
+    const anchors = [...markdown.replace(/^```.*\n[\s\S]*?^```/gm, '').matchAll(/^#{2,6} (.+)$/gm)]
+      .map(([, heading]) => heading!.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replaceAll(' ', '-'))
+    expect(GUIDE_SECTIONS.filter(section => !anchors.includes(section))).toEqual([])
+  })
+})
+
+describe('command docs', () => {
+  const commands = { build: buildCommand, prepare: prepareCommand }
+
+  function documentedOptions(markdown: string, command: string) {
+    const section = markdown.split(/^## /m).find(section => section.startsWith(`\`${command}\`\n`))!
+    const options = section.split(/^### Options$/m)[1]!.split(/^#/m)[0]!
+    return Object.fromEntries([...options.matchAll(/^\| `--(\w+)(?:=[^`]*)?` \| (?:`([^`]*)`)? *\|/gm)].map(([, name, value]) => [name, value ?? '']))
+  }
+
+  it.each(['docs/2.commands.md', 'docs/cli/build-module/index.md'])('should list the options of each command in %s', async (file) => {
+    const markdown = (await readFile(new URL(`../${file}`, import.meta.url), 'utf8')).replaceAll('\r\n', '\n')
+    for (const [name, command] of Object.entries(commands)) {
+      const args = Object.entries(command.args!).filter(([, arg]) => arg.type !== 'positional')
+      expect(documentedOptions(markdown, name)).toEqual(Object.fromEntries(args.map(([key, arg]) => [key, arg.default === undefined ? '' : String(arg.default)])))
     }
   })
 })

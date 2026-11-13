@@ -1,4 +1,7 @@
-# Upgrading to @nuxt/module-builder v2
+---
+title: Upgrading to v2
+description: Move a Nuxt module from v1 to v2 of `@nuxt/module-builder`, which builds with tsdown.
+---
 
 This guide takes a Nuxt module from v1 to v2 of the module builder. In v2, `@nuxt/module-builder` builds your module with [tsdown](https://tsdown.dev) instead of unbuild. The CLI, the project layout (`src/module.ts` and `src/runtime/`), and the output of your build stay the same.
 
@@ -6,7 +9,7 @@ Most modules upgrade by running the build and following its output. Every messag
 
 ## Node engines
 
-v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Use Node 22.18+, 24.11+, or 26+ locally and in CI:
+v2 requires Node `^22.18.0 || >=24.0.0`. Use Node 22.18+ or 24+ locally and in CI:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -134,7 +137,7 @@ The `.d.ts` declarations of bundled entries aren't generated either, so `typesVe
 
 ### mkdist options
 
-Runtime files are transpiled with oxc, one file at a time. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, `declaration` on an entry, and `format`. Remove them. Postcss plugins passed through `mkdist:entry:options` are ignored with a warning. Replace that processing as described in [Runtime stylesheets](#runtime-stylesheets). On a directory entry, `ext` (`mjs` or `js`) is applied, and `addRelativeDeclarationExtensions` is accepted and ignored: relative imports in declarations always get their extension.
+Runtime files are transpiled with oxc, one file at a time. Options that configured mkdist have no equivalent and fail the build: `esbuild`, `pattern`, and `format`. Remove them. `declaration` on an entry is accepted and ignored, like the top-level option. Postcss plugins passed through `mkdist:entry:options` are ignored with a warning. Replace that processing as described in [Runtime stylesheets](#runtime-stylesheets). On a directory entry, `ext` (`mjs` or `js`) is applied, and `addRelativeDeclarationExtensions` is accepted and ignored: relative imports in declarations always get their extension.
 
 ```ts
 // before
@@ -246,7 +249,7 @@ import { helper } from './utils.ts'
 import { kit } from './kit/index.ts'
 ```
 
-Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added. The same rule applies to `build.config.ts` and to `nuxt-module-build prepare`, which loads `src/module.ts` the same way. Add the extensions before you run `prepare` or `dev:prepare`: until they're in place, `prepare` stops with this list and `.nuxt` isn't generated, so the module's type check and editor types have nothing to extend.
+Type-only imports are erased before Node loads the file, so `import type { X } from './types'` is accepted. Files under `src/runtime` (and other transpiled directories) keep extensionless imports: those are emitted with the extension added. The same rule applies to `build.config.ts` and to `nuxt-module-build prepare`, which loads `src/module.ts` the same way. Add the extensions before you run `prepare` or `dev:prepare`. Until they're in place, `prepare` stops with this list and doesn't generate `.nuxt`. The module's type check and editor types then have nothing to extend.
 
 ## Declaration errors
 
@@ -290,7 +293,7 @@ If the type check reports the same errors, fix them there. If it passes, the war
 
 Its errors come from build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`), which are typed as `any` while declarations are generated. The types in your module's `.nuxt` also reflect the module's default options. Code that only type-checks under a playground's configuration (a provider the playground enables, for example) warns here as well. An explicit annotation on the export removes that warning.
 
-Those aliases are `any` in the emitted declarations too. An export whose type is inferred through one of them is declared as `any`, or as `string | number | symbol` for a key type. This includes a module's own generated alias, such as `#mdc-highlighter`. Annotate such an export with a type that refers to it by name, such as a component's props type or a type imported from the alias. The type then resolves against the consuming app's `.nuxt`:
+Those aliases are `any` in the emitted declarations too. An export whose type is inferred through one of them is declared as `any`, or as `string | number | symbol` for a key type. This includes a module's own generated alias, such as `#mdc-highlighter`. Annotate such an export with a type that refers to it by name. That can be a component's props type, or a type imported from the alias. The type then resolves against the `.nuxt` of the app that installs the module:
 
 ```ts
 import type { ComputedRef } from 'vue'
@@ -303,13 +306,13 @@ export function useButtonSize(props: ButtonProps) {
   return computed(() => props.size ?? theme.defaultVariants.size)
 }
 
-// after: `ButtonProps['size']` is kept by name and resolves against the consuming app's `.nuxt`
+// after: `ButtonProps['size']` is kept by name and resolves against the app's own `.nuxt`
 export function useButtonSize(props: ButtonProps): ComputedRef<ButtonProps['size']> {
   return computed(() => props.size ?? theme.defaultVariants.size)
 }
 ```
 
-Routes your module registers with `addServerHandler` are typed from the module's own `.nuxt` (see [Module tsconfig](#module-tsconfig)). A composable that returns a `useFetch` or `$fetch` result for one of them is declared with the handler's response type. The response of any other route, one the playground or the consuming app defines, is typed `unknown`. To publish a precise type, type those calls or annotate the export:
+Routes your module registers with `addServerHandler` are typed from the module's own `.nuxt` (see [Module tsconfig](#module-tsconfig)). A composable that returns a `useFetch` or `$fetch` result for one of them is declared with the handler's response type. The response of any other route, one the playground or the app that installs the module defines, is typed `unknown`. To publish a precise type, type those calls or annotate the export:
 
 ```ts
 import type { AsyncData, NuxtError } from 'nuxt/app'
@@ -361,11 +364,11 @@ Stylesheets under `src/runtime` are processed with lightningcss instead of postc
 
 ## Runtime output
 
-Each file under `src/runtime` is still emitted under `dist/runtime` with its name intact: scripts as `.js` with a `.d.ts`, and `.vue` files as `.vue` with a `.vue.d.ts`. Check these differences when a runtime file doesn't behave as before:
+Each file under `src/runtime` is still emitted under `dist/runtime` with its name intact. Scripts become `.js` with a `.d.ts`, and `.vue` files stay `.vue` with a `.vue.d.ts`. Check these differences when a runtime file doesn't behave as before:
 
 - Relative imports get the emitted extension (`../utils/merge` becomes `../utils/merge.js`). Non-relative specifiers (`#imports`, `#build/*`, and dependencies) are kept as written.
 - Imports used only as types are removed from the JavaScript output.
-- `.tsx` and `.jsx` files are emitted as `.jsx` with a `.d.ts`, with types stripped and the JSX kept, so the app compiles them with its own Vue JSX plugin. Pass paths to them without an extension, as in `resolver.resolve('./runtime/components/Foo')`.
+- `.tsx` and `.jsx` files are emitted as `.jsx` with a `.d.ts`, with types stripped and the JSX kept, so the app compiles them with its own Vue JSX plugin. Pass paths to them without an extension, as in `resolver.resolve('./runtime/app/components/Foo')`.
 - JSX that runs in Nitro or Node is still compiled to `vue/jsx-runtime` calls, as neither transforms files in `node_modules`. This covers files under a `server/` directory, and runtime files that these or `src/module.ts` import values from through relative paths. An import through an alias or the module's own package name isn't followed.
 - A relative import of a file outside `src/runtime` is emitted where the import points (`src/shared/x.ts` becomes `dist/shared/x.js`). When that would leave `dist` or collide with another output, it's emitted under `dist/_external/` instead. A file that is only imported as a type gets a `.d.ts` and no script.
 - Your module's own package name and `#` subpath imports are never bundled into `module.mjs`.
@@ -418,10 +421,10 @@ pnpm remove unbuild
 
 Follow these steps in order to upgrade a module. Each step is mechanical until the build runs. Use your module's own package manager where `pnpm` is written.
 
-1. Use Node 22.18+, 24.11+, or 26+ locally and in CI.
+1. Use Node 22.18+ or 24+ locally and in CI.
 2. Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`, then `pnpm remove unbuild` (and `mkdist` and `jiti`, if they only served the builder). Do this before step 3.
 3. In `build.config.ts`, change `from 'unbuild'` to `from '@nuxt/module-builder'`. Move `entries` to the `build.entries` field of `package.json`, including directory entries such as `{ "input": "src/x/", "outDir": "dist/x" }`. Delete the file if nothing else is left. Rename a `package.json` `unbuild` field to `build`.
-4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Set the top-level `types` field to `./dist/types.d.mts`, or remove it. Give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
+4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Remove the top-level `types` field and `typesVersions`, unless your module supports `node10` consumers. If it does, set `types` to `./dist/types.d.mts`, and give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
 6. Add the `.ts` extension to relative imports in `src/module.ts` and the files it imports outside `src/runtime` (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`). Do this before step 8: `prepare` lists each one that is missing and doesn't generate `.nuxt` until they're in place.
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
