@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - v1
+  merge_group:
 
 permissions:
   contents: read
