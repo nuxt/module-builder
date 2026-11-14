@@ -13,17 +13,7 @@ import { satisfies } from 'verkit'
 import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
 import { publishedPackage } from '../src/build/package.ts'
-
-/**
- * The environment that `npm pack` gives `prepack` when a pnpm script runs it. Windows matches
- * variable names case-insensitively and passes on the first in sort order, so each one is also
- * set under the names the test runner inherited it with.
- */
-function npmPackFromPnpmScript(): Record<string, string> {
-  const vars: Record<string, string> = { npm_lifecycle_event: 'prepack', npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' }
-  const inherited = Object.keys(process.env).filter(key => Object.hasOwn(vars, key.toLowerCase()) && !Object.hasOwn(vars, key))
-  return { ...vars, ...Object.fromEntries(inherited.map(key => [key, vars[key.toLowerCase()]!])) }
-}
+import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
 
@@ -1540,8 +1530,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should refuse to build source exports for a pack by npm, including when a pnpm script runs it', async () => {
-    const { stdout, stderr, exitCode } = await exec('node', [join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env: npmPackFromPnpmScript() } })
-    expect(exitCode, `${Object.keys(process.env).filter(key => /^npm_(?:lifecycle_event|execpath|config_user_agent)$/i.test(key)).join(', ')}\n${stdout}${stderr}`).not.toBe(0)
+    const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env: npmPackFromPnpmScript() } })
+    expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
     expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
     expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
   }, 60 * 1000)
