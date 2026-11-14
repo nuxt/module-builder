@@ -463,7 +463,9 @@ describe('findModuleCodeIssues', () => {
         `import { label } from './runtime/label'`,
         `import data from './data.json'`,
         `import options from './options.json' with { type: 'json' }`,
-        `export const refs = [Card, label, data, options]`,
+        `const empty = await import('./data.json', {})`,
+        `const loaded = await import('./options.json', { with: { type: 'json' } })`,
+        `export const refs = [Card, label, data, options, empty, loaded]`,
         `export type { CardType }`,
         ``,
       ].join('\n'))
@@ -475,6 +477,7 @@ describe('findModuleCodeIssues', () => {
         'src/module.ts:1:18: `./runtime/Card.vue` is a single-file component, which Node cannot load (move the value the module needs into a `.ts` file, or use `import type`)',
         'src/module.ts:3:23: `./runtime/label` is JSX, which Node cannot load (move the value the module needs into a `.ts` file, or use `import type`)',
         'src/module.ts:4:18: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
+        'src/module.ts:6:28: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
       ])
     }
     finally {

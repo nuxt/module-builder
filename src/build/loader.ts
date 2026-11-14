@@ -309,6 +309,18 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
     return { line: line + 1, column: character + 1 }
   }
   const isJson = (attributes: ts.ImportAttributes | undefined) => !!attributes?.elements.some(element => element.name.text === 'type' && ts.isStringLiteral(element.value) && element.value.text === 'json')
+  const property = (object: ts.ObjectLiteralExpression, name: string) => object.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === name)
+  const isJsonOptions = (options: ts.Expression | undefined) => {
+    if (!options || !ts.isObjectLiteralExpression(options)) {
+      return !!options
+    }
+    const attributes = property(options, 'with')?.initializer
+    if (!attributes || !ts.isObjectLiteralExpression(attributes)) {
+      return !!attributes
+    }
+    const type = property(attributes, 'type')?.initializer
+    return !!type && (!ts.isStringLiteralLike(type) || type.text === 'json')
+  }
   const specifierOf = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       return { specifier: node.moduleSpecifier, typeOnly: node.importClause?.isTypeOnly ?? false, json: isJson(node.attributes) }
@@ -317,7 +329,7 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
       return { specifier: node.moduleSpecifier, typeOnly: node.isTypeOnly, json: isJson(node.attributes) }
     }
     if (ts.isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-      return { specifier: node.arguments[0], typeOnly: false, json: node.arguments.length > 1 }
+      return { specifier: node.arguments[0], typeOnly: false, json: isJsonOptions(node.arguments[1]) }
     }
   }
   const kindOf = (node: ts.Node) => {
