@@ -19,7 +19,7 @@ export interface BuildContext {
     /** Every entry built, with absolute `input` and `outDir`, including `src/module` and `src/runtime/`. */
     entries: Array<BuildEntry & { name: string, builder: 'rollup' | 'mkdist', outDir: string }>
     declaration?: unknown
-    stub: boolean
+    stub: false
     sourcemap: boolean
   }
   pkg: PackageJson

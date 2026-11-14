@@ -7,7 +7,7 @@ import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModu
 import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { writeSourceTypes } from '../build/types.ts'
-import { loadModuleConfig, resolveCwdArg, sharedArgs, stubModule } from './_shared.ts'
+import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
 
 async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
   const pkg = await readPackageJSON(cwd)
@@ -65,29 +65,15 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
   return result
 }
 
-const prepareArgs = {
-  stub: {
-    type: 'boolean',
-    default: false,
-    description: 'Stub dist first, as `build --stub` does',
-  },
-} as const
-
-const command: CommandDef<typeof sharedArgs & typeof prepareArgs> = defineCommand({
+const command: CommandDef<typeof sharedArgs> = defineCommand({
   meta: {
     name: 'prepare',
-    description: 'Prepare @nuxt/module-builder environment by writing types and stubs',
+    description: 'Prepare @nuxt/module-builder environment by writing types',
   },
-  args: {
-    ...sharedArgs,
-    ...prepareArgs,
-  },
+  args: sharedArgs,
   async run(context) {
-    const cwd = resolveCwdArg(context.args)
-    if (context.args.stub) {
-      await stubModule(cwd)
-    }
-    return prepareModule(cwd)
+    assertNoStubArg('prepare', context.args)
+    return prepareModule(resolveCwdArg(context.args))
   },
 })
 

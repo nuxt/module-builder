@@ -115,7 +115,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
 
   const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const resolvedSourcemap = sourcemap || config.sourcemap
-  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: false, sourcemap: resolvedSourcemap })
+  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap: resolvedSourcemap })
   const entries = bundledEntries(cwd, config)
 
   const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))

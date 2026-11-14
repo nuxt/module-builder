@@ -117,7 +117,7 @@ const NON_ERASABLE_FIXES: Record<string, string> = {
  * the aliases only a Nuxt app provides. Type-only imports are erased before Node sees
  * them. Files in `runtimeDirs` that are not imported this way are left to the build.
  *
- * `otherEntries`, bundled entries that a stub also re-exports as they are, only need the
+ * `otherEntries`, bundled entries that source exports point at as they are, only need the
  * extensions of their relative imports outside `runtimeDirs`.
  */
 export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs: string[], otherEntries: string[] = []): ModuleCodeIssue[] {
@@ -386,8 +386,8 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
 }
 
 function pathsMatcher(cwd: string) {
-  // `--stub` runs before `nuxi prepare` has generated the `.nuxt/tsconfig.json` that
-  // module tsconfigs extend, so a tsconfig that cannot be resolved yet means no aliases.
+  // `prepare` checks module code before `nuxi prepare` has generated the `.nuxt/tsconfig.json`
+  // that module tsconfigs extend, so a tsconfig that cannot be resolved yet means no aliases.
   try {
     const tsconfig = getTsconfig(cwd)
     return tsconfig ? createPathsMatcher(tsconfig) : undefined

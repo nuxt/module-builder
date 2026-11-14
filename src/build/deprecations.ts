@@ -10,7 +10,7 @@ import { collectStrings, publishedPackage, sourcePaths } from './package.ts'
  * Warn about `package.json` fields that point at output this builder no longer produces.
  * The paths are read as published, with `publishConfig` applied.
  */
-export async function checkDeprecatedPackageFields(cwd: string, { stub = false }: { stub?: boolean } = {}): Promise<void> {
+export async function checkDeprecatedPackageFields(cwd: string): Promise<void> {
   const read = await readPackageJSON(cwd).catch(() => undefined)
   const pkg = read && publishedPackage(read)
   if (!pkg) {
@@ -21,10 +21,8 @@ export async function checkDeprecatedPackageFields(cwd: string, { stub = false }
   checkLegacyCJSPaths(cwd, pkg)
   checkStaleTypesField(cwd, pkg)
   checkSourcePaths(cwd, pkg)
-  if (!stub) {
-    checkNode10DeclarationPaths(cwd, pkg)
-    checkMissingPaths(cwd, pkg)
-  }
+  checkNode10DeclarationPaths(cwd, pkg)
+  checkMissingPaths(cwd, pkg)
 }
 
 type PackageJSON = Awaited<ReturnType<typeof readPackageJSON>>

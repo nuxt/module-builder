@@ -61,8 +61,7 @@ describe('module builder', () => {
   const wildcardRootDir = rootDir.replace('example', '.temp-example-wildcard-paths')
   const noRuntimeRootDir = rootDir.replace('example', '.temp-example-without-runtime')
   const vueOnlyRootDir = rootDir.replace('example', '.temp-example-vue-only-runtime')
-  const unpreparedRootDir = rootDir.replace('example', '.temp-example-unprepared')
-  const nodeStubRootDir = rootDir.replace('example', '.temp-example-node-stub')
+  const packageImportsRootDir = rootDir.replace('example', '.temp-example-package-imports')
   const prepareLoaderRootDir = rootDir.replace('example', '.temp-example-prepare-loader')
   const extensionlessRootDir = rootDir.replace('example', '.temp-example-extensionless-imports')
   const buildConfigRootDir = rootDir.replace('example', '.temp-example-build-config')
@@ -79,12 +78,13 @@ describe('module builder', () => {
   const typeErrorRootDir = rootDir.replace('example', '.temp-example-type-error')
   const semanticErrorRootDir = rootDir.replace('example', '.temp-example-semantic-error')
   const vueErrorRootDir = rootDir.replace('example', '.temp-example-vue-error')
-  const stubSyntaxRootDir = rootDir.replace('example', '.temp-example-stub-syntax')
+  const nonErasableRootDir = rootDir.replace('example', '.temp-example-non-erasable-syntax')
   const autoPrepareRootDir = rootDir.replace('example', '.temp-example-auto-prepare')
   const annotatedRootDir = rootDir.replace('example', '.temp-example-isolated-annotated')
   const runtimeShapeRootDir = rootDir.replace('example', '.temp-example-runtime-shape')
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
   let routesBuild = ''
+  let buildConfigBuild = ''
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
   const distFlowRootDir = rootDir.replace('example', '.temp-example-dist-flow')
   const packDir = rootDir.replace('example', '.temp-packs')
@@ -147,17 +147,14 @@ export default defineNuxtModule({
 })
 `
 
-    await copyExample(unpreparedRootDir, contents => contents)
-    await rm(join(unpreparedRootDir, '.nuxt'), { force: true, recursive: true })
-
     await copyExample(prepareLoaderRootDir, contents => `import { deps } from './deps.ts'\nimport { deep } from './deep/a.ts'\n${contents}\nexport const loaded = [deps, deep]\n`)
     await rm(join(prepareLoaderRootDir, '.nuxt'), { force: true, recursive: true })
 
     await copyExample(extensionlessRootDir, contents => `${contents}\nexport { myModuleUtils } from './utils.js'\nexport { helper } from './helpers'\nexport { kit } from './kit'\nexport type { Kit } from './kit'\n`)
 
-    await copyExample(nodeStubRootDir, () => `${minimalModule('node-stub')()}\nexport { nativeValue } from './native-helper.ts'\nexport { internal } from '#internal/value'\n`)
-    const nodeStubPkg = join(nodeStubRootDir, 'package.json')
-    await writeFile(nodeStubPkg, JSON.stringify({ ...JSON.parse(await readFile(nodeStubPkg, 'utf-8')), imports: { '#internal/*': './src/internal/*.ts' } }, null, 2))
+    await copyExample(packageImportsRootDir, () => `${minimalModule('package-imports')()}\nexport { nativeValue } from './native-helper.ts'\nexport { internal } from '#internal/value'\n`)
+    const packageImportsPkg = join(packageImportsRootDir, 'package.json')
+    await writeFile(packageImportsPkg, JSON.stringify({ ...JSON.parse(await readFile(packageImportsPkg, 'utf-8')), imports: { '#internal/*': './src/internal/*.ts' } }, null, 2))
 
     await copyExample(noRuntimeRootDir, minimalModule('no-runtime'))
     await rm(join(noRuntimeRootDir, 'src/runtime'), { force: true, recursive: true })
@@ -220,16 +217,16 @@ void [light, dark, options]
     await writeFile(join(valueExportsIsolatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
     await enableIsolatedDeclarations(valueExportsIsolatedRootDir)
 
-    await copyExample(stubSyntaxRootDir, contents => `import { name as packageName } from '../package.json'
+    await copyExample(nonErasableRootDir, contents => `import { name as packageName } from '../package.json'
 import { Level } from './levels.ts'
 
 enum Mode { Stub = 'stub' }
 class Holder { constructor(public value: string) {} }
 ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<string>Mode.Stub}-${Level.High}`).value')}`)
-    const stubSyntaxPkg = JSON.parse(await readFile(join(stubSyntaxRootDir, 'package.json'), 'utf-8'))
-    stubSyntaxPkg.exports['./plugin'] = './dist/runtime/plugins/plugin.js'
-    await writeFile(join(stubSyntaxRootDir, 'package.json'), JSON.stringify(stubSyntaxPkg, null, 2))
-    await writeFile(join(stubSyntaxRootDir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
+    const nonErasablePkg = JSON.parse(await readFile(join(nonErasableRootDir, 'package.json'), 'utf-8'))
+    nonErasablePkg.exports['./plugin'] = './dist/runtime/plugins/plugin.js'
+    await writeFile(join(nonErasableRootDir, 'package.json'), JSON.stringify(nonErasablePkg, null, 2))
+    await writeFile(join(nonErasableRootDir, 'src/levels.ts'), `export enum Level { High = 'high' }\n`)
 
     await copyExample(autoPrepareRootDir, contents => contents)
     await rm(join(autoPrepareRootDir, '.nuxt'), { recursive: true, force: true })
@@ -283,7 +280,7 @@ export default defineNuxtModule({
       'node_modules/fake-cache/node_modules/fake-h3/package.json': JSON.stringify({ name: 'fake-h3', type: 'module', exports: { '.': { types: './index.d.ts' } } }),
       'node_modules/fake-cache/node_modules/fake-h3/index.d.ts': `export interface Handler { (): string, __h3: 2 }\n`,
     }
-    await writeFiles(nodeStubRootDir, {
+    await writeFiles(packageImportsRootDir, {
       'src/native-helper.ts': `import { inner } from './nested/inner.ts'\n\nexport const nativeValue: string = inner\n`,
       'src/nested/inner.ts': `export const inner: string = 'loaded helper'\n`,
       'src/internal/value.ts': `export const internal: string = 'through imports'\n`,
@@ -667,6 +664,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       '../sibling/types/routes.d.ts': `declare module 'nitropack/types' {\n  interface InternalApi {\n    '/api/sibling': { default: 'must-not-be-published' }\n  }\n}\n`,
     })
     await rm(join(routesRootDir, 'tsconfig.json'))
+    await cp(join(rootDir, 'package.json'), join(routesRootDir, 'package.json'))
     await rm(join(routesRootDir, 'playground/node_modules/my-module'), { force: true })
     await symlink(routesRootDir, join(routesRootDir, 'playground/node_modules/my-module'))
 
@@ -705,27 +703,24 @@ export const defineOptions = (options: Options) => ({ options, helper })
     }
 
     await Promise.all([
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', routesRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-        .then(() => exec('pnpm', ['nuxt-module-build', 'prepare', routesRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
+      exec('pnpm', ['nuxt-module-build', 'prepare', routesRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true })
         .then(() => exec('pnpm', ['exec', 'nuxt', 'prepare', join(routesRootDir, 'playground')], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
         .then(() => exec('pnpm', ['nuxt-module-build', 'build', routesRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } }, throwOnError: true }))
         .then(({ stdout, stderr }) => { routesBuild = stdout + stderr }),
       exec('pnpm', ['nuxt-module-build', 'build', stylesheetsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', runtimeShapeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       ...flows.map(runFlow),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-        .then(() => exec('pnpm', ['nuxt-module-build', 'prepare', secondRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
+      exec('pnpm', ['nuxt-module-build', 'prepare', secondRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true })
         .then(() => exec('pnpm', ['nuxt-module-build', 'build', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-        .then(() => exec('pnpm', ['nuxt-module-build', 'build', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
+      exec('pnpm', ['nuxt-module-build', 'build', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', fourthRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', noRuntimeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', unpreparedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', annotatedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', vueOnlyRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
-      exec('pnpm', ['nuxt-module-build', 'build', '--stub', wildcardRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
-      exec('pnpm', ['nuxt-module-build', 'build', buildConfigRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', wildcardRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
+      exec('pnpm', ['nuxt-module-build', 'build', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } }, throwOnError: true })
+        .then(({ stdout, stderr }) => { buildConfigBuild = stdout + stderr }),
       exec('pnpm', ['nuxt-module-build', 'build', replaceRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', transpileRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', solutionRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
@@ -808,8 +803,8 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should fail on TypeScript syntax that Node cannot strip, with how to rewrite it', async () => {
-    for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
-      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', ...args, stubSyntaxRootDir], { nodeOptions: { cwd: repoRoot } })
+    for (const args of [['build'], ['prepare']]) {
+      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', ...args, nonErasableRootDir], { nodeOptions: { cwd: repoRoot } })
       expect(exitCode, args.join(' ')).not.toBe(0)
       expect(stdout + stderr, args.join(' ')).toContain([
         'Module code has to load with Node, which strips types and resolves imports as written:',
@@ -825,7 +820,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
   it('should refuse an `outDir` that contains the module root', async () => {
     for (const outDir of ['.', '..']) {
-      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', outDir, noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
+      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--outDir', outDir, noRuntimeRootDir], { nodeOptions: { cwd: repoRoot } })
       expect(exitCode).not.toBe(0)
       expect(stdout + stderr).toContain(`\`--outDir ${outDir}\` resolves to \`${resolve(noRuntimeRootDir, outDir)}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     }
@@ -833,17 +828,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(existsSync(join(repoRoot, 'package.json'))).toBe(true)
   })
 
-  it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {
-    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
-    expect(exitCode).toBe(0)
-    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('moving-from-buildconfigts')}`))
-    expect(stdout + stderr).not.toContain('instead of')
-    expect(stdout + stderr).not.toContain('`unbuild` field')
-    const files = await listFiles(join(buildConfigRootDir, '.stub'))
-    expect(files).toEqual(expect.arrayContaining(['content.mjs', 'nested/helper.mjs', 'utils.mjs', 'vite.mjs']))
-    const log = (await readFile(join(buildConfigRootDir, 'hooks.log'), 'utf-8')).trim().split('\n').map(line => JSON.parse(line))
-    expect(log.filter(entry => entry.stub).map(entry => entry.hook)).toEqual(['build:before', 'rollup:done', 'build:done'])
-  }, 60 * 1000)
+  it('should warn that `build.config.ts` is deprecated', () => {
+    expect(buildConfigBuild).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('moving-from-buildconfigts')}`))
+    expect(buildConfigBuild).not.toContain('instead of')
+    expect(buildConfigBuild).not.toContain('`unbuild` field')
+  })
 
   it('should fail on every `build.config.ts` option without an equivalent', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', unsupportedRootDir], { nodeOptions: { cwd: repoRoot } })
@@ -947,28 +936,18 @@ export const defineOptions = (options: Options) => ({ options, helper })
     `)
   })
 
-  it('should stub a module before `.nuxt` has been generated', async () => {
-    const meta = JSON.parse(await readFile(join(unpreparedRootDir, 'dist/module.json'), 'utf-8'))
-    expect(meta).toMatchObject({ name: 'my-module', configKey: 'myModule' })
-    expect(existsSync(join(unpreparedRootDir, '.nuxt'))).toBe(false)
-  })
-
-  it('should write a stub that Node loads with nothing but its own type stripping, and bundle the `imports` of `package.json`', async () => {
-    await exec('pnpm', ['nuxt-module-build', 'build', '--stub', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-    const script = `const m = await import(${JSON.stringify(pathToFileURL(join(nodeStubRootDir, 'dist/module.mjs')).href)}); console.log(JSON.stringify([typeof m.default, m.nativeValue, m.internal, Object.keys(m).sort()]))`
-    const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { cwd: nodeStubRootDir }, throwOnError: true })
-    expect(JSON.parse(stdout)).toEqual(['function', 'loaded helper', 'through imports', ['default', 'internal', 'nativeValue']])
-
-    await exec('pnpm', ['nuxt-module-build', 'build', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-    const built = await readFile(join(nodeStubRootDir, 'dist/module.mjs'), 'utf-8')
+  it('should bundle the `imports` of `package.json` and the files they point at', async () => {
+    await exec('pnpm', ['nuxt-module-build', 'build', packageImportsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+    const built = await readFile(join(packageImportsRootDir, 'dist/module.mjs'), 'utf-8')
+    expect(built).toContain('loaded helper')
     expect(built).toContain('through imports')
     expect(built).not.toContain('#internal')
   }, 60 * 1000)
 
-  it('should re-export the module\'s default export from stub types', async () => {
-    await exec('pnpm', ['nuxt-module-build', 'build', '--stub', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-    const probe = join(nodeStubRootDir, 'probe.ts')
-    await writeFile(probe, `import type Module from './dist/types.mjs'\n\nexport const meta: Promise<{ configKey?: string }> = ({} as typeof Module).getMeta!()\n`)
+  it('should re-export the module\'s default export from the types that `prepare` writes', async () => {
+    await exec('pnpm', ['nuxt-module-build', 'prepare', packageImportsRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } }, throwOnError: true })
+    const probe = join(packageImportsRootDir, 'probe.ts')
+    await writeFile(probe, `import type Module from './.nuxt/module-builder/types.mjs'\n\nexport const meta: Promise<{ configKey?: string }> = ({} as typeof Module).getMeta!()\n`)
     const { stdout, stderr, exitCode } = await exec('pnpm', ['exec', 'tsc', '--ignoreConfig', '--noEmit', '--strict', '--skipLibCheck', '--allowImportingTsExtensions', '--module', 'nodenext', '--moduleResolution', 'nodenext', probe], { nodeOptions: { cwd: repoRoot } })
     expect(stdout + stderr).toBe('')
     expect(exitCode).toBe(0)
@@ -976,7 +955,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
   it('should fail when module code imports relative files without their extension', async () => {
     const sourceLine = (await readFile(join(extensionlessRootDir, 'src/module.ts'), 'utf-8')).split('\n').findIndex(line => line.includes('./utils.js')) + 1
-    for (const args of [['build'], ['build', '--stub']]) {
+    for (const args of [['build'], ['prepare']]) {
       const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', ...args, extensionlessRootDir], { nodeOptions: { cwd: repoRoot } })
       expect(exitCode).not.toBe(0)
       expect(stdout + stderr).toContain([
@@ -1365,15 +1344,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(meta)).toMatchObject({ configKey: 'myModule', name: 'my-module' })
   })
 
-  it('should generate module metadata for a stub whose module entry imports runtime code', async () => {
-    await exec('pnpm', ['nuxt-module-build', 'build', '--stub', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-    const meta = JSON.parse(await readFile(join(thirdDistDir, 'module.json'), 'utf-8'))
-    expect(meta).toMatchObject({ configKey: 'myModule', name: 'my-module' })
-
-    // leave the bundled output in place for the remaining assertions
-    await exec('pnpm', ['nuxt-module-build', 'build', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-  })
-
   it('should externalise runtime imports made through relative, aliased and `.vue` specifiers', async () => {
     const moduleCode = await readFile(join(thirdDistDir, 'module.mjs'), 'utf-8')
     const specifiers = findStaticImports(moduleCode).map(i => i.specifier).filter(s => s.includes('runtime'))
@@ -1407,18 +1377,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const runtimeFiles = (dir: string) => listFiles(join(dir, 'runtime')).then(files => files.sort())
     expect(await runtimeFiles(encodedDistDir)).toEqual(await runtimeFiles(thirdDistDir))
   })
-
-  it('should stub a module under a path with spaces and non-ASCII characters', async () => {
-    const stubDir = join(encodedRootDir, '.stub')
-    try {
-      await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', encodedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-      expect(await readFile(join(stubDir, 'module.mjs'), 'utf-8')).toContain('from \'../src/module.ts\'')
-      expect(JSON.parse(await readFile(join(stubDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
-    }
-    finally {
-      await rm(stubDir, { force: true, recursive: true })
-    }
-  }, 60 * 1000)
 
   it('should point imports of a runtime JSX file at its `.jsx` output', async () => {
     const runtime = join(thirdDistDir, 'runtime')

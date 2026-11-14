@@ -369,7 +369,7 @@ export type BuilderEntry
     | { input: string, name?: string, builder?: 'rollup' }
     | { input: string, builder?: 'mkdist', outDir?: string, ext?: 'mjs' | 'js' }
 
-/** The key `builder()` keeps its options under, so `--stub` and `prepare` can find them in a tsdown config. */
+/** The key `builder()` keeps its options under, so `prepare` can find them in a tsdown config. */
 export const BUILDER_OPTIONS: unique symbol = Symbol.for('@nuxt/module-builder:builder-options')
 
 export interface BuilderOptions {
@@ -448,11 +448,10 @@ export interface BuildContextOptions {
   pkg: PackageJson
   config: TranslatedBuildConfig
   directories: DirectoryEntry[]
-  stub: boolean
   sourcemap: boolean
 }
 
-export function createBuildContext({ cwd, outDir, pkg, config, directories, stub, sourcemap }: BuildContextOptions): BuildContext {
+export function createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap }: BuildContextOptions): BuildContext {
   return {
     options: {
       name: (pkg.name || '').split('/').pop() || 'default',
@@ -463,7 +462,7 @@ export function createBuildContext({ cwd, outDir, pkg, config, directories, stub
         ...directories.map(({ srcDir, outDir }) => ({ input: `${srcDir}/`, name: entryName(relative(cwd, srcDir), cwd), builder: 'mkdist' as const, outDir })),
       ],
       declaration: config.declaration,
-      stub,
+      stub: false,
       sourcemap,
     },
     pkg,
