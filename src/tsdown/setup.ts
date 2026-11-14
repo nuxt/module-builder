@@ -34,6 +34,8 @@ export interface BuilderSession {
   /** Refreshes the source analysis for a rebuild, before the directory plugins start. */
   onBuildStart: () => void
   onBuildEnd: (error?: Error) => Promise<void>
+  /** Fails when the bundled entries are not emitted at the file names `builder()` sets. */
+  checkBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
   onWriteBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
 }
 
@@ -205,6 +207,17 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       }
       else {
         failed = false
+      }
+    },
+    async checkBundle(bundle) {
+      const missing = Object.keys(plan.entries).map(name => `${name}.mjs`).filter((fileName) => {
+        const output = bundle[fileName]
+        return output?.type !== 'chunk' || !output.isEntry
+      })
+      if (missing.length) {
+        const error = new Error(`The build did not emit ${missing.map(fileName => `\`${fileName}\``).join(', ')}. \`builder()\` sets the file names of the bundled entries, so the tsdown config and its plugins must leave \`outputOptions.entryFileNames\` unchanged. ${guide('options-builder-sets')}`)
+        await fail(error)
+        throw error
       }
     },
     async onWriteBundle(bundle) {

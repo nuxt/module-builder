@@ -174,7 +174,7 @@ tsdown hooks and plugins don't run for `--stub`, which doesn't build with tsdown
 - `external` and `noExternal`: use `builder({ externals })`, `deps.neverBundle`, or `deps.alwaysBundle` instead.
 - `deps.neverBundle` set to `true` or a function: list the imports instead.
 
-The build also fails when another plugin changes one of these options.
+The build also fails when another plugin changes one of these options, or when `outputOptions.entryFileNames` changes the file names of the bundled entries.
 
 ### Moving from build.config.ts
 

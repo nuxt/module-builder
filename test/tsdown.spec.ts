@@ -390,6 +390,14 @@ export default {
     expect(existsSync(join(dir, 'dist'))).toBe(false)
   }, 60 * 1000)
 
+  it('should fail when `outputOptions` changes the file names of the bundled entries', async () => {
+    const dir = await copyExample('.temp-tsdown-entry-file-names', `export default {\n  outputOptions: { entryFileNames: '[name].js' },\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`)
+    const { exitCode, stdout, stderr } = await tsdown(dir)
+    expect(exitCode).not.toBe(0)
+    expect(stdout + stderr).toMatch(/The build did not emit `(module|utils)\.mjs`, `(module|utils)\.mjs`\./)
+    expect(existsSync(join(dir, 'dist'))).toBe(false)
+  }, 60 * 1000)
+
   describe('with `package.json` pointing at the sources and `publishConfig` at `dist`', () => {
     let dir: string
 
