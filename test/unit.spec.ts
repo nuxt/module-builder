@@ -19,7 +19,7 @@ import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
-import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
+import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkSourcePaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { publishedPackage, sourcePathsPackError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
@@ -988,6 +988,10 @@ describe('unchangedOutputs', () => {
     unchanged.prune(moved)
     expect(Object.keys(moved)).toEqual(['a.d.ts', 'b.d.ts'])
     await rm(outDir, { recursive: true, force: true })
+  })
+
+  it('should find the directory index a specifier with a trailing slash resolves to', () => {
+    expect(declarationTargets('runtime/a.d.ts', `export * from './b/'\n`)).toContain('runtime/b/index.d.ts')
   })
 })
 
