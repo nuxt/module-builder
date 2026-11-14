@@ -68,7 +68,7 @@ export async function stub(cwd: string, options: StubOptions): Promise<void> {
   }
 
   await writeModuleMeta({ cwd, outDir, pkg, builder: { [builderPkg.name]: builderPkg.version } })
-  await writeTypes(outDir, true)
+  await writeTypes(outDir, await fsp.readFile(resolve(cwd, entries.module), 'utf8'))
   await callBuildHook(config, 'rollup:done', ctx)
   await checkDeprecatedPackageFields(cwd, { stub: true })
   await callBuildHook(config, 'build:done', ctx)

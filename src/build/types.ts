@@ -1,12 +1,34 @@
 import { existsSync, promises as fsp } from 'node:fs'
-import { resolve } from 'pathe'
+import { relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
 const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|const\s+enum|const|let|var|class|enum)\s+([$\w]+)/g
 
-export async function writeTypes(distDir: string, isStub: boolean): Promise<void> {
+/**
+ * Writes `module.d.mts`, which re-exports `entry`, and the `types.d.mts` that adds its type
+ * augmentations, into `dir`.
+ */
+export async function writeSourceTypes(dir: string, entry: string): Promise<void> {
+  const source = await fsp.readFile(entry, 'utf8')
+  const hasDefaultExport = findExports(source).some(e => e.type === 'default' || e.names?.includes('default'))
+  // TypeScript resolves the `.js` specifier to the `.ts` source without `allowImportingTsExtensions`.
+  const specifier = relative(dir, entry).replace(/\.([cm]?)tsx?$/, '.$1js')
+  await fsp.rm(dir, { recursive: true, force: true })
+  await fsp.mkdir(dir, { recursive: true })
+  await fsp.writeFile(resolve(dir, 'module.d.mts'), [
+    `export * from '${specifier}'`,
+    ...hasDefaultExport ? [`export { default } from '${specifier}'`] : [],
+  ].join('\n') + '\n', 'utf8')
+  await writeTypes(dir, source)
+}
+
+/**
+ * Writes `types.d.mts` into `distDir`, from the declarations in `module.d.mts` or, for
+ * `module.d.mts` that re-exports the module's sources, from `entrySource`.
+ */
+export async function writeTypes(distDir: string, entrySource?: string): Promise<void> {
   const dtsFile = resolve(distDir, 'types.d.mts')
   if (existsSync(dtsFile)) {
     return
@@ -14,14 +36,11 @@ export async function writeTypes(distDir: string, isStub: boolean): Promise<void
 
   const moduleReExports: ESMExport[] = []
   const typeOnlyExports = new Set<string>()
-  if (!isStub) {
+  if (entrySource === undefined) {
     // Read generated module types
     const moduleTypesFile = resolve(distDir, 'module.d.mts')
     const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
-    const normalisedModuleTypes = moduleTypes
-      // Replace `export { type Foo }` with `export { Foo }`
-      .replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
-    const exports = findExports(normalisedModuleTypes)
+    const exports = findExports(withoutTypeModifiers(moduleTypes))
     const typeExports = findTypeExports(moduleTypes)
     moduleReExports.push(...exports, ...typeExports)
 
@@ -71,7 +90,11 @@ export async function writeTypes(distDir: string, isStub: boolean): Promise<void
   const schemaImports: string[] = []
   const moduleExports: string[] = []
 
-  const hasTypeExport = (name: string) => isStub || moduleReExports.find(exp => exp.names?.includes(name))
+  // A star re-export in the source may export any name, so it counts as exporting all of them.
+  const sourceExports = entrySource === undefined ? undefined : [...findExports(withoutTypeModifiers(entrySource)), ...findTypeExports(entrySource)]
+  const hasTypeExport = (name: string) => sourceExports
+    ? sourceExports.some(exp => exp.type === 'star' || exp.names?.includes(name))
+    : moduleReExports.some(exp => exp.names?.includes(name))
 
   if (!hasTypeExport('ModuleOptions')) {
     schemaImports.push('NuxtModule')
@@ -106,12 +129,17 @@ ${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './mo
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${isStub ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
+${sourceExports ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
 ${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexport { ${names.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + n).join(', ')} } from '${specifier}'`).join('\n')}
 ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await fsp.writeFile(dtsFile, dtsContents, 'utf8')
+}
+
+/** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */
+function withoutTypeModifiers(code: string) {
+  return code.replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
 }
 
 function groupNamedReExports(exports: ESMExport[]) {

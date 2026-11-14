@@ -6,6 +6,7 @@ import { readPackageJSON } from 'pkg-types'
 import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
 import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
+import { writeSourceTypes } from '../build/types.ts'
 import { loadModuleConfig, resolveCwdArg, sharedArgs, stubModule } from './_shared.ts'
 
 async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
@@ -30,7 +31,7 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
   const nuxtModule = (moduleExports.default ?? moduleExports) as NuxtModule
   const entryPath = resolve(cwd, './src/module')
 
-  return runCommand('prepare', [cwd], {
+  const result = await runCommand('prepare', [cwd], {
     overrides: {
       compatibilityDate: '2024-04-03',
       typescript: {
@@ -60,6 +61,8 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
       ],
     } satisfies NuxtConfig,
   })
+  await writeSourceTypes(resolve(cwd, '.nuxt/module-builder'), resolve(cwd, entries.module))
+  return result
 }
 
 const prepareArgs = {

@@ -27,7 +27,8 @@ export type GuideSection
     | 'preparing-nuxt'
     | 'module-tsconfig'
     | 'output-directory'
-    | 'developing-without-a-stub'
+    | 'source-exports'
+    | 'publishing-source-exports'
     | 'module-code-loads-with-node'
 
 /** The URL of a section of the upgrade guide. */

@@ -7,6 +7,7 @@ import { exec } from 'tinyexec'
 import { beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 
 import { guide } from '../src/build/guide.ts'
+import { publishedPackage } from '../src/build/package.ts'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const exampleDir = join(repoRoot, 'example')
@@ -19,7 +20,7 @@ async function copyExample(name: string, config: string) {
   await cp(exampleDir, dir, { recursive: true })
   await rm(join(dir, 'dist'), { recursive: true, force: true })
   const pkgPath = join(dir, 'package.json')
-  const { build: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+  const { build: _, publishConfig: __, ...pkg } = publishedPackage(JSON.parse(await readFile(pkgPath, 'utf-8')))
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
   await writeFile(join(dir, 'tsdown.config.ts'), `${builderImport}\n${config}`)
   return dir
@@ -410,9 +411,9 @@ export default {
       const { typesVersions: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
       await writeFile(pkgPath, JSON.stringify({
         ...pkg,
-        exports: { '.': { types: './src/module.ts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+        exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './src/module.ts' }, './utils': './src/utils.ts' },
         main: './src/module.ts',
-        types: './src/module.ts',
+        types: './.nuxt/module-builder/types.d.mts',
         scripts: { prepack: 'node ../node_modules/tsdown/dist/run.mjs' },
         publishConfig: {
           exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' }, './utils': { types: './dist/utils.d.mts', default: './dist/utils.mjs' } },
@@ -423,15 +424,48 @@ export default {
       }, null, 2))
       await rm(join(dir, 'playground/node_modules/my-module'), { force: true })
       await symlink(dir, join(dir, 'playground/node_modules/my-module'))
+      for (const nuxtDir of ['.nuxt', 'playground/.nuxt']) {
+        await rm(join(dir, nuxtDir), { recursive: true, force: true })
+      }
+      await writeFile(join(dir, 'src/module.ts'), (await readFile(join(dir, 'src/module.ts'), 'utf-8')).replace(`import type { SharedTypeFromRuntime } from './runtime/plugins/plugin'`, `type SharedTypeFromRuntime = 'shared-type'`))
     }, 60 * 1000)
 
-    it('should let the playground load the module from its sources, without `dist`', async () => {
-      await rm(join(dir, 'playground/.nuxt'), { recursive: true, force: true })
-      const { exitCode, stdout, stderr } = await exec('node', [join(repoRoot, 'node_modules/nuxt/bin/nuxt.mjs'), 'prepare', 'playground'], { nodeOptions: { cwd: dir, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
+    const nuxtEnv = { ...process.env, NUXT_TELEMETRY_DISABLED: '1' }
+    const typecheckPlayground = (context: string) => exec(join(repoRoot, 'node_modules/.bin/vue-tsc'), ['--noEmit', '-p', join(dir, `playground/.nuxt/tsconfig.${context}.json`)], { nodeOptions: { cwd: dir } })
+
+    it('should let the playground load the module and its type augmentations from its sources, without `dist`', async () => {
+      const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env: nuxtEnv } })
+      expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+      const { exitCode, stdout, stderr } = await exec('node', [join(repoRoot, 'node_modules/nuxt/bin/nuxt.mjs'), 'prepare', 'playground'], { nodeOptions: { cwd: dir, env: nuxtEnv } })
       expect(exitCode, stdout + stderr).toBe(0)
       expect(existsSync(join(dir, 'dist'))).toBe(false)
       expect(await readFile(join(dir, 'playground/.nuxt/types/plugins.d.ts'), 'utf-8')).toContain('src/runtime/plugins/plugin')
+
+      for (const context of ['app', 'node']) {
+        const typecheck = await typecheckPlayground(context)
+        expect(typecheck.stdout + typecheck.stderr, context).toBe('')
+        expect(typecheck.exitCode, context).toBe(0)
+      }
+
+      const pkgPath = join(dir, 'package.json')
+      const pkg = await readFile(pkgPath, 'utf-8')
+      await writeFile(pkgPath, pkg.replaceAll('./.nuxt/module-builder/types.d.mts', './src/module.ts'))
+      try {
+        const [app, node] = await Promise.all(['app', 'node'].map(typecheckPlayground))
+        expect(app!.stdout).toContain(`'"my-module:runtime-hook"' is not assignable`)
+        expect(node!.stdout).toContain(`''my-module:init'' does not exist`)
+      }
+      finally {
+        await writeFile(pkgPath, pkg)
+      }
     }, 120 * 1000)
+
+    it('should refuse to pack with npm, which publishes the source paths', async () => {
+      const { exitCode, stdout, stderr } = await exec('npm', ['pack', '--dry-run'], { nodeOptions: { cwd: dir, env: { ...process.env, npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' } } })
+      expect(exitCode).not.toBe(0)
+      expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
+      expect(stdout + stderr).toContain(guide('publishing-source-exports'))
+    }, 60 * 1000)
 
     it('should check the published paths of `package.json` after a build', async () => {
       const { exitCode, stdout, stderr } = await tsdown(dir)

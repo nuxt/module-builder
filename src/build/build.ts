@@ -264,7 +264,7 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   if (plan.writesTypes) {
     await rm(typesFile, { force: true })
   }
-  await writeTypes(outDir, false)
+  await writeTypes(outDir)
   await callBuildHook(plan.config, 'rollup:done', plan.ctx)
   await rewriteRuntimeDeclarations(outDir, outputs)
 

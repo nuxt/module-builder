@@ -4,7 +4,7 @@ import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 
 import { guide } from './guide.ts'
-import { publishedPackage } from './package.ts'
+import { collectStrings, publishedPackage, sourcePaths } from './package.ts'
 
 /**
  * Warn about `package.json` fields that point at output this builder no longer produces.
@@ -84,12 +84,11 @@ export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
 }
 
 export function checkSourcePaths(cwd: string, pkg: PackageJSON): boolean {
-  const src = resolve(cwd, 'src')
-  const paths = referencedPaths(pkg).filter(path => !relative(src, resolve(cwd, path)).startsWith('..'))
+  const paths = sourcePaths(cwd, pkg).map(({ path }) => path)
   if (!paths.length) {
     return false
   }
-  consola.warn(`These paths in \`package.json\` are published pointing at the module's sources: ${list(paths)}. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('developing-without-a-stub')}`)
+  consola.warn(`These paths in \`package.json\` are published pointing at the module's sources: ${list(paths)}. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('source-exports')}`)
   return true
 }
 
@@ -129,17 +128,4 @@ function missingPaths(cwd: string, pkg: PackageJSON): string[] {
 
 function referencedPaths(pkg: PackageJSON): string[] {
   return [...[pkg.exports, pkg.typesVersions, pkg.types, pkg.main, pkg.module].flatMap(collectStrings), ...collectStrings(pkg.imports).filter(path => path.startsWith('./'))]
-}
-
-function collectStrings(value: unknown): string[] {
-  if (typeof value === 'string') {
-    return [value]
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap(collectStrings)
-  }
-  if (value && typeof value === 'object') {
-    return Object.values(value).flatMap(collectStrings)
-  }
-  return []
 }

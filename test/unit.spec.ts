@@ -20,7 +20,9 @@ import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigP
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkSourcePaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { publishedPackage } from '../src/build/package.ts'
+import { publishedPackage, sourcePathsPackError } from '../src/build/package.ts'
+import { writeSourceTypes } from '../src/build/types.ts'
+import ts from 'typescript'
 import { guide } from '../src/build/guide.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
@@ -551,11 +553,12 @@ describe('deprecation checks', () => {
       },
     }
     expect(checkSourcePaths(cwd, publishedPackage(pkg))).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(`These paths in \`package.json\` are published pointing at the module's sources: \`./src/module.ts\`. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('developing-without-a-stub')}`)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`These paths in \`package.json\` are published pointing at the module's sources: \`./src/module.ts\`. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('source-exports')}`)
     warn.mockClear()
     expect(checkSourcePaths(cwd, publishedPackage({ ...pkg, publishConfig: { ...pkg.publishConfig, types: './dist/types.d.mts' } }))).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     expect(checkSourcePaths(cwd, publishedPackage({ imports: { '#shared/*': './src/runtime/shared/*.ts' } }))).toBe(true)
+    expect(checkSourcePaths(cwd, publishedPackage({ exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './dist/module.mjs' } } }))).toBe(true)
     warn.mockRestore()
   })
 
@@ -625,6 +628,133 @@ describe('deprecation checks', () => {
     expect(checkStaleTypesField(cwd, {})).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+})
+
+describe('sourcePathsPackError', () => {
+  const cwd = '/mod'
+  const pkg = {
+    exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+    imports: { '#shared/*': './src/runtime/shared/*.ts', '#dep': 'some-dependency' },
+    main: './src/module.ts',
+    types: './.nuxt/module-builder/types.d.mts',
+    typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } },
+    publishConfig: {
+      exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' }, './utils': './dist/utils.mjs' },
+      imports: { '#shared/*': './dist/runtime/shared/*.js', '#dep': 'some-dependency' },
+      main: './dist/module.mjs',
+      types: './dist/types.d.mts',
+    },
+  }
+  const pack = (agent: string, execpath: string, event = 'prepack') => ({ npm_lifecycle_event: event, npm_config_user_agent: `${agent} npm/? node/v24.21.0 linux arm64`, npm_execpath: execpath })
+  const pnpm = pack('pnpm/12.11.2', '/home/me/.local/share/pnpm/12.11.2/pnpm')
+  const npm = pack('npm/11.19.0', '/usr/lib/node_modules/npm/bin/npm-cli.js')
+  const yarn = pack('yarn/4.18.1', '/tmp/xfs-73007f9c/yarn')
+  const yarnClassic = pack('yarn/1.22.22', '/usr/lib/node_modules/yarn/bin/yarn.js')
+  const bun = pack('bun/1.3.14', '/home/me/.bun/bin/bun')
+
+  it('should pass packs that replace every source path from `publishConfig`', () => {
+    expect(sourcePathsPackError(cwd, pkg, pnpm)).toBeUndefined()
+    expect(sourcePathsPackError(cwd, pkg, { ...pnpm, npm_lifecycle_event: 'prepublishOnly' })).toBeUndefined()
+    expect(sourcePathsPackError(cwd, pkg, yarn)).toBeUndefined()
+    expect(sourcePathsPackError(cwd, publishedPackage(pkg), npm)).toBeUndefined()
+  })
+
+  it('should only check `prepack` and `prepublishOnly` scripts', () => {
+    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_lifecycle_event: 'build' })).toBeUndefined()
+    expect(sourcePathsPackError(cwd, pkg, {})).toBeUndefined()
+  })
+
+  it('should refuse packs by package managers that publish the source paths as written', () => {
+    const fix = `Point them at \`dist\`, or pack and publish with pnpm or Yarn 4, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`
+    const paths = '`./.nuxt/module-builder/types.d.mts`, `./src/module.ts`, `./src/utils.ts`, `./src/runtime/shared/*.ts`'
+    expect(sourcePathsPackError(cwd, pkg, npm)).toBe(`\`npm@11.19.0\` packs these fields of \`package.json\` as written, and they point at the module's sources: \`exports\`, \`imports\`, \`main\`, \`types\` (${paths}). ${fix}`)
+    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_lifecycle_event: 'prepublishOnly' })).toContain('`npm@11.19.0` packs')
+    expect(sourcePathsPackError(cwd, pkg, yarnClassic)).toContain('`yarn@1.22.22` packs')
+    expect(sourcePathsPackError(cwd, pkg, bun)).toContain('`bun@1.3.14` packs')
+    expect(sourcePathsPackError(cwd, pkg, { npm_lifecycle_event: 'prepack' })).toContain('This package manager packs')
+  })
+
+  it('should name the package manager that packs when a script of another one runs it', () => {
+    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_config_user_agent: pnpm.npm_config_user_agent })).toContain('`npm` packs')
+    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: pnpm.npm_execpath })).toContain('`yarn@1.22.22` packs')
+    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: npm.npm_execpath })).toContain('`yarn@1.22.22` packs')
+    expect(sourcePathsPackError(cwd, pkg, { ...yarn, npm_execpath: npm.npm_execpath })).toContain('`npm` packs')
+  })
+
+  it('should refuse source paths that `publishConfig` does not replace', () => {
+    const { types: _, ...publishConfig } = pkg.publishConfig
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`package.json\` point at the module's sources, and \`publishConfig\` does not replace them, so they would be published as written: \`types\` (\`./.nuxt/module-builder/types.d.mts\`). Set \`publishConfig.types\` to the \`dist\` paths. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, { exports: pkg.exports }, pnpm)).toContain('Set `publishConfig.exports` to the `dist` paths.')
+  })
+
+  it('should refuse `typesVersions` that point at sources when Yarn packs', () => {
+    const typesVersions = { '*': { utils: ['./src/utils.ts'] } }
+    const sourceTypesVersions = { ...pkg, typesVersions, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } } } }
+    expect(sourcePathsPackError(cwd, sourceTypesVersions, pnpm)).toBeUndefined()
+    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)).toBe(`\`yarn@4.18.1\` packs these fields of \`package.json\` as written, and they point at the module's sources: \`typesVersions\` (\`./src/utils.ts\`). Point them at \`dist\`, or pack and publish with pnpm, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`)
+  })
+
+  it('should refuse the fields that Yarn 2 and 3 pack as written', () => {
+    const yarn2 = pack('yarn/2.4.2', '/tmp/xfs-b1b0ae8e/yarn')
+    const yarn3 = pack('yarn/3.8.7', '/tmp/xfs-e94f6087/yarn')
+    expect(sourcePathsPackError(cwd, pkg, yarn2)).toContain('`yarn@2.4.2` packs these fields of `package.json` as written, and they point at the module\'s sources: `exports`, `imports`, `types` (')
+    expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at the module\'s sources: `types` (`./.nuxt/module-builder/types.d.mts`)')
+    expect(sourcePathsPackError(cwd, { main: pkg.main, publishConfig: { main: pkg.publishConfig.main } }, yarn2)).toBeUndefined()
+    expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toContain('`yarn@5.0.0` packs')
+  })
+})
+
+describe('writeSourceTypes', () => {
+  it('should re-export the module entry and add its type augmentations', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-source-types-'))
+    await mkdir(join(cwd, 'src'))
+    await writeFile(join(cwd, 'src/module.ts'), `export interface ModuleHooks {}\nexport default {}\n`)
+    const dir = join(cwd, '.nuxt/module-builder')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'stale.d.mts'), '')
+    await writeSourceTypes(dir, join(cwd, 'src/module.ts'))
+    expect((await readdir(dir)).sort()).toEqual(['module.d.mts', 'types.d.mts'])
+    expect(await readFile(join(dir, 'module.d.mts'), 'utf-8')).toBe(`export * from '../../src/module.js'\nexport { default } from '../../src/module.js'\n`)
+    expect(await readFile(join(dir, 'types.d.mts'), 'utf-8')).toMatchInlineSnapshot(`
+      "import type { NuxtModule } from '@nuxt/schema'
+
+      import type { default as Module, ModuleHooks } from './module.mjs'
+
+      declare module '@nuxt/schema' {
+        interface NuxtHooks extends ModuleHooks {}
+      }
+
+      export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>
+      export * from "./module.mjs"
+      export { default } from "./module.mjs"
+      "
+    `)
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('should write declarations that type-check, and augment every interface that a star re-export may export', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-source-types-'))
+    await mkdir(join(cwd, 'src'))
+    await writeFile(join(cwd, 'ambient.d.ts'), [
+      `declare module '@nuxt/schema' {\n  interface NuxtHooks {}\n  interface RuntimeConfig {}\n  interface PublicRuntimeConfig {}\n  type NuxtModule<T> = { options?: T }\n}`,
+      `declare module '#app' {\n  interface RuntimeNuxtHooks {}\n}`,
+    ].join('\n'))
+    const check = async (module: string, files: Record<string, string> = {}) => {
+      for (const [file, contents] of Object.entries({ 'src/module.ts': module, ...files })) {
+        await writeFile(join(cwd, file), contents)
+      }
+      await writeSourceTypes(join(cwd, '.nuxt/module-builder'), join(cwd, 'src/module.ts'))
+      await writeFile(join(cwd, 'probe.ts'), `import type { NuxtHooks } from '@nuxt/schema'\nimport type { ModuleOptions } from './.nuxt/module-builder/types.mjs'\n\nexport const options: ModuleOptions = { key: 'value' }\nexport type Hook = NuxtHooks['my-module:init']\n`)
+      const program = ts.createProgram([join(cwd, 'ambient.d.ts'), join(cwd, 'probe.ts')], { noEmit: true, strict: true, skipLibCheck: false, allowImportingTsExtensions: true, types: [], module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, target: ts.ScriptTarget.ESNext })
+      return ts.getPreEmitDiagnostics(program).map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+    }
+    const module = `export interface ModuleHooks { 'my-module:init': () => void }\nexport default { options: { key: '' } } as { options?: { key: string } }\n`
+    expect(await check(module)).toEqual([])
+    expect(await check(`export * from './types.ts'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
+      'src/types.ts': `export interface ModuleOptions { key: string }\nexport interface ModuleHooks { 'my-module:init': () => void }\nexport interface ModuleRuntimeHooks {}\nexport interface ModuleRuntimeConfig {}\nexport interface ModulePublicRuntimeConfig {}\n`,
+    })).toEqual([])
+    await rm(cwd, { recursive: true, force: true })
   })
 })
 

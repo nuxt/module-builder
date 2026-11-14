@@ -130,7 +130,7 @@ A minimum `package.json` should look like this:
 }
 ```
 
-`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. With pnpm, the playground can also load the module from its sources without a stub: see [Developing without a stub](./docs/upgrade-v2.md#developing-without-a-stub).
+`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. With pnpm or Yarn 4, the playground can also load the module from its sources without a stub: see [Source exports](./docs/upgrade-v2.md#source-exports).
 
 Module code (`src/module.ts`, the files it imports by value, and the build config) has to load with Node as it is: relative imports carry their `.ts` extension, and TypeScript syntax that stripping types doesn't remove, tsconfig `paths` aliases, value imports of `.vue` and `.tsx` files, JSON without `with { type: 'json' }`, and value imports of `#app`, `#imports`, and `#build/*` aren't allowed. See [Module code loads with Node](./docs/upgrade-v2.md#module-code-loads-with-node).
 

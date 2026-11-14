@@ -11,6 +11,7 @@ import { assertNoLegacyBuildConfig, loadBuildConfig, resolveModuleOptions, resol
 import type { BuilderOptions } from '../build/build-config.ts'
 import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
+import { sourcePathsPackError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { externalDependencyDeclarations } from './externals.ts'
@@ -73,6 +74,10 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   const cwd = resolve(config.cwd ?? process.cwd())
   const pkg = await readPackageJSON(cwd)
+  const packError = sourcePathsPackError(cwd, pkg)
+  if (packError) {
+    throw new Error(packError)
+  }
   const outDirOption = config.outDir ?? 'dist'
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
   if (!legacy) {
