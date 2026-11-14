@@ -182,7 +182,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       const changed = [
         ...resolved.format !== 'es' ? ['format'] : [],
         ...Object.keys(resolved.entry).length !== Object.keys(plan.entries).length || Object.entries(plan.entries).some(([name, input]) => !resolved.entry[name] || resolve(cwd, resolved.entry[name]) !== resolve(cwd, input)) ? ['entry'] : [],
-        ...resolved.outDir !== outDir ? ['outDir'] : [],
+        ...resolve(resolved.outDir) !== outDir ? ['outDir'] : [],
         ...!resolved.dts || resolved.dts.tsconfig !== dts.tsconfig ? ['dts'] : [],
         ...resolved.clean.length ? ['clean'] : [],
         ...resolved.unbundle ? ['unbundle'] : [],
