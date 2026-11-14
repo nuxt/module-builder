@@ -27,8 +27,16 @@ async function copyExample(name: string, config: string) {
   return dir
 }
 
-/** The environment that `npm pack` gives `prepack` when a pnpm script runs it. */
-const npmPackFromPnpmScript = { npm_lifecycle_event: 'prepack', npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64', NODE_ENV: '', TEST: '' }
+/**
+ * The environment that `npm pack` gives `prepack` when a pnpm script runs it. Windows matches
+ * variable names case-insensitively and passes on the first in sort order, so each one is also
+ * set under the names the test runner inherited it with.
+ */
+function npmPackFromPnpmScript(): Record<string, string> {
+  const vars: Record<string, string> = { npm_lifecycle_event: 'prepack', npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' }
+  const inherited = Object.keys(process.env).filter(key => Object.hasOwn(vars, key.toLowerCase()) && !Object.hasOwn(vars, key))
+  return { ...vars, ...Object.fromEntries(inherited.map(key => [key, vars[key.toLowerCase()]!])) }
+}
 
 const tsdown = (cwd: string, args: string[] = []) => exec('node', [tsdownBin, ...args], { nodeOptions: { cwd, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
 
@@ -513,8 +521,8 @@ export default {
     }, 120 * 1000)
 
     it('should refuse to build for a pack by npm, which publishes the source paths', async () => {
-      const { exitCode, stdout, stderr } = await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env: { ...process.env, ...npmPackFromPnpmScript } } })
-      expect(exitCode, stdout + stderr).not.toBe(0)
+      const { exitCode, stdout, stderr } = await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env: { ...npmPackFromPnpmScript(), NODE_ENV: '', TEST: '' } } })
+      expect(exitCode, `${Object.keys(process.env).filter(key => /^npm_(?:lifecycle_event|execpath|config_user_agent)$/i.test(key)).join(', ')}\n${stdout}${stderr}`).not.toBe(0)
       expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
       expect(stdout + stderr).toContain(guide('publishing-source-exports'))
     }, 60 * 1000)
