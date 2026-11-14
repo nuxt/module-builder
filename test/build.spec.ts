@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -15,17 +16,15 @@ import { guide } from '../src/build/guide.ts'
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
 
 const RUNTIME_IMPORTS = `
-import { useWrappedFetch } from './runtime/composables/useWrappedFetch.ts'
-import { useAppFromNuxt } from '~~/src/runtime/composables/useAppNuxt'
+import { name } from './runtime/utils/name.ts'
+import { aliased } from '#runtime/utils/aliased'
 import { useShape } from './runtime/composables/useShape.ts'
-import TestMe from './runtime/components/TestMe.vue'
+import type TestMe from './runtime/components/TestMe.vue'
 import type JsxComponent from './runtime/components/JsxComponent.tsx'
-import { label } from './runtime/utils/label.tsx'
-export const runtimeRefs = [useWrappedFetch, useAppFromNuxt, useShape, TestMe, label]
+export const runtimeRefs = [name, aliased, useShape]
+export type TestMeType = typeof TestMe
 export type JsxComponentType = typeof JsxComponent
-export { useFetch, useNuxtApp as useApp } from '#app'
-export { useNuxtApp as useDeepApp } from '#app/nuxt'
-export { type NuxtApp, useRuntimeConfig } from '#app'
+export type { NuxtApp } from '#app'
 `
 
 describe('module builder', () => {
@@ -110,7 +109,9 @@ export default defineNuxtModule({
 
     await copyExample(extensionlessRootDir, contents => `${contents}\nexport { myModuleUtils } from './utils.js'\nexport { helper } from './helpers'\nexport { kit } from './kit'\nexport type { Kit } from './kit'\n`)
 
-    await copyExample(nodeStubRootDir, () => `${minimalModule('node-stub')()}\nexport { nativeValue } from './native-helper.ts'\n`)
+    await copyExample(nodeStubRootDir, () => `${minimalModule('node-stub')()}\nexport { nativeValue } from './native-helper.ts'\nexport { internal } from '#internal/value'\n`)
+    const nodeStubPkg = join(nodeStubRootDir, 'package.json')
+    await writeFile(nodeStubPkg, JSON.stringify({ ...JSON.parse(await readFile(nodeStubPkg, 'utf-8')), imports: { '#internal/*': './src/internal/*.ts' } }, null, 2))
 
     await copyExample(noRuntimeRootDir, minimalModule('no-runtime'))
     await rm(join(noRuntimeRootDir, 'src/runtime'), { force: true, recursive: true })
@@ -239,6 +240,7 @@ export default defineNuxtModule({
     await writeFiles(nodeStubRootDir, {
       'src/native-helper.ts': `import { inner } from './nested/inner.ts'\n\nexport const nativeValue: string = inner\n`,
       'src/nested/inner.ts': `export const inner: string = 'loaded helper'\n`,
+      'src/internal/value.ts': `export const internal: string = 'through imports'\n`,
     })
 
     await writeFiles(prepareLoaderRootDir, {
@@ -251,12 +253,16 @@ export default defineNuxtModule({
       'node_modules/fake-esm-split/index.cjs': `module.exports = { value: 0, other: 1 }\n`,
       'src/deps.ts': `// @ts-ignore untyped\nimport cjs from 'fake-cjs-marker'\n// @ts-ignore untyped\nimport { value, other } from 'fake-esm-split'\n\nexport const deps: unknown[] = [cjs, value, other]\n`,
       'src/deep/a.ts': `export { deep } from './b.ts'\n`,
-      'src/deep/b.ts': `import pkg from '../../package.json'\n\nexport const deep: string = pkg.name\n`,
+      'src/deep/b.ts': `import pkg from '../../package.json' with { type: 'json' }\n\nexport const deep: string = pkg.name\n`,
     })
 
     for (const dir of [thirdRootDir, encodedRootDir]) {
+      const pkgPath = join(dir, 'package.json')
+      await writeFile(pkgPath, JSON.stringify({ ...JSON.parse(await readFile(pkgPath, 'utf-8')), imports: { '#runtime/*': './src/runtime/*.ts' } }, null, 2))
       await writeFiles(dir, {
-        'src/runtime/composables/useShape.ts': `import { shape } from '../utils/shape'\n\nexport const useShape = (): string => shape\n`,
+        'src/runtime/composables/useShape.ts': `import { shape } from '../utils/shape.ts'\n\nexport const useShape = (): string => shape\n`,
+        'src/runtime/utils/name.ts': `export const name: string = 'name'\n`,
+        'src/runtime/utils/aliased.ts': `export const aliased: string = 'aliased'\n`,
         'src/runtime/utils/shape.ts': `export const shape: string = 'shape'\n`,
         'src/runtime/components/JsxCard.vue': `<script setup lang="ts">\nimport JsxComponent from './JsxComponent'\n</script>\n\n<template>\n  <JsxComponent />\n</template>\n`,
         'src/runtime/components/JsxSlot.tsx': `import { defineComponent } from 'vue'\nimport { useNuxtApp } from '#app'\nimport JsxComponent from './JsxComponent'\n\nexport const useSlotApp = () => useNuxtApp()\n\nexport default defineComponent((_, { slots }) => () => <section><JsxComponent />{slots.default?.()}</section>)\n`,
@@ -722,16 +728,21 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(unplugin).toMatch(/isDev = false/)
   })
 
-  it('should stub a module whose source needs more than type stripping', async () => {
-    const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', stubSyntaxRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
-    expect(exitCode).toBe(0)
-    expect(JSON.parse(await readFile(join(stubSyntaxRootDir, 'dist/module.json'), 'utf-8')).name).toBe('my-module-stub-high')
-    expect((stdout + stderr).match(/erasableSyntaxOnly/g)).toHaveLength(1)
-    expect(stdout + stderr).toContain(guide('stub-builds'))
-    expect(stdout + stderr).toContain('\n  - src/module.ts:4:1: `enum`')
-    expect(stdout + stderr).toContain('\n  - src/levels.ts:1:1: `enum`')
-    expect(stdout + stderr).not.toContain('do not exist after the build')
-  }, 60 * 1000)
+  it('should fail on TypeScript syntax that Node cannot strip, with how to rewrite it', async () => {
+    for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
+      const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', ...args, stubSyntaxRootDir], { nodeOptions: { cwd: repoRoot } })
+      expect(exitCode, args.join(' ')).not.toBe(0)
+      expect(stdout + stderr, args.join(' ')).toContain([
+        'Module code has to load with Node, which strips types and resolves imports as written:',
+        '  - src/levels.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+        '  - src/module.ts:1:37: `../package.json` is JSON (use `import pkg from \'../package.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
+        '  - src/module.ts:4:1: `enum` (use an `as const` object and a union type of its values)',
+        '  - src/module.ts:5:28: parameter property (declare the field and assign it in the constructor)',
+      ].join('\n'))
+      expect(stdout + stderr, args.join(' ')).toMatch(/src\/module\.ts:\d+:\d+: angle-bracket type assertion \(write `value as Type`\)/)
+      expect(stdout + stderr, args.join(' ')).toContain(guide('module-code-loads-with-node'))
+    }
+  }, 120 * 1000)
 
   it('should refuse an `outDir` that contains the module root', async () => {
     for (const outDir of ['.', '..']) {
@@ -746,7 +757,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   it('should warn that `build.config.ts` is deprecated and stub its entries', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', '--outDir', '.stub', buildConfigRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, CI: '' } } })
     expect(exitCode).toBe(0)
-    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('build-configuration')}`))
+    expect(stdout + stderr).toMatch(new RegExp(`\`build\\.config\\.ts\` is deprecated\\..*${guide('moving-from-buildconfigts')}`))
     expect(stdout + stderr).not.toContain('instead of')
     expect(stdout + stderr).not.toContain('`unbuild` field')
     const files = await listFiles(join(buildConfigRootDir, '.stub'))
@@ -863,12 +874,17 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(existsSync(join(unpreparedRootDir, '.nuxt'))).toBe(false)
   })
 
-  it('should write a stub that Node loads with nothing but its own type stripping', async () => {
+  it('should write a stub that Node loads with nothing but its own type stripping, and bundle the `imports` of `package.json`', async () => {
     await exec('pnpm', ['nuxt-module-build', 'build', '--stub', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-    const script = `const m = await import(${JSON.stringify(pathToFileURL(join(nodeStubRootDir, 'dist/module.mjs')).href)}); console.log(JSON.stringify([typeof m.default, m.nativeValue, Object.keys(m).sort()]))`
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(join(nodeStubRootDir, 'dist/module.mjs')).href)}); console.log(JSON.stringify([typeof m.default, m.nativeValue, m.internal, Object.keys(m).sort()]))`
     const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { cwd: nodeStubRootDir }, throwOnError: true })
-    expect(JSON.parse(stdout)).toEqual(['function', 'loaded helper', ['default', 'nativeValue']])
-  })
+    expect(JSON.parse(stdout)).toEqual(['function', 'loaded helper', 'through imports', ['default', 'internal', 'nativeValue']])
+
+    await exec('pnpm', ['nuxt-module-build', 'build', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+    const built = await readFile(join(nodeStubRootDir, 'dist/module.mjs'), 'utf-8')
+    expect(built).toContain('through imports')
+    expect(built).not.toContain('#internal')
+  }, 60 * 1000)
 
   it('should re-export the module\'s default export from stub types', async () => {
     await exec('pnpm', ['nuxt-module-build', 'build', '--stub', nodeStubRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
@@ -885,11 +901,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
       const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', ...args, extensionlessRootDir], { nodeOptions: { cwd: repoRoot } })
       expect(exitCode).not.toBe(0)
       expect(stdout + stderr).toContain([
-        'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
+        'Module code has to load with Node, which strips types and resolves imports as written:',
         `  - src/module.ts:${sourceLine}:31: \`./utils.js\` (use \`./utils.ts\`)`,
         `  - src/module.ts:${sourceLine + 1}:24: \`./helpers\` (use \`./helpers.ts\`)`,
         `  - src/module.ts:${sourceLine + 2}:21: \`./kit\` (use \`./kit/index.ts\`)`,
-        `Write each specifier as suggested. ${guide('import-extensions-in-module-code')}`,
+        `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
       ].join('\n'))
       expect(stdout + stderr).not.toContain(`:${sourceLine + 3}:`)
     }
@@ -1368,7 +1384,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(JSON.parse(meta)).toMatchObject({ configKey: 'myModule', name: 'my-module' })
   })
 
-  it('should generate module metadata when the module entry re-exports from a build-only alias', async () => {
+  it('should generate module metadata for a stub whose module entry imports runtime code', async () => {
     await exec('pnpm', ['nuxt-module-build', 'build', '--stub', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
     const meta = JSON.parse(await readFile(join(thirdDistDir, 'module.json'), 'utf-8'))
     expect(meta).toMatchObject({ configKey: 'myModule', name: 'my-module' })
@@ -1420,11 +1436,9 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const specifiers = findStaticImports(moduleCode).map(i => i.specifier).filter(s => s.includes('runtime'))
     expect(specifiers.sort()).toMatchInlineSnapshot(`
       [
-        "./runtime/components/TestMe.vue",
-        "./runtime/composables/useAppNuxt.js",
         "./runtime/composables/useShape.js",
-        "./runtime/composables/useWrappedFetch.js",
-        "./runtime/utils/label.js",
+        "./runtime/utils/aliased.js",
+        "./runtime/utils/name.js",
       ]
     `)
   })
@@ -1440,11 +1454,9 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const runtimeSpecifiers = (code: string) => findStaticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
 
     expect(runtimeSpecifiers(await readFile(join(encodedDistDir, 'module.mjs'), 'utf-8'))).toEqual([
-      './runtime/components/TestMe.vue',
-      './runtime/composables/useAppNuxt.js',
       './runtime/composables/useShape.js',
-      './runtime/composables/useWrappedFetch.js',
-      './runtime/utils/label.js',
+      './runtime/utils/aliased.js',
+      './runtime/utils/name.js',
     ])
     expect(JSON.parse(await readFile(join(encodedDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
     expect(await readFile(join(encodedDistDir, 'types.d.mts'), 'utf-8')).toContain('from \'./module.mjs\'')
@@ -1526,12 +1538,13 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(findStaticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
   })
 
-  it('should compile JSX in server runtime files, module entry imports, and the files they import', async () => {
+  it('should compile JSX in server runtime files and the files they import, and preserve it elsewhere', async () => {
     const runtime = join(thirdDistDir, 'runtime')
     expect(existsSync(join(runtime, 'server/render.jsx'))).toBe(false)
-    for (const file of ['utils/strong.js', 'utils/bold.js', 'utils/label.js']) {
+    for (const file of ['utils/strong.js', 'utils/bold.js']) {
       expect(await readFile(join(runtime, file), 'utf-8'), file).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
     }
+    expect(await readFile(join(runtime, 'utils/label.jsx'), 'utf-8')).toContain('<span>label</span>')
     expect(JSON.parse(await readFile(join(thirdDistDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module' })
     expect(await readFile(join(runtime, 'server/render.js'), 'utf-8')).toMatchInlineSnapshot(`
       "import { strong } from "../utils/strong.js";
@@ -1545,5 +1558,104 @@ export const defineOptions = (options: Options) => ({ options, helper })
       export declare const render: (label: string) => import("vue/jsx-runtime").JSX.Element;
       "
     `)
+  })
+
+  describe('with plain `tsdown` and `builder()`', () => {
+    const env = { ...process.env, NODE_ENV: '', TEST: '' }
+    const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
+    const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
+    const ejectedExampleRootDir = rootDir.replace('example', '.temp-example-ejected')
+
+    const hashDir = async (dir: string) => {
+      const files = (await readdir(dir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return Object.fromEntries(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(dir, path), createHash('sha256').update(await readFile(path)).digest('hex')] as const
+      })))
+    }
+
+    const writeTsdownConfig = (dir: string, options: string, { imports = [] as string[], hooks = [] as string[] } = {}) => writeFile(join(dir, 'tsdown.config.ts'), [
+      builderImport,
+      ...imports,
+      '',
+      'export default {',
+      ...hooks,
+      `  plugins: [builder(${options})],`,
+      '}',
+      '',
+    ].join('\n'))
+
+    const eject = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await writeTsdownConfig(dir, build ? JSON.stringify(build) : '')
+    }
+
+    const ejectBuildConfig = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await rm(join(dir, 'build.config.ts'))
+      await writeTsdownConfig(dir, `{
+    entries: ['src/utils', './src/vite.ts', { input: 'src/content', name: 'content' }, 'src/nested/helper', { input: 'src/shared/', outDir: 'dist/shared' }, { input: 'src/features/', outDir: 'dist/features', ext: 'js' }],
+    externals,
+    replace: { __MODULE_VERSION__: JSON.stringify('1.2.3') },
+  }`, {
+        imports: [`import { writeFileSync } from 'node:fs'`, `import { join } from 'node:path'`, `import { externals } from './build/externals.ts'`],
+        hooks: [
+          `  hooks: {`,
+          `    'build:prepare'(ctx) {`,
+          `      writeFileSync(join(ctx.options.cwd, 'src/generated.ts'), 'export const generated = "from build:before"\\n')`,
+          `    },`,
+          `  },`,
+        ],
+      })
+    }
+
+    const ejectReplace = async (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      const { build: _build, unbuild: _unbuild, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+      await rm(join(dir, 'build.config.ts'))
+      await writeTsdownConfig(dir, `{
+    entries: ['./src/unplugin'],
+    externals: ['#build/ui', 'ext-pkg'],
+    replace: { delimiters: ['', ''], values: { "process.argv.includes('--uiDev')": 'false' } },
+  }`)
+    }
+
+    it('should build the same `dist` as `nuxt-module-build build` did without it, for every module that builds', async () => {
+      await rm(ejectedExampleRootDir, { recursive: true, force: true })
+      await cp(rootDir, ejectedExampleRootDir, { recursive: true })
+      const fixtures: Array<[dir: string, eject: (dir: string) => Promise<void>]> = [
+        [ejectedExampleRootDir, eject],
+        ...[secondRootDir, thirdRootDir, fourthRootDir, encodedRootDir, noRuntimeRootDir, vueOnlyRootDir, annotatedRootDir, transpileRootDir, solutionRootDir, join(parentTsconfigRootDir, 'packages/mod'), portableRootDir, stylesheetsRootDir, runtimeShapeRootDir, routesRootDir, autoPrepareRootDir, semanticErrorRootDir].map(dir => [dir, eject] as [string, typeof eject]),
+        [buildConfigRootDir, ejectBuildConfig],
+        [replaceRootDir, ejectReplace],
+      ]
+      await Promise.all(fixtures.map(async ([dir, ejectFixture]) => {
+        await exec('pnpm', ['nuxt-module-build', 'build', dir], { nodeOptions: { cwd: repoRoot, env }, throwOnError: true })
+        const built = await hashDir(join(dir, 'dist'))
+        expect(Object.keys(built), dir).toContain('module.json')
+        await ejectFixture(dir)
+        await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env }, throwOnError: true })
+        expect(await hashDir(join(dir, 'dist')), dir).toEqual(built)
+        await exec('pnpm', ['nuxt-module-build', 'build', dir], { nodeOptions: { cwd: repoRoot, env }, throwOnError: true })
+        expect(await hashDir(join(dir, 'dist')), dir).toEqual(built)
+      }))
+    }, 300 * 1000)
+
+    it('should explain failed builds and remove their partial output', async () => {
+      await Promise.all([typeErrorRootDir, vueErrorRootDir, isolatedRootDir].map(eject))
+      const [typeError, vueError, isolated] = await Promise.all([typeErrorRootDir, vueErrorRootDir, isolatedRootDir].map(dir => exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env } })))
+      for (const [result, dir] of [[typeError, typeErrorRootDir], [vueError, vueErrorRootDir]] as const) {
+        expect(result!.exitCode, dir).not.toBe(0)
+        expect(result!.stdout + result!.stderr, dir).toContain('Type declarations could not be generated')
+        expect(existsSync(join(dir, 'dist')), dir).toBe(false)
+      }
+      expect(isolated!.exitCode).not.toBe(0)
+      expect(isolated!.stdout + isolated!.stderr).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
+    }, 120 * 1000)
   })
 })

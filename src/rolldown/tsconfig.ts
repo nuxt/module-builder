@@ -251,6 +251,15 @@ async function writeCached(cwd: string, extension: string, contents: string) {
   if (existsSync(file)) {
     return file
   }
+  return writeAtomic(file, contents)
+}
+
+/** A path in the cache directory that keeps its name whatever is written to it. */
+export function namedCachePath(cwd: string, name: string): string {
+  return join(cacheDir(cwd), name)
+}
+
+async function writeAtomic(file: string, contents: string) {
   await mkdir(dirname(file), { recursive: true })
   const temp = `${file}.${randomUUID()}`
   await writeFile(temp, contents)
@@ -313,9 +322,9 @@ export function writeServerRoutesStub(cwd: string): Promise<string> {
  * that are not followed get an ambient `declare module` through `types`. Declarations are
  * inferred, so `isolatedDeclarations` is off. The files are listed rather than inherited,
  * less those of a playground (see {@link projectFiles}). Each project in `references` is
- * derived the same way.
+ * derived the same way. It is written to `file`, or by default to a content-addressed path.
  */
-export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult | undefined, paths: Record<string, string[]>): Promise<string> {
+export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult | undefined, paths: Record<string, string[]>, file?: string): Promise<string> {
   const declaration = declarationPaths({ ...tsconfigPaths(tsconfig), ...paths }, cwd)
   await writeServerRoutesStub(cwd)
   const compilerOptions: Record<string, unknown> = { paths: declaration.paths, isolatedDeclarations: false }
@@ -328,12 +337,13 @@ export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult
   const references = await Promise.all(referencedProjects(tsconfig).map(async project => ({ path: await writeDerivedTsconfig(cwd, project, paths) })))
   const { default: ts } = await import('typescript')
   const parsed = tsconfig && ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} })
-  return writeCached(cwd, '.json', JSON.stringify({
+  const contents = JSON.stringify({
     ...tsconfig && { extends: tsconfig.path },
     ...tsconfig && { files: projectFiles(parsed, cwd).map(file => relative(cacheDir(cwd), file)), include: [] },
     compilerOptions,
     ...references.length && { references },
-  }))
+  })
+  return file ? writeAtomic(file, contents) : writeCached(cwd, '.json', contents)
 }
 
 async function automaticTypes(tsconfig: TsConfigResult | undefined, cwd: string) {

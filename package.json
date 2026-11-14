@@ -8,6 +8,7 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./rolldown": "./dist/rolldown.mjs",
+    "./tsdown": "./dist/tsdown.mjs",
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -17,6 +18,9 @@
       ],
       "rolldown": [
         "./dist/rolldown.d.mts"
+      ],
+      "tsdown": [
+        "./dist/tsdown.d.mts"
       ],
       "package.json": [
         "package.json"

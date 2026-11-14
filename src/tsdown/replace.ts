@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { resolvePath } from 'mlly'
 import type { Rolldown } from 'tsdown'
 
-import type { ReplaceOptions } from './build-config.ts'
+import type { ReplaceOptions } from '../build/build-config.ts'
 
 /**
  * rolldown's built-in replace plugin. It is loaded from the copy of rolldown that

@@ -7,7 +7,7 @@ import type { PackageJson } from 'pkg-types'
 import type { BuildContext, BuildHook } from './define.ts'
 import { guide } from './guide.ts'
 import type { GuideSection } from './guide.ts'
-import { findUnresolvableImports, formatUnresolvableImports, importModule, probe } from './loader.ts'
+import { findModuleCodeIssues, formatModuleCodeIssues, importModule, probe } from './loader.ts'
 
 const BUILD_CONFIG_FILES = ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs']
 
@@ -304,28 +304,26 @@ export interface LoadedBuildConfig extends TranslatedBuildConfig {
   file?: string
   /** Whether that file still imports from `unbuild`. */
   importsUnbuild?: boolean
-  /** Whether that file sets `entries`. */
-  fileHasEntries?: boolean
   /** The `package.json` field that was read, if any. */
   field?: 'unbuild' | 'build'
 }
 
 const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
 
+/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
+export function resolveOutDir(cwd: string, outDir: string, label: string = `--outDir ${outDir}`): string {
+  const resolved = resolve(cwd, outDir)
+  if (!relative(resolved, cwd).startsWith('..')) {
+    throw new Error(`\`${label}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  }
+  return resolved
+}
+
 /**
  * Read `build.config.*` and `package.json`'s `unbuild` (or, failing that, `build`) field
  * and translate them. Neither `unbuild` nor this package is loaded to evaluate the file:
  * `defineBuildConfig` is replaced with the identity.
  */
-/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
-export function resolveOutDir(cwd: string, outDir: string): string {
-  const resolved = resolve(cwd, outDir)
-  if (!relative(resolved, cwd).startsWith('..')) {
-    throw new Error(`\`--outDir ${outDir}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
-  }
-  return resolved
-}
-
 export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: string): Promise<LoadedBuildConfig> {
   const sources: BuildConfigSource[] = []
   let configCount = 0
@@ -334,17 +332,17 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   const fieldSource = field ? [{ name: `package.json "${field}"`, config: pkg[field] }] : []
 
   let importsUnbuild: boolean | undefined
-  let fileHasEntries: boolean | undefined
   const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
   if (file) {
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
     const stubs = { 'unbuild': DEFINE_BUILD_CONFIG_STUB, '@nuxt/module-builder': DEFINE_BUILD_CONFIG_STUB }
-    const unresolvable = findUnresolvableImports(cwd, [file], [])
+    const unresolvable = findModuleCodeIssues(cwd, [file], [])
     if (unresolvable.length) {
       const withoutFile = translateBuildConfig(fieldSource, { cwd, outDir })
       const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
-      unresolvable.push(...findUnresolvableImports(cwd, Object.values(bundledEntries(cwd, withoutFile)), runtimeDirs))
-      throw new Error(formatUnresolvableImports(unresolvable))
+      const entries = bundledEntries(cwd, withoutFile)
+      unresolvable.push(...findModuleCodeIssues(cwd, [entries.module], runtimeDirs, Object.values(entries)))
+      throw new Error(formatModuleCodeIssues(unresolvable))
     }
     const { default: config } = await importModule(resolve(cwd, file), { cwd, stubs })
     if (typeof config === 'function') {
@@ -353,7 +351,6 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     const configs = (Array.isArray(config) ? config : [config]).filter(Boolean)
     sources.push(...configs.map(config => ({ name: file, config })))
     configCount = configs.length
-    fileHasEntries = configs.some(config => isPlainObject(config) && config.entries !== undefined)
   }
 
   sources.push(...fieldSource)
@@ -363,7 +360,63 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
   if (configCount > 1) {
     translated.unsupported.unshift(`${file}: an array of ${configCount} configs`)
   }
-  return { file, importsUnbuild, fileHasEntries, field, ...translated }
+  return { file, importsUnbuild, field, ...translated }
+}
+
+/** An entry of `builder({ entries })`. */
+export type BuilderEntry
+  = | string
+    | { input: string, name?: string, builder?: 'rollup' }
+    | { input: string, builder?: 'mkdist', outDir?: string, ext?: 'mjs' | 'js' }
+
+/** The key `builder()` keeps its options under, so `--stub` and `prepare` can find them in a tsdown config. */
+export const BUILDER_OPTIONS: unique symbol = Symbol.for('@nuxt/module-builder:builder-options')
+
+export interface BuilderOptions {
+  /**
+   * Entries built besides `src/module`. A path, or `{ input, name }`, is bundled. An `input`
+   * ending in `/` (or `builder: 'mkdist'`) is a directory transpiled file by file like
+   * `src/runtime`, into `outDir` (inside the build's output directory) with the `ext` scripts
+   * get: `mjs` (the default) or `js`.
+   */
+  entries?: BuilderEntry[]
+  /** Imports that are never bundled. A string matches the package and its subpaths. */
+  externals?: Array<string | RegExp>
+  /** Compile-time replacements in bundled entries, as `{ search: replacement }` or the options of rolldown's replace plugin. */
+  replace?: Record<string, string> | ReplaceOptions
+}
+
+const MODULE_OPTION_KEYS = new Set(['entries', 'externals', 'replace'])
+
+/** Resolves the options of `builder()` into bundled entries, transpiled directories and build settings. */
+export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: string, options: BuilderOptions): LoadedBuildConfig {
+  if ('hooks' in options) {
+    throw new Error(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+  }
+  const { entries, externals, replace } = options
+  const config: Record<string, unknown> = {
+    ...entries !== undefined && { entries },
+    ...externals !== undefined && { externals },
+    ...replace !== undefined && (isPlainObject(replace) && isPlainObject(replace.values) ? { rollup: { replace } } : { replace }),
+  }
+  const translated = translateBuildConfig([{ name: 'builder()', config }], { cwd, outDir })
+  translated.unsupported.push(...Object.keys(options).filter(key => !MODULE_OPTION_KEYS.has(key)).map(key => `builder(): ${key}`))
+  translated.neverBundle.push(...inferredExternals(pkg))
+  return translated
+}
+
+/**
+ * Fails when `build.config.*` or a `build` or `unbuild` field of `package.json` would
+ * configure the build alongside `builder()`.
+ */
+export function assertNoLegacyBuildConfig(cwd: string, pkg: PackageJson): void {
+  const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
+  const field = pkg.unbuild !== undefined ? 'unbuild' : pkg.build !== undefined ? 'build' : undefined
+  if (file || field) {
+    const source = file ? `\`${file}\`` : `The \`${field}\` field of \`package.json\``
+    const advice = file ? 'delete the file' : 'remove the field'
+    throw new Error(`${source} configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and ${advice}. ${guide('moving-from-buildconfigts')}`)
+  }
 }
 
 /** `src/module` plus the translated extra entries, keyed by output name. */
@@ -380,8 +433,8 @@ export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
     consola.warn([
       `\`${config.file}\` is deprecated. Its options are still applied.`,
       ...config.importsUnbuild ? ['Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`.'] : [],
-      ...config.fileHasEntries ? ['Move `entries` to the `build.entries` field of `package.json`.'] : [],
-      guide('build-configuration'),
+      'Move them into `builder()` in `tsdown.config.ts`.',
+      guide('moving-from-buildconfigts'),
     ].join(' '))
   }
   if (config.field === 'unbuild') {
@@ -449,20 +502,11 @@ function unsupportedOptionSection(option: string): GuideSection {
 }
 
 /**
- * The module's own package name and its `#` subpath imports, which are never bundled.
- * Self-referencing imports of the runtime tree are left to `runtimeExternals`.
+ * The module's own package name, which is never bundled. Self-referencing imports of the
+ * runtime tree are left to `runtimeExternals`.
  */
 function inferredExternals(pkg: PackageJson) {
-  const externals: RegExp[] = []
-  if (pkg.name) {
-    externals.push(new RegExp(`^${escapeRegExp(pkg.name)}(?:$|/(?!runtime/))`))
-  }
-  for (const name of Object.keys(pkg.imports || {})) {
-    if (name.startsWith('#')) {
-      externals.push(new RegExp(`^${escapeRegExp(name).replace(/\\\*/g, '.*')}$`))
-    }
-  }
-  return externals
+  return pkg.name ? [new RegExp(`^${escapeRegExp(pkg.name)}(?:$|/(?!runtime/))`)] : []
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

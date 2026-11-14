@@ -4,6 +4,10 @@ export type GuideSection
   = | 'node-engines'
     | 'install-tsdown'
     | 'build-configuration'
+    | 'tsdown-config'
+    | 'options-builder-sets'
+    | 'hooks-in-a-tsdown-config'
+    | 'moving-from-buildconfigts'
     | 'unsupported-build-options'
     | 'hooks'
     | 'rollup-options'
@@ -23,7 +27,8 @@ export type GuideSection
     | 'preparing-nuxt'
     | 'module-tsconfig'
     | 'output-directory'
-    | 'import-extensions-in-module-code'
+    | 'developing-without-a-stub'
+    | 'module-code-loads-with-node'
 
 /** The URL of a section of the upgrade guide. */
 export function guide(section: GuideSection) {

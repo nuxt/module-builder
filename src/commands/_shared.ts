@@ -1,5 +1,8 @@
 import { resolve } from 'pathe'
 
+import { findTsdownConfig, loadBuilderConfig } from './config-file.ts'
+import type { BuilderConfig } from './config-file.ts'
+
 export const sharedArgs = {
   // cwd falls back to rootDir's default (indirect default)
   cwd: {
@@ -17,3 +20,19 @@ export const sharedArgs = {
 } as const
 
 export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }): string => resolve(args.cwd || args.rootDir || '.')
+
+/** The `builder()` options of the module's tsdown config, when it has one. */
+export async function loadModuleConfig(cwd: string): Promise<BuilderConfig | undefined> {
+  const file = findTsdownConfig(cwd)
+  return file ? loadBuilderConfig(cwd, file) : undefined
+}
+
+/** Writes the stub `dist`, into `outDir` or the tsdown config's `outDir`. */
+export async function stubModule(cwd: string, outDir?: string): Promise<void> {
+  const [{ stub }, moduleConfig] = await Promise.all([import('../build/stub.ts'), loadModuleConfig(cwd)])
+  await stub(cwd, {
+    outDir: outDir ?? moduleConfig?.outDir ?? 'dist',
+    outDirFromConfig: outDir === undefined && moduleConfig?.outDir !== undefined,
+    moduleOptions: moduleConfig?.options,
+  })
+}

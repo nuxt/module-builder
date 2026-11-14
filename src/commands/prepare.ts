@@ -3,19 +3,30 @@ import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
-import { bundledEntries, loadBuildConfig } from '../build/build-config.ts'
-import { assertResolvableImports, importModule } from '../build/loader.ts'
-import { resolveCwdArg, sharedArgs } from './_shared.ts'
+import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
+import type { TranslatedBuildConfig } from '../build/build-config.ts'
+import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
+import { loadModuleConfig, resolveCwdArg, sharedArgs, stubModule } from './_shared.ts'
 
-export async function prepareModule(cwd: string): Promise<{ result: unknown }> {
+async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
+  const pkg = await readPackageJSON(cwd)
+  const moduleConfig = await loadModuleConfig(cwd)
+  const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
+  if (!moduleConfig) {
+    return loadBuildConfig(cwd, pkg, outDir)
+  }
+  assertNoLegacyBuildConfig(cwd, pkg)
+  return resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options)
+}
+
+export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildConfig): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
-  const pkg = await readPackageJSON(cwd)
-  const config = await loadBuildConfig(cwd, pkg, resolve(cwd, 'dist'))
+  const config = buildConfig ?? await loadPrepareConfig(cwd)
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
-  assertResolvableImports(cwd, Object.values(entries), runtimeDirs)
-  const moduleExports = await importModule(resolve(cwd, entries.module), { cwd, runtimeDirs })
+  assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
+  const moduleExports = await importModule(resolve(cwd, entries.module), { cwd })
   const nuxtModule = (moduleExports.default ?? moduleExports) as NuxtModule
   const entryPath = resolve(cwd, './src/module')
 
@@ -51,16 +62,29 @@ export async function prepareModule(cwd: string): Promise<{ result: unknown }> {
   })
 }
 
-const command: CommandDef<typeof sharedArgs> = defineCommand({
+const prepareArgs = {
+  stub: {
+    type: 'boolean',
+    default: false,
+    description: 'Stub dist first, as `build --stub` does',
+  },
+} as const
+
+const command: CommandDef<typeof sharedArgs & typeof prepareArgs> = defineCommand({
   meta: {
     name: 'prepare',
     description: 'Prepare @nuxt/module-builder environment by writing types and stubs',
   },
   args: {
     ...sharedArgs,
+    ...prepareArgs,
   },
   async run(context) {
-    return prepareModule(resolveCwdArg(context.args))
+    const cwd = resolveCwdArg(context.args)
+    if (context.args.stub) {
+      await stubModule(cwd)
+    }
+    return prepareModule(cwd)
   },
 })
 
