@@ -129,7 +129,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
-    tsc: { eager: true, parallel: true },
+    tsc: { eager: true, parallel: !process.env.DIAG_NO_PARALLEL },
     compilerOptions: { paths: plan.declarationPaths },
   } as const
 

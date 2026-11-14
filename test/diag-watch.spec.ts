@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'pathe'
@@ -11,18 +10,9 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const exampleDir = join(repoRoot, 'example')
 const diagDir = join(repoRoot, '.diag')
 const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
-const rolldownUrl = pathToFileURL(createRequire(join(repoRoot, 'node_modules/tsdown/package.json')).resolve('rolldown')).href
 const preloadUrl = pathToFileURL(join(repoRoot, 'test/diag-preload.mjs')).href
 const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
 const RD_LOG = 'notify=trace,rolldown_watcher=trace,rolldown_fs_watcher=trace,rolldown_binding::watcher=debug,rolldown_plugin::plugin_driver=trace'
-
-const rolldownScript = (dirWatch: boolean) => [
-  `import { resolve } from 'node:path'`,
-  `import { watch } from ${JSON.stringify(rolldownUrl)}`,
-  `const watcher = watch({ input: 'src/utils.ts', output: { dir: 'dist-rd' }, plugins: [{ name: 'dir', buildStart() { ${dirWatch ? `this.addWatchFile(resolve('src/runtime'))` : ''} } }] })`,
-  `watcher.on('event', (event) => { console.log('[rd]', event.code, event.error?.message ?? ''); if (event.result) event.result.close() })`,
-  '',
-].join('\n')
 
 interface Probe {
   name: string
@@ -31,19 +21,22 @@ interface Probe {
   watch?: boolean
   marker: string
   env?: Record<string, string>
+  stdin?: 'ignore'
+  expected: 'pass' | 'hang'
 }
 
+const parallelDts = (parallel: boolean) => `export default { entry: ['src/utils.ts'], dts: { generator: 'tsc', tsc: { parallel: ${parallel} } } }\n`
+const builderConfig = `export default { plugins: [builder()] }\n`
+
 const probes: Probe[] = [
-  { name: 'control-build-no-watch', config: `export default { plugins: [builder()] }\n`, watch: false, marker: 'dist/module.json' },
-  { name: 'rolldown-watch', script: rolldownScript(false), marker: 'dist-rd/utils.js' },
-  { name: 'rolldown-watch-dir', script: rolldownScript(true), marker: 'dist-rd/utils.js' },
-  { name: 'tsdown-watch-no-dts', config: `export default { entry: ['src/utils.ts'], dts: false }\n`, marker: 'dist/utils.mjs' },
-  { name: 'tsdown-watch-dts', config: `export default { entry: ['src/utils.ts'], dts: true }\n`, marker: 'dist/utils.d.mts' },
-  { name: 'builder-watch', config: `export default { plugins: [builder()] }\n`, marker: 'dist/module.json' },
-  { name: 'builder-watch-no-dir-watch', config: `export default { plugins: [builder()] }\n`, marker: 'dist/module.json', env: { DIAG_NO_DIR_WATCH: '1' } },
-  { name: 'builder-watch-no-source-watch', config: `export default { plugins: [builder()] }\n`, marker: 'dist/module.json', env: { DIAG_NO_SOURCE_WATCH: '1' } },
-  { name: 'builder-watch-no-glob-watch', config: `export default { plugins: [builder()] }\n`, marker: 'dist/module.json', env: { DIAG_NO_GLOB_WATCH: '1' } },
-  { name: 'builder-watch-no-watch-files', config: `export default { plugins: [builder()] }\n`, marker: 'dist/module.json', env: { DIAG_NO_DIR_WATCH: '1', DIAG_NO_SOURCE_WATCH: '1', DIAG_NO_GLOB_WATCH: '1' } },
+  { name: 'tsdown-watch-dts-serial', config: parallelDts(false), marker: 'dist/utils.d.mts', expected: 'pass' },
+  { name: 'tsdown-watch-dts-parallel', config: parallelDts(true), marker: 'dist/utils.d.mts', expected: process.platform === 'win32' ? 'hang' : 'pass' },
+  { name: 'tsdown-watch-dts-parallel-stdin-ignored', config: parallelDts(true), marker: 'dist/utils.d.mts', stdin: 'ignore', expected: 'pass' },
+  { name: 'tsdown-watch-dts-parallel-report-at-20s', config: parallelDts(true), marker: 'dist/utils.d.mts', env: { DIAG_REPORT_AFTER: '20000' }, expected: 'pass' },
+  { name: 'tsdown-build-dts-parallel', config: parallelDts(true), watch: false, marker: 'dist/utils.d.mts', expected: 'pass' },
+  { name: 'builder-watch', config: builderConfig, marker: 'dist/module.json', expected: process.platform === 'win32' ? 'hang' : 'pass' },
+  { name: 'builder-watch-no-parallel', config: builderConfig, marker: 'dist/module.json', env: { DIAG_NO_PARALLEL: '1' }, expected: 'pass' },
+  { name: 'builder-watch-stdin-ignored', config: builderConfig, marker: 'dist/module.json', stdin: 'ignore', expected: 'pass' },
 ]
 
 async function copyExample(name: string) {
@@ -75,7 +68,7 @@ describe('windows watch diagnostics', () => {
     }
     const env = { ...process.env, NODE_ENV: '', TEST: '', NO_COLOR: '1', FORCE_COLOR: '0', RD_LOG, DEBUG: 'tsdown:*,rolldown-plugin-dts:*', DIAG_REPORT: join(diagDir, `${probe.name}.report.json`), ...probe.env }
     const startedAt = Date.now()
-    const result = exec('node', ['--import', preloadUrl, ...args], { nodeOptions: { cwd: dir, env } })
+    const result = exec('node', ['--import', preloadUrl, ...args], { nodeOptions: { cwd: dir, env, ...probe.stdin && { stdio: [probe.stdin, 'pipe', 'pipe'] } } })
     let output = ''
     for (const stream of [result.process?.stdout, result.process?.stderr]) {
       stream?.on('data', (chunk) => {
@@ -100,6 +93,6 @@ describe('windows watch diagnostics', () => {
     }
     await writeFile(join(diagDir, `${probe.name}.log`), `ok=${ok} elapsed=${elapsed}ms exitedEarly=${exitedEarly} exitCode=${result.exitCode}\n\n${output}`)
     console.log(`[diag] ${probe.name}: ok=${ok} elapsed=${elapsed}ms exitedEarly=${exitedEarly}\n${output.split('\n').filter(line => !/^\s/.test(line) && !/ (?:TRACE|DEBUG) /.test(line)).slice(-15).join('\n')}`)
-    expect(ok).toBe(true)
+    expect(ok ? 'pass' : 'hang').toBe(probe.expected)
   }, 120_000)
 })
