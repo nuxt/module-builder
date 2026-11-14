@@ -770,6 +770,9 @@ describe('writeSourceTypes', () => {
       'src/hooks.ts': `export * from './nested/hooks.ts'\n`,
       'src/nested/hooks.ts': `export interface ModuleHooks { 'my-module:init': () => void }\n`,
     })).toEqual([])
+    expect(await check(`export type * from './declared'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
+      'src/declared.d.ts': `export interface ModuleHooks { 'my-module:init': () => void }\n`,
+    })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
   }, 60 * 1000)
 })

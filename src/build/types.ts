@@ -1,4 +1,4 @@
-import { promises as fsp, readFileSync } from 'node:fs'
+import { existsSync, promises as fsp, readFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
@@ -7,6 +7,7 @@ import { probe } from './loader.ts'
 import { writeIfChanged } from './write.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
+const DECLARATION_SUFFIXES = ['.d.ts', '.d.mts', '.d.cts', '/index.d.ts', '/index.d.mts']
 const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|const\s+enum|const|let|var|class|enum)\s+([$\w]+)/g
 
 /**
@@ -152,7 +153,7 @@ function exportedNames(file: string, seen = new Set<string>()): Set<string> | un
       exp.names?.forEach(name => names.add(name))
       continue
     }
-    const target = exp.specifier?.startsWith('.') ? probe(resolve(dirname(file), exp.specifier)) : undefined
+    const target = exp.specifier?.startsWith('.') ? probeWithDeclarations(resolve(dirname(file), exp.specifier)) : undefined
     const reExported = target && exportedNames(target, seen)
     if (!reExported) {
       return
@@ -160,6 +161,12 @@ function exportedNames(file: string, seen = new Set<string>()): Set<string> | un
     reExported.forEach(name => name !== 'default' && names.add(name))
   }
   return names
+}
+
+/** The source file `path` resolves to, or the declaration file when there is no source. */
+function probeWithDeclarations(path: string) {
+  const base = path.replace(/\.[cm]?js$/, '')
+  return probe(path) ?? DECLARATION_SUFFIXES.map(suffix => base + suffix).find(candidate => existsSync(candidate))
 }
 
 /** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */
