@@ -49,7 +49,11 @@ export function sourcePathsPackError(cwd: string, pkg: PackageJson, env: Record<
   const publishConfig = (pkg.publishConfig ?? {}) as Record<string, unknown>
   const published = paths.filter(({ field }) => !client?.fields.includes(field) || publishConfig[field] === undefined)
   if (!published.length) {
-    return
+    const replacements = sourcePaths(cwd, Object.fromEntries(PATH_FIELDS.filter(field => client?.fields.includes(field)).map(field => [field, publishConfig[field]])))
+    if (!replacements.length) {
+      return
+    }
+    return `These fields of \`publishConfig\` point at the module's sources, so they would be published: ${list(replacements.map(({ field }) => field))} (${list(replacements.map(({ path }) => path))}). Point them at \`dist\`. ${guide('publishing-source-exports')}`
   }
   const unsupported = [...new Set(published.filter(({ field }) => !client?.fields.includes(field)).map(({ field }) => field))]
   const pathList = list(published.filter(({ field }) => !unsupported.length || unsupported.includes(field)).map(({ path }) => path))

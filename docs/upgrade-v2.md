@@ -678,7 +678,7 @@ The build checks the `publishConfig` paths, and warns about any published path t
 When `tsdown` or `nuxt-module-build build` runs as the `prepack` or `prepublishOnly` script, and fields of `package.json` point into `src` or `.nuxt`, the build fails unless they are published from `publishConfig`:
 
 - The package manager that packs has to be pnpm or Yarn 4. npm, Yarn 1, and bun pack `package.json` as written. Yarn 4 packs `typesVersions` as written too. Yarn 2 only replaces `main` and `module`, and Yarn 3 also `exports` and `imports`.
-- `publishConfig` has to set each of those fields.
+- `publishConfig` has to set each of those fields, to paths outside `src` and `.nuxt`.
 
 The package manager is read from the `npm_config_user_agent` and `npm_execpath` environment variables. Publish with `pnpm publish` or `yarn npm publish`. A `release` script that runs `npm publish` fails, even when `pnpm run` starts it. `npm publish` of a tarball that `pnpm pack` wrote works, as its `package.json` already has the `dist` paths and the build doesn't run again. `bun pm pack` and `bun publish` started from a pnpm or Yarn 4 script pass on that script's variables, so the build can't tell them apart from pnpm or Yarn.
 

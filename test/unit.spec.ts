@@ -689,6 +689,13 @@ describe('sourcePathsPackError', () => {
     expect(sourcePathsPackError(cwd, { exports: pkg.exports }, pnpm)).toContain('Set `publishConfig.exports` to the `dist` paths.')
   })
 
+  it('should refuse `publishConfig` fields that point at sources', () => {
+    const publishConfig = { ...pkg.publishConfig, main: './src/module.ts' }
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`publishConfig\` point at the module's sources, so they would be published: \`main\` (\`./src/module.ts\`). Point them at \`dist\`. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toContain('These fields of `publishConfig` point at the module\'s sources')
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./src/utils.ts'] } } } }, yarn)).toBeUndefined()
+  })
+
   it('should refuse `typesVersions` that point at sources when Yarn packs', () => {
     const typesVersions = { '*': { utils: ['./src/utils.ts'] } }
     const sourceTypesVersions = { ...pkg, typesVersions, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } } } }
