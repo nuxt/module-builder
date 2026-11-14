@@ -1,6 +1,7 @@
 {
   "private": true,
   "name": "my-module-playground",
+  "type": "module",
   "scripts": {
     "test:types": "nuxt prepare && vue-tsc --noEmit"
   },

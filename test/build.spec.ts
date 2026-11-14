@@ -12,8 +12,33 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { satisfies } from 'verkit'
 import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
+import { publishedPackage } from '../src/build/package.ts'
 
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
+
+const unresolvedSpecifiers = async (dir: string) => {
+  const failures: string[] = []
+  for (const entry of await listFiles(dir)) {
+    if (!/\.d\.[^/]*ts$/.test(entry)) {
+      continue
+    }
+    const file = join(dir, entry)
+    for (const [, specifier] of (await readFile(file, 'utf-8')).matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.\.?\/[^'"]*)['"]/g)) {
+      const target = join(dirname(file), specifier!)
+      const candidates = specifier!.endsWith('.js')
+        ? [target.replace(/\.js$/, '.d.ts')]
+        : specifier!.endsWith('.mjs')
+          ? [target.replace(/\.mjs$/, '.d.mts')]
+          : specifier!.endsWith('.vue')
+            ? [`${target}.d.ts`, target.replace(/\.vue$/, '.d.vue.ts')]
+            : specifier!.endsWith('.css') ? [target] : []
+      if (!candidates.some(candidate => existsSync(candidate))) {
+        failures.push(`${entry}: ${specifier}`)
+      }
+    }
+  }
+  return failures
+}
 
 const RUNTIME_IMPORTS = `
 import { name } from './runtime/utils/name.ts'
@@ -61,17 +86,38 @@ describe('module builder', () => {
   const routesRootDir = rootDir.replace('example', '.temp-example-routes/mod')
   let routesBuild = ''
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
-  const distDir = join(rootDir, 'dist')
+  const distFlowRootDir = rootDir.replace('example', '.temp-example-dist-flow')
+  const packDir = rootDir.replace('example', '.temp-packs')
   const secondDistDir = join(secondRootDir, 'dist')
   const thirdDistDir = join(thirdRootDir, 'dist')
   const fourthDistDir = join(fourthRootDir, 'dist')
-  const runtimeDir = join(distDir, 'runtime')
+  const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
+  const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
+
+  const flows = [
+    {
+      name: 'source exports',
+      rootDir,
+      pack: ['pnpm', 'pack', '--pack-destination', join(packDir, 'source-exports')],
+      nodeTypeErrors: [expect.stringContaining(`src/runtime/plugins/plugin.ts(1,34): error TS2307: Cannot find module '#app'`)],
+    },
+    {
+      name: 'dist',
+      rootDir: distFlowRootDir,
+      pack: ['npm', 'pack', '--pack-destination', join(packDir, 'dist')],
+      nodeTypeErrors: [],
+    },
+  ]
+  const flowOutput = new Map<string, { appTypes: string, nodeTypes: string, pack: string }>()
 
   beforeAll(async () => {
     const copyExample = async (target: string, transform: (contents: string) => string) => {
       await mkdir(dirname(target), { recursive: true })
       await rm(target, { force: true, recursive: true })
       await cp(rootDir, target, { recursive: true })
+      const pkgPath = join(target, 'package.json')
+      const { publishConfig: _, ...pkg } = publishedPackage(JSON.parse(await readFile(pkgPath, 'utf-8')))
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
       const moduleSrc = join(target, 'src/module.ts')
       await writeFile(moduleSrc, transform(await readFile(moduleSrc, 'utf-8')))
     }
@@ -623,7 +669,40 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await rm(join(routesRootDir, 'tsconfig.json'))
     await rm(join(routesRootDir, 'playground/node_modules/my-module'), { force: true })
     await symlink(routesRootDir, join(routesRootDir, 'playground/node_modules/my-module'))
+
+    await copyExample(distFlowRootDir, contents => contents)
+    const { build: distFlowBuild, ...distFlowPkg } = JSON.parse(await readFile(join(distFlowRootDir, 'package.json'), 'utf-8'))
+    await writeFile(join(distFlowRootDir, 'package.json'), JSON.stringify({
+      ...distFlowPkg,
+      scripts: {
+        ...distFlowPkg.scripts,
+        'prepack': `node ${tsdownBin}`,
+        'dev:prepare': `node ../src/cli.ts prepare && node ${tsdownBin} && nuxi prepare playground`,
+      },
+    }, null, 2))
+    await writeFile(join(distFlowRootDir, 'tsdown.config.ts'), `${builderImport}\n\nexport default {\n  plugins: [builder(${JSON.stringify(distFlowBuild)})],\n}\n`)
+    for (const dir of ['dist', '.nuxt', 'playground/.nuxt']) {
+      await rm(join(distFlowRootDir, dir), { recursive: true, force: true })
+    }
+    await rm(join(distFlowRootDir, 'playground/node_modules/my-module'), { force: true })
+    await symlink(distFlowRootDir, join(distFlowRootDir, 'playground/node_modules/my-module'))
+    await rm(packDir, { recursive: true, force: true })
+    await Promise.all(['source-exports', 'dist'].map(flow => mkdir(join(packDir, flow), { recursive: true })))
+
     const nuxtEnv = { ...process.env, NUXT_TELEMETRY_DISABLED: '1' }
+    const runFlow = async ({ name, rootDir: dir, pack: [packCommand, ...packArgs] }: typeof flows[number]) => {
+      const playgroundDir = join(dir, 'playground')
+      await exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: dir, env: nuxtEnv }, throwOnError: true })
+      const typecheck = (context: string) => exec('pnpm', ['exec', 'vue-tsc', '--noEmit', '-p', join(playgroundDir, `.nuxt/tsconfig.${context}.json`)], { nodeOptions: { cwd: repoRoot } })
+      const [appTypes, nodeTypes] = await Promise.all([typecheck('app'), typecheck('node')])
+      await exec('pnpm', ['exec', 'nuxt', 'generate', playgroundDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true })
+      const pack = await exec(packCommand!, packArgs, { nodeOptions: { cwd: dir }, throwOnError: true })
+      flowOutput.set(name, {
+        appTypes: appTypes.stdout + appTypes.stderr,
+        nodeTypes: nodeTypes.stdout + nodeTypes.stderr,
+        pack: pack.stdout + pack.stderr,
+      })
+    }
 
     await Promise.all([
       exec('pnpm', ['nuxt-module-build', 'build', '--stub', routesRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
@@ -633,7 +712,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
         .then(({ stdout, stderr }) => { routesBuild = stdout + stderr }),
       exec('pnpm', ['nuxt-module-build', 'build', stylesheetsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', runtimeShapeRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
-      exec('pnpm', ['dev:prepare'], { nodeOptions: { cwd: rootDir }, throwOnError: true }).then(() => exec('pnpm', ['prepack'], { nodeOptions: { cwd: rootDir }, throwOnError: true })),
+      ...flows.map(runFlow),
       exec('pnpm', ['nuxt-module-build', 'build', '--stub', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
         .then(() => exec('pnpm', ['nuxt-module-build', 'prepare', secondRootDir], { nodeOptions: { cwd: repoRoot, env: nuxtEnv }, throwOnError: true }))
         .then(() => exec('pnpm', ['nuxt-module-build', 'build', secondRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })),
@@ -912,12 +991,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(existsSync(join(extensionlessRootDir, 'dist'))).toBe(false)
   })
 
-  it('should reference `@nuxt/schema` rather than `nuxt/schema` in module declarations', async () => {
-    const types = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
-    expect(types).toContain('import("@nuxt/schema")')
-    expect(types).not.toContain('import("nuxt/schema")')
-  })
-
   it('should build a module without a runtime directory', async () => {
     const files = await readdir(join(noRuntimeRootDir, 'dist'))
     expect(files.sort()).toEqual(['module.d.mts', 'module.json', 'module.mjs', 'types.d.mts', 'utils.d.mts', 'utils.mjs'])
@@ -937,38 +1010,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
         "components/TestMeSetup.vue.d.ts",
       ]
     `)
-  })
-
-  it('should generate all files', async () => {
-    const files = await readdir(distDir)
-    expect(files).toMatchInlineSnapshot(`
-      [
-        "module.d.mts",
-        "module.json",
-        "module.mjs",
-        "runtime",
-        "types.d.mts",
-        "utils.d.mts",
-        "utils.mjs",
-      ]
-    `)
-
-    const runtime = await readdir(join(runtimeDir, 'plugins'))
-    expect(runtime).toMatchInlineSnapshot(`
-      [
-        "plugin.d.ts",
-        "plugin.js",
-      ]
-    `)
-  })
-
-  it('should copy non-code files in the runtime directory', async () => {
-    expect(await readdir(join(runtimeDir, 'assets'))).toMatchInlineSnapshot(`
-      [
-        "config.json",
-      ]
-    `)
-    expect(await readFile(join(runtimeDir, 'components/TestMe.css'), 'utf-8')).toBe('.test-me{color:#639}')
   })
 
   it('should flatten, prefix and minify runtime CSS', async () => {
@@ -1259,57 +1300,13 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should give every relative specifier in runtime declarations an extension that resolves', async () => {
-    const unresolved = async (dir: string) => {
-      const failures: string[] = []
-      for (const entry of await listFiles(dir)) {
-        if (!/\.d\.[^/]*ts$/.test(entry)) {
-          continue
-        }
-        const file = join(dir, entry)
-        for (const [, specifier] of (await readFile(file, 'utf-8')).matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.\.?\/[^'"]*)['"]/g)) {
-          const target = join(dirname(file), specifier!)
-          const candidates = specifier!.endsWith('.js')
-            ? [target.replace(/\.js$/, '.d.ts')]
-            : specifier!.endsWith('.mjs')
-              ? [target.replace(/\.mjs$/, '.d.mts')]
-              : specifier!.endsWith('.vue')
-                ? [`${target}.d.ts`, target.replace(/\.vue$/, '.d.vue.ts')]
-                : specifier!.endsWith('.css') ? [target] : []
-          if (!candidates.some(candidate => existsSync(candidate))) {
-            failures.push(`${entry}: ${specifier}`)
-          }
-        }
-      }
-      return failures
-    }
-    expect(await unresolved(join(runtimeShapeRootDir, 'dist'))).toEqual([])
-    expect(await unresolved(runtimeDir)).toEqual([])
+    expect(await unresolvedSpecifiers(join(runtimeShapeRootDir, 'dist'))).toEqual([])
   })
 
   it('should name inferred types by package when the generated tsconfig maps a package to its real path', async () => {
     const types = await readFile(join(portableRootDir, 'dist/module.d.mts'), 'utf-8')
     expect(types).toMatch(/Thing<\{/)
     expect(types).toMatch(/["']fake-schema["']/)
-  })
-
-  it('should write types to output directory', async () => {
-    const types = await readFile(join(distDir, 'types.d.mts'), 'utf-8')
-    expect(types).toMatchInlineSnapshot(`
-      "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
-
-      declare module '#app' {
-        interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
-      }
-
-      declare module '@nuxt/schema' {
-        interface NuxtHooks extends ModuleHooks {}
-        interface RuntimeConfig extends ModuleRuntimeConfig {}
-        interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
-      }
-
-      export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
-      "
-    `)
   })
 
   it('should keep value exports as values in `types.d.mts`', async () => {
@@ -1363,22 +1360,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
     `)
   })
 
-  it('should generate module metadata as separate JSON file', async () => {
-    const meta = await readFile(join(distDir, 'module.json'), 'utf-8')
-    const tsdownPkg = await readPackageJSON('tsdown')
-    expect(JSON.parse(meta)).toMatchObject(
-      {
-        builder: {
-          '@nuxt/module-builder': version,
-          'tsdown': tsdownPkg.version,
-        },
-        configKey: 'myModule',
-        name: 'my-module',
-        version: '1.0.0',
-      },
-    )
-  })
-
   it('should generate module metadata when the module entry imports runtime code', async () => {
     const meta = await readFile(join(thirdDistDir, 'module.json'), 'utf-8')
     expect(JSON.parse(meta)).toMatchObject({ configKey: 'myModule', name: 'my-module' })
@@ -1391,44 +1372,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
     // leave the bundled output in place for the remaining assertions
     await exec('pnpm', ['nuxt-module-build', 'build', thirdRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
-  })
-
-  it('should generate typed plugin', async () => {
-    const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
-    const appAlias = `import\\("nuxt/app"\\)`
-    expect(pluginDts).toMatch(/^export type SharedTypeFromRuntime = 'shared-type';$/m)
-    expect(pluginDts).toMatch(
-      new RegExp(
-        `declare const _default: ${appAlias}\\.Plugin<\\{\\s*injection: "injected";\\s*\\}> & ${appAlias}\\.ObjectPlugin<\\{\\s*injection: "injected";\\s*\\}>;`,
-      ),
-    )
-    expect(pluginDts).toMatch(/^export default _default;$/m)
-  })
-
-  it('should not leak build-only virtual aliases into emitted runtime declarations', async () => {
-    const files = await listFiles(runtimeDir)
-    const declarations = files.filter(file => /\.d\.[^/]*ts$/.test(file))
-    expect(declarations.length).toBeGreaterThan(0)
-    for (const file of declarations) {
-      const contents = await readFile(join(runtimeDir, file), 'utf-8')
-      expect(contents, file).not.toMatch(/(["'])#app(?:\/[^"']*)?\1/)
-      expect(contents, file).not.toMatch(/import\("#app(?:\/[^"]*)?"\)/)
-    }
-  })
-
-  it('should resolve every shape of `#app` alias in runtime declarations', async () => {
-    const declaration = await readFile(join(runtimeDir, 'composables/useAliasedApp.d.ts'), 'utf-8')
-    expect(declaration).toMatch(/declare const useAppInstance: \(\) => import\("nuxt\/app"\)\.NuxtApp;/)
-    expect(declaration).toMatch(/declare const useAppRouter: \(\) => import\("vue-router"\)\./)
-    expect(declaration).toMatch(/declare const useAppCookie: \(name: string\) => import\("nuxt\/app"\)\.CookieRef</)
-    const deepDeclaration = await readFile(join(runtimeDir, 'composables/useAppNuxt.d.ts'), 'utf-8')
-    expect(deepDeclaration).toMatch(/declare const useAppFromNuxt: \(\) => import\("nuxt\/app"\)\.NuxtApp;/)
-  })
-
-  it('should correctly add extensions to imports from runtime/ directory', async () => {
-    const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
-    const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
-    expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";"`)
   })
 
   it('should externalise runtime imports made through relative, aliased and `.vue` specifiers', async () => {
@@ -1476,51 +1419,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
       await rm(stubDir, { force: true, recursive: true })
     }
   }, 60 * 1000)
-
-  it('should generate components correctly', async () => {
-    const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
-    await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
-
-    const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMe.vue.d.ts'), 'utf-8')
-    await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue.d.ts')
-  })
-
-  it('should generate components with <script setup> correctly', async () => {
-    const componentFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue'), 'utf-8')
-    await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue')
-
-    const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue.d.ts'), 'utf-8')
-    await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue.d.ts')
-
-    const componentDeclarationFile2 = await readFile(join(distDir, 'runtime/components/TestMeSetup.d.vue.ts'), 'utf-8')
-    await expect(componentDeclarationFile2.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.d.vue.ts')
-  })
-
-  it('should generate wrapped composables', async () => {
-    const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
-    // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
-    // Nuxt 4+ moved the default error from `FetchError` to `NuxtError<unknown>` (nuxt/nuxt#35346); accept both until it lands in a release.
-    const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
-    const errorType = satisfies(nuxtVersion, '^3')
-      ? 'import\\("ofetch"\\)\\.FetchError<any>'
-      : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("nuxt/app"\\)\\.NuxtError<unknown>)'
-    expect(componentFile).toMatch(
-      new RegExp(
-        `^export declare const useWrappedFetch: \\(\\) => import\\("nuxt/app"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;$`,
-        'm',
-      ),
-    )
-  })
-
-  it('should preserve JSX in runtime files for the app to compile', async () => {
-    const [component, declaration] = await Promise.all([
-      readFile(join(distDir, 'runtime/components/JsxComponent.jsx'), 'utf-8'),
-      readFile(join(distDir, 'runtime/components/JsxComponent.d.ts'), 'utf-8'),
-    ])
-    expect(existsSync(join(distDir, 'runtime/components/JsxComponent.js'))).toBe(false)
-    await expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.jsx')
-    await expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
-  })
 
   it('should point imports of a runtime JSX file at its `.jsx` output', async () => {
     const runtime = join(thirdDistDir, 'runtime')
@@ -1657,5 +1555,201 @@ export const defineOptions = (options: Options) => ({ options, helper })
       expect(isolated!.exitCode).not.toBe(0)
       expect(isolated!.stdout + isolated!.stderr).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
     }, 120 * 1000)
+  })
+
+  it('should pack the `dist` paths in `publishConfig` with pnpm, and `dist` with npm, without warnings', async () => {
+    const packed = async (flow: string) => JSON.parse((await exec('tar', ['-xzOf', join(packDir, flow, 'my-module-1.0.0.tgz'), 'package/package.json'], { throwOnError: true })).stdout)
+    const { publishConfig } = JSON.parse(await readFile(join(rootDir, 'package.json'), 'utf-8'))
+    expect(await packed('source-exports')).toMatchObject({ exports: publishConfig.exports, main: publishConfig.main })
+    expect(await packed('source-exports')).not.toHaveProperty('publishConfig')
+    expect(await packed('dist')).toMatchObject({ exports: publishConfig.exports, main: publishConfig.main })
+    for (const flow of flows) {
+      const output = flowOutput.get(flow.name)!.pack
+      expect(output, flow.name).toContain('Build complete')
+      expect(output, flow.name).not.toContain('`package.json`')
+    }
+  })
+
+  it('should refuse to pack source exports with npm, including when a pnpm script runs it', async () => {
+    const { stdout, stderr, exitCode } = await exec('npm', ['pack', '--dry-run'], { nodeOptions: { cwd: rootDir, env: { ...process.env, npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' } } })
+    expect(exitCode).not.toBe(0)
+    expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
+    expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
+  })
+
+  describe.each(flows)('$name flow', ({ name, rootDir, nodeTypeErrors }) => {
+    const distDir = join(rootDir, 'dist')
+    const runtimeDir = join(distDir, 'runtime')
+    const typeErrors = (output: string) => output.split('\n').filter(line => line.includes('error TS'))
+
+    it('should type the playground and its config through the module\'s exports', () => {
+      expect(typeErrors(flowOutput.get(name)!.appTypes)).toEqual([])
+      expect(typeErrors(flowOutput.get(name)!.nodeTypes)).toEqual(nodeTypeErrors)
+    })
+
+    it('should render the playground with the module installed by name', async () => {
+      expect(await readFile(join(rootDir, 'playground/.output/public/index.html'), 'utf-8')).toContain('Nuxt module playground!')
+    })
+
+    it('should reference `@nuxt/schema` rather than `nuxt/schema` in module declarations', async () => {
+      const types = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
+      expect(types).toContain('import("@nuxt/schema")')
+      expect(types).not.toContain('import("nuxt/schema")')
+    })
+
+    it('should generate all files', async () => {
+      const files = await readdir(distDir)
+      expect(files).toMatchInlineSnapshot(`
+        [
+          "module.d.mts",
+          "module.json",
+          "module.mjs",
+          "runtime",
+          "types.d.mts",
+          "utils.d.mts",
+          "utils.mjs",
+        ]
+      `)
+
+      const runtime = await readdir(join(runtimeDir, 'plugins'))
+      expect(runtime).toMatchInlineSnapshot(`
+        [
+          "plugin.d.ts",
+          "plugin.js",
+        ]
+      `)
+    })
+
+    it('should copy non-code files in the runtime directory', async () => {
+      expect(await readdir(join(runtimeDir, 'assets'))).toMatchInlineSnapshot(`
+        [
+          "config.json",
+        ]
+      `)
+      expect(await readFile(join(runtimeDir, 'components/TestMe.css'), 'utf-8')).toBe('.test-me{color:#639}')
+    })
+
+    it('should give every relative specifier in runtime declarations an extension that resolves', async () => {
+      expect(await unresolvedSpecifiers(runtimeDir)).toEqual([])
+    })
+
+    it('should write types to output directory', async () => {
+      const types = await readFile(join(distDir, 'types.d.mts'), 'utf-8')
+      expect(types).toMatchInlineSnapshot(`
+        "import type { ModuleHooks, ModuleRuntimeHooks, ModuleRuntimeConfig, ModulePublicRuntimeConfig } from './module.mjs'
+
+        declare module '#app' {
+          interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}
+        }
+
+        declare module '@nuxt/schema' {
+          interface NuxtHooks extends ModuleHooks {}
+          interface RuntimeConfig extends ModuleRuntimeConfig {}
+          interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}
+        }
+
+        export { type ModuleHooks, type ModuleOptions, type ModulePublicRuntimeConfig, type ModuleRuntimeConfig, type ModuleRuntimeHooks, default } from './module.mjs'
+        "
+      `)
+    })
+
+    it('should generate module metadata as separate JSON file', async () => {
+      const meta = await readFile(join(distDir, 'module.json'), 'utf-8')
+      const tsdownPkg = await readPackageJSON('tsdown')
+      expect(JSON.parse(meta)).toMatchObject(
+        {
+          builder: {
+            '@nuxt/module-builder': version,
+            'tsdown': tsdownPkg.version,
+          },
+          configKey: 'myModule',
+          name: 'my-module',
+          version: '1.0.0',
+        },
+      )
+    })
+
+    it('should generate typed plugin', async () => {
+      const pluginDts = await readFile(join(distDir, 'runtime/plugins/plugin.d.ts'), 'utf-8')
+      const appAlias = `import\\("nuxt/app"\\)`
+      expect(pluginDts).toMatch(/^export type SharedTypeFromRuntime = 'shared-type';$/m)
+      expect(pluginDts).toMatch(
+        new RegExp(
+          `declare const _default: ${appAlias}\\.Plugin<\\{\\s*injection: "injected";\\s*\\}> & ${appAlias}\\.ObjectPlugin<\\{\\s*injection: "injected";\\s*\\}>;`,
+        ),
+      )
+      expect(pluginDts).toMatch(/^export default _default;$/m)
+    })
+
+    it('should not leak build-only virtual aliases into emitted runtime declarations', async () => {
+      const files = await listFiles(runtimeDir)
+      const declarations = files.filter(file => /\.d\.[^/]*ts$/.test(file))
+      expect(declarations.length).toBeGreaterThan(0)
+      for (const file of declarations) {
+        const contents = await readFile(join(runtimeDir, file), 'utf-8')
+        expect(contents, file).not.toMatch(/(["'])#app(?:\/[^"']*)?\1/)
+        expect(contents, file).not.toMatch(/import\("#app(?:\/[^"]*)?"\)/)
+      }
+    })
+
+    it('should resolve every shape of `#app` alias in runtime declarations', async () => {
+      const declaration = await readFile(join(runtimeDir, 'composables/useAliasedApp.d.ts'), 'utf-8')
+      expect(declaration).toMatch(/declare const useAppInstance: \(\) => import\("nuxt\/app"\)\.NuxtApp;/)
+      expect(declaration).toMatch(/declare const useAppRouter: \(\) => import\("vue-router"\)\./)
+      expect(declaration).toMatch(/declare const useAppCookie: \(name: string\) => import\("nuxt\/app"\)\.CookieRef</)
+      const deepDeclaration = await readFile(join(runtimeDir, 'composables/useAppNuxt.d.ts'), 'utf-8')
+      expect(deepDeclaration).toMatch(/declare const useAppFromNuxt: \(\) => import\("nuxt\/app"\)\.NuxtApp;/)
+    })
+
+    it('should correctly add extensions to imports from runtime/ directory', async () => {
+      const moduleDts = await readFile(join(distDir, 'module.d.mts'), 'utf-8')
+      const runtimeImport = findStaticImports(moduleDts).find(i => i.specifier.includes('runtime'))
+      expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";"`)
+    })
+
+    it('should generate components correctly', async () => {
+      const componentFile = await readFile(join(distDir, 'runtime/components/TestMe.vue'), 'utf-8')
+      await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue')
+
+      const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMe.vue.d.ts'), 'utf-8')
+      await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMe.vue.d.ts')
+    })
+
+    it('should generate components with <script setup> correctly', async () => {
+      const componentFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue'), 'utf-8')
+      await expect(componentFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue')
+
+      const componentDeclarationFile = await readFile(join(distDir, 'runtime/components/TestMeSetup.vue.d.ts'), 'utf-8')
+      await expect(componentDeclarationFile.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.vue.d.ts')
+
+      const componentDeclarationFile2 = await readFile(join(distDir, 'runtime/components/TestMeSetup.d.vue.ts'), 'utf-8')
+      await expect(componentDeclarationFile2.replace(/\r\n/g, '\n')).toMatchFileSnapshot('__snapshots__/TestMeSetup.d.vue.ts')
+    })
+
+    it('should generate wrapped composables', async () => {
+      const componentFile = await readFile(join(distDir, 'runtime/composables/useWrappedFetch.d.ts'), 'utf-8')
+      // `null` vs `undefined` error-type difference between Nuxt 3 and 4+ is intentional.
+      // Nuxt 4+ moved the default error from `FetchError` to `NuxtError<unknown>` (nuxt/nuxt#35346); accept both until it lands in a release.
+      const expectedErrorType = satisfies(nuxtVersion, '^3') ? 'null' : 'undefined'
+      const errorType = satisfies(nuxtVersion, '^3')
+        ? 'import\\("ofetch"\\)\\.FetchError<any>'
+        : '(?:import\\("ofetch"\\)\\.FetchError<any>|import\\("nuxt/app"\\)\\.NuxtError<unknown>)'
+      expect(componentFile).toMatch(
+        new RegExp(
+          `^export declare const useWrappedFetch: \\(\\) => import\\("nuxt/app"\\)\\.AsyncData<unknown, ${errorType} \\| ${expectedErrorType}>;$`,
+          'm',
+        ),
+      )
+    })
+
+    it('should preserve JSX in runtime files for the app to compile', async () => {
+      const [component, declaration] = await Promise.all([
+        readFile(join(distDir, 'runtime/components/JsxComponent.jsx'), 'utf-8'),
+        readFile(join(distDir, 'runtime/components/JsxComponent.d.ts'), 'utf-8'),
+      ])
+      expect(existsSync(join(distDir, 'runtime/components/JsxComponent.js'))).toBe(false)
+      await expect(component).toMatchFileSnapshot('__snapshots__/JsxComponent.jsx')
+      await expect(declaration).toMatchFileSnapshot('__snapshots__/JsxComponent.d.ts')
+    })
   })
 })

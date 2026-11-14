@@ -6,8 +6,6 @@
   "workspaces": {
     "example": {
       "entry": [
-        "src/module.ts",
-        "src/utils.ts",
         "src/runtime/**"
       ],
       "ignoreDependencies": [

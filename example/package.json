@@ -5,12 +5,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./dist/types.d.mts",
-      "default": "./dist/module.mjs"
+      "types": "./.nuxt/module-builder/types.d.mts",
+      "default": "./src/module.ts"
     },
-    "./utils": "./dist/utils.mjs"
+    "./utils": "./src/utils.ts"
   },
-  "main": "dist/module.mjs",
+  "main": "./src/module.ts",
   "typesVersions": {
     "*": {
       "utils": [
@@ -21,11 +21,21 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/types.d.mts",
+        "default": "./dist/module.mjs"
+      },
+      "./utils": "./dist/utils.mjs"
+    },
+    "main": "dist/module.mjs"
+  },
   "scripts": {
     "prepack": "node ../src/cli.ts build",
     "dev": "nuxi dev playground",
     "dev:build": "nuxi build playground",
-    "dev:prepare": "node ../src/cli.ts build --stub && node ../src/cli.ts prepare",
+    "dev:prepare": "node ../src/cli.ts prepare && nuxi prepare playground",
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {
