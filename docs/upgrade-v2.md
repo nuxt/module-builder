@@ -680,6 +680,8 @@ When `tsdown` or `nuxt-module-build build` runs as the `prepack` or `prepublishO
 - The package manager that packs has to be pnpm or Yarn 4. npm, Yarn 1, and bun pack `package.json` as written. Yarn 4 packs `typesVersions` as written too. Yarn 2 only replaces `main` and `module`, and Yarn 3 also `exports` and `imports`.
 - `publishConfig` has to set each of those fields, to paths outside `src` and `.nuxt`.
 
+The check reads `npm_lifecycle_event`, so it only runs when the build is the `prepack` or `prepublishOnly` script itself. A `prepack` script that runs another script, such as `"prepack": "npm run build"`, isn't checked: the nested script runs as `build`. Run `tsdown` or `nuxt-module-build build` from `prepack` directly.
+
 The package manager is read from the `npm_config_user_agent` and `npm_execpath` environment variables. Publish with `pnpm publish` or `yarn npm publish`. A `release` script that runs `npm publish` fails, even when `pnpm run` starts it. `npm publish` of a tarball that `pnpm pack` wrote works, as its `package.json` already has the `dist` paths and the build doesn't run again. `bun pm pack` and `bun publish` started from a pnpm or Yarn 4 script pass on that script's variables, so the build can't tell them apart from pnpm or Yarn.
 
 ### Developing against dist
