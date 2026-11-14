@@ -88,7 +88,7 @@ export default {
     {
       name: 'user',
       transform(code, id) {
-        return id.endsWith('src/module.ts') ? code.replace('__USER__', 'replaced by a user plugin') : undefined
+        return id.replaceAll('\\\\', '/').endsWith('src/module.ts') ? code.replace('__USER__', 'replaced by a user plugin') : undefined
       },
     },
     builder({ entries: ['./src/utils'] }),
