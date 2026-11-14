@@ -129,7 +129,9 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
-    tsc: { eager: true, parallel: true },
+    // TODO: allow the parallel worker while watching once https://github.com/sxzz/rolldown-plugin-dts/pull/365 is released.
+    // The worker inherits stdin, which tsdown reads while watching, and on Windows it then blocks at startup.
+    tsc: { eager: true, parallel: !config.watch },
     compilerOptions: { paths: plan.declarationPaths },
   } as const
 
