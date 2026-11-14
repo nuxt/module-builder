@@ -465,7 +465,9 @@ describe('findModuleCodeIssues', () => {
         `import options from './options.json' with { type: 'json' }`,
         `const empty = await import('./data.json', {})`,
         `const loaded = await import('./options.json', { with: { type: 'json' } })`,
-        `export const refs = [Card, label, data, options, empty, loaded]`,
+        `const type = 'json'`,
+        `const shorthand = await import('./options.json', { with: { type } })`,
+        `export const refs = [Card, label, data, options, empty, loaded, shorthand]`,
         `export type { CardType }`,
         ``,
       ].join('\n'))

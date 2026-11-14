@@ -309,17 +309,29 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
     return { line: line + 1, column: character + 1 }
   }
   const isJson = (attributes: ts.ImportAttributes | undefined) => !!attributes?.elements.some(element => element.name.text === 'type' && ts.isStringLiteral(element.value) && element.value.text === 'json')
-  const property = (object: ts.ObjectLiteralExpression, name: string) => object.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === name)
+  // `true` when the value is not known statically.
+  const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | true | undefined => {
+    for (const property of object.properties) {
+      if (ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+        if (property.name.text === name) {
+          return property.initializer
+        }
+      }
+      else if (!ts.isShorthandPropertyAssignment(property) || property.name.text === name) {
+        return true
+      }
+    }
+  }
   const isJsonOptions = (options: ts.Expression | undefined) => {
     if (!options || !ts.isObjectLiteralExpression(options)) {
       return !!options
     }
-    const attributes = property(options, 'with')?.initializer
-    if (!attributes || !ts.isObjectLiteralExpression(attributes)) {
+    const attributes = property(options, 'with')
+    if (!attributes || attributes === true || !ts.isObjectLiteralExpression(attributes)) {
       return !!attributes
     }
-    const type = property(attributes, 'type')?.initializer
-    return !!type && (!ts.isStringLiteralLike(type) || type.text === 'json')
+    const type = property(attributes, 'type')
+    return !!type && (type === true || !ts.isStringLiteralLike(type) || type.text === 'json')
   }
   const specifierOf = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
