@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join } from 'pathe'
+import { join, relative } from 'pathe'
 import { exec } from 'tinyexec'
 import { beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 
@@ -301,6 +302,58 @@ export default {
       expect(await Promise.all(files.map(output => readFile(output, 'utf-8')))).toEqual(before)
       await writeFile(join(dir, file), `${source}\nexport const recoveredMarker: string = 'recovered'\n`)
       await waitFor(async () => (await readFile(join(dir, 'dist', recovered), 'utf-8')).includes('recoveredMarker'))
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
+  it('should only write the outputs whose content changes when a watched build rebuilds', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-unchanged', `export default {\n  plugins: [\n    builder({ entries: ['./src/utils'] }),\n    { name: 'user-asset', generateBundle() { this.emitFile({ type: 'asset', fileName: 'user.txt', source: 'user asset\\n' }) } },\n  ],\n}\n`)
+    const distDir = join(dir, 'dist')
+    const snapshot = async () => {
+      const files = (await readdir(distDir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return new Map(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(distDir, path), { mtime: (await stat(path, { bigint: true })).mtimeNs, hash: createHash('sha256').update(await readFile(path)).digest('hex') }] as const
+      })))
+    }
+    const changes = (before: Awaited<ReturnType<typeof snapshot>>, after: Awaited<ReturnType<typeof snapshot>>) => ({
+      changed: [...after.keys()].filter(file => before.has(file) && before.get(file)!.mtime !== after.get(file)!.mtime).sort(),
+      added: [...after.keys()].filter(file => !before.has(file)).sort(),
+      removed: [...before.keys()].filter(file => !after.has(file)).sort(),
+    })
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    const rebuilds = () => watcher.output().match(/Rebuilt in/g)?.length ?? 0
+    const rebuild = async (change: () => Promise<void>) => {
+      const before = await snapshot()
+      const count = rebuilds()
+      await change()
+      await waitFor(async () => rebuilds() > count)
+      return changes(before, await snapshot())
+    }
+    const edit = async (file: string, from: string, to: string) => writeFile(join(dir, file), (await readFile(join(dir, file), 'utf-8')).replace(from, to))
+    try {
+      await waitFor(async () => rebuilds() > 0 && existsSync(join(distDir, 'module.json')) && existsSync(join(distDir, 'types.d.mts')))
+      expect(await readFile(join(distDir, 'user.txt'), 'utf-8')).toBe('user asset\n')
+
+      await rm(join(distDir, 'runtime/plugins/plugin.js'))
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: ['runtime/plugins/plugin.js'], removed: [] })
+
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '{{ count }}', 'count: {{ count }}'))).toEqual({ changed: ['runtime/components/TestMe.vue'], added: [], removed: [] })
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(() => edit('src/module.ts', `name: 'my-module'`, `name: 'my-renamed-module'`))).toEqual({ changed: ['module.json', 'module.mjs'], added: [], removed: [] })
+      expect(await rebuild(() => rm(join(dir, 'src/runtime/composables/useAppNuxt.ts')))).toEqual({ changed: [], added: [], removed: ['runtime/composables/useAppNuxt.d.ts', 'runtime/composables/useAppNuxt.js'] })
+
+      const before = await snapshot()
+      const plugin = await readFile(join(dir, 'src/runtime/plugins/plugin.ts'), 'utf-8')
+      const failures = () => watcher.output().match(/Failed to transpile/g)?.length ?? 0
+      const failed = failures()
+      await writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), `${plugin}\nexport const broken: = 1\n`)
+      await waitFor(async () => failures() > failed)
+      expect(changes(before, await snapshot())).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(() => writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), plugin))).toEqual({ changed: [], added: [], removed: [] })
+      expect([...(await snapshot()).entries()].map(([file, { hash }]) => [file, hash])).toEqual([...before.entries()].map(([file, { hash }]) => [file, hash]))
     }
     finally {
       await watcher.stop()

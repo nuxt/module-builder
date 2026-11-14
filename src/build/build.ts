@@ -262,9 +262,8 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   const typesFile = join(outDir, 'types.d.mts')
   plan.writesTypes ??= !existsSync(typesFile)
   if (plan.writesTypes) {
-    await rm(typesFile, { force: true })
+    await writeTypes(outDir)
   }
-  await writeTypes(outDir)
   await callBuildHook(plan.config, 'rollup:done', plan.ctx)
   await rewriteRuntimeDeclarations(outDir, outputs)
 

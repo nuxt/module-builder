@@ -1,7 +1,9 @@
-import { existsSync, promises as fsp } from 'node:fs'
+import { promises as fsp } from 'node:fs'
 import { relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
+
+import { writeIfChanged } from './write.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
 const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|const\s+enum|const|let|var|class|enum)\s+([$\w]+)/g
@@ -30,9 +32,6 @@ export async function writeSourceTypes(dir: string, entry: string): Promise<void
  */
 export async function writeTypes(distDir: string, entrySource?: string): Promise<void> {
   const dtsFile = resolve(distDir, 'types.d.mts')
-  if (existsSync(dtsFile)) {
-    return
-  }
 
   const moduleReExports: ESMExport[] = []
   const typeOnlyExports = new Set<string>()
@@ -134,7 +133,7 @@ ${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexpor
 ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
-  await fsp.writeFile(dtsFile, dtsContents, 'utf8')
+  await writeIfChanged(dtsFile, dtsContents)
 }
 
 /** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */

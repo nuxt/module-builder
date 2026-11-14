@@ -18,6 +18,7 @@ import { externalDependencyDeclarations } from './externals.ts'
 import { replacePlugin } from './replace.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { runtimeExternals } from './runtime-externals.ts'
+import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
   /** Read `build.config.*` and `package.json`'s `build` or `unbuild` field. */
@@ -35,9 +36,12 @@ export interface BuilderSession {
   /** Refreshes the source analysis for a rebuild, before the directory plugins start. */
   onBuildStart: () => void
   onBuildEnd: (error?: Error) => Promise<void>
-  /** Fails when the bundled entries are not emitted at the file names `builder()` sets. */
-  checkBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
-  onWriteBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
+  /**
+   * Fails when the bundled entries are not emitted at the file names `builder()` sets, and
+   * leaves out the outputs a watched rebuild emits unchanged, so they are not written again.
+   */
+  onGenerateBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
+  onWriteBundle: () => Promise<void>
 }
 
 const ESM_FORMATS = new Set(['es', 'esm', 'module'])
@@ -108,6 +112,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   let resolvedConfig: ResolvedConfig | undefined
   let failed = false
   let written: Set<string> | undefined
+  const unchanged = unchangedOutputs(outDir)
   let builds = 0
   const fail = async (error: unknown, directory?: boolean) => {
     if (!failed) {
@@ -216,7 +221,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         failed = false
       }
     },
-    async checkBundle(bundle) {
+    async onGenerateBundle(bundle) {
       const missing = Object.keys(plan.entries).map(name => `${name}.mjs`).filter((fileName) => {
         const output = bundle[fileName]
         return output?.type !== 'chunk' || !output.isEntry
@@ -226,8 +231,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         await fail(error)
         throw error
       }
+      unchanged.prune(bundle)
     },
-    async onWriteBundle(bundle) {
+    async onWriteBundle() {
+      unchanged.commit()
+      const bundle = unchanged.bundle
       const current = new Set(Object.keys(bundle))
       if (watch && written) {
         await Promise.all([...written].filter(file => !current.has(file)).map(file => rm(resolve(outDir, file), { force: true })))

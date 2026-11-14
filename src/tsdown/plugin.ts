@@ -57,13 +57,16 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
     async buildEnd(error) {
       await session?.onBuildEnd(error)
     },
-    async generateBundle(_options, bundle) {
-      await session?.checkBundle(bundle)
+    generateBundle: {
+      order: 'post',
+      async handler(_options, bundle) {
+        await session?.onGenerateBundle(bundle)
+      },
     },
     writeBundle: {
       order: 'post',
-      async handler(_options, bundle) {
-        await session?.onWriteBundle(bundle)
+      async handler() {
+        await session?.onWriteBundle()
       },
     },
   }

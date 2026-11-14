@@ -12,6 +12,7 @@ import { parseTsconfig } from 'get-tsconfig'
 import { assertNoLegacyBuildConfig, bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
+import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
@@ -947,6 +948,46 @@ describe('builder options', () => {
       '  - `deps.neverBundle`: list the imports that are never bundled',
       guide('options-builder-sets'),
     ].join('\n'))
+  })
+})
+
+describe('unchangedOutputs', () => {
+  const asset = (fileName: string, source: string) => ({ type: 'asset', fileName, source, names: [], originalFileNames: [], name: undefined, originalFileName: null }) as unknown as Rolldown.OutputAsset
+  const bundleOf = (files: Record<string, string>): Rolldown.OutputBundle => Object.fromEntries(Object.entries(files).map(([fileName, source]) => [fileName, asset(fileName, source)]))
+
+  it('should prune the outputs that the last written build emitted with the same content and that still exist', async () => {
+    const outDir = await mkdtemp(join(tmpdir(), 'module-builder-unchanged-'))
+    await writeFile(join(outDir, 'a.js'), 'a')
+    const unchanged = unchangedOutputs(outDir)
+    const first = bundleOf({ 'a.js': 'a', 'b.js': 'b' })
+    unchanged.prune(first)
+    expect(Object.keys(first)).toEqual(['a.js', 'b.js'])
+    unchanged.commit()
+
+    const second = bundleOf({ 'a.js': 'a', 'b.js': 'b', 'c.js': 'c' })
+    unchanged.prune(second)
+    expect(Object.keys(second)).toEqual(['b.js', 'c.js'])
+    expect(Object.keys(unchanged.bundle)).toEqual(['a.js', 'b.js', 'c.js'])
+
+    const third = bundleOf({ 'a.js': 'changed' })
+    unchanged.prune(third)
+    expect(Object.keys(third)).toEqual(['a.js'])
+    await rm(outDir, { recursive: true, force: true })
+  })
+
+  it('should write a declaration again when the files its specifiers resolve to change', async () => {
+    const outDir = await mkdtemp(join(tmpdir(), 'module-builder-unchanged-'))
+    await writeFile(join(outDir, 'a.d.ts'), `export * from './b/index.js'\n`)
+    const unchanged = unchangedOutputs(outDir)
+    unchanged.prune(bundleOf({ 'a.d.ts': `export * from './b'\n`, 'b/index.d.ts': '' }))
+    unchanged.commit()
+    const same = bundleOf({ 'a.d.ts': `export * from './b'\n`, 'b/index.d.ts': '' })
+    unchanged.prune(same)
+    expect(Object.keys(same)).toEqual(['b/index.d.ts'])
+    const moved = bundleOf({ 'a.d.ts': `export * from './b'\n`, 'b.d.ts': '' })
+    unchanged.prune(moved)
+    expect(Object.keys(moved)).toEqual(['a.d.ts', 'b.d.ts'])
+    await rm(outDir, { recursive: true, force: true })
   })
 })
 

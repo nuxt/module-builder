@@ -702,11 +702,11 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
 }
 ```
 
-While `nuxi dev playground` runs, run `tsdown --watch` next to it. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). Every rebuild rewrites all of `dist`, plugins included, so the playground reloads the page rather than updating a component in place. The playground loads `dist/module.mjs` once, when `nuxi dev` starts: restart `nuxi dev` after changing module code.
+While `nuxi dev playground` runs, run `tsdown --watch` next to it. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxi dev` starts: restart `nuxi dev` after changing module code.
 
 ## Output size
 
-Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory, with the size of its code and of its declarations; others get a line for each file. Set `report` in `tsdown.config.ts` to change it: `{ summary: true }` or `{ summary: false }`, `{ gzip: false }` to skip compressing each file, `{ brotli: true }`, or `false` to turn it off. `module.json` and `types.d.mts` are written after the report, so they aren't in it.
+Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory, with the size of its code and of its declarations; others get a line for each file. On a rebuild under `tsdown --watch`, the summary and the per-file lines only count the files that were written, while the lines for each entry and runtime directory cover the whole build. Set `report` in `tsdown.config.ts` to change it: `{ summary: true }` or `{ summary: false }`, `{ gzip: false }` to skip compressing each file, `{ brotli: true }`, or `false` to turn it off. `module.json` and `types.d.mts` are written after the report, so they aren't in it.
 
 To check the published size in CI, `npm pack --dry-run --json` lists exactly what gets published: each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`:
 
