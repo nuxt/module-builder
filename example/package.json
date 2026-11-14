@@ -33,9 +33,9 @@
   },
   "scripts": {
     "prepack": "node ../src/cli.ts build",
-    "dev": "nuxi dev playground",
-    "dev:build": "nuxi build playground",
-    "dev:prepare": "node ../src/cli.ts prepare && nuxi prepare playground",
+    "dev": "nuxt dev playground",
+    "dev:build": "nuxt build playground",
+    "dev:prepare": "node ../src/cli.ts prepare && nuxt prepare playground",
     "test:types": "vue-tsc --noEmit"
   },
   "dependencies": {

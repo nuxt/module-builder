@@ -386,7 +386,7 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
 }
 
 function pathsMatcher(cwd: string) {
-  // `prepare` checks module code before `nuxi prepare` has generated the `.nuxt/tsconfig.json`
+  // `prepare` checks module code before `nuxt prepare` has generated the `.nuxt/tsconfig.json`
   // that module tsconfigs extend, so a tsconfig that cannot be resolved yet means no aliases.
   try {
     const tsconfig = getTsconfig(cwd)

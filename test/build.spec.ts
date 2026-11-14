@@ -675,7 +675,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       scripts: {
         ...distFlowPkg.scripts,
         'prepack': `node ${tsdownBin}`,
-        'dev:prepare': `node ../src/cli.ts prepare && node ${tsdownBin} && nuxi prepare playground`,
+        'dev:prepare': `node ../src/cli.ts prepare && node ${tsdownBin} && nuxt prepare playground`,
       },
     }, null, 2))
     await writeFile(join(distFlowRootDir, 'tsdown.config.ts'), `${builderImport}\n\nexport default {\n  plugins: [builder(${JSON.stringify(distFlowBuild)})],\n}\n`)

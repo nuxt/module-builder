@@ -121,8 +121,8 @@ A minimum `package.json` should look like this. It points at the module's source
     "types": "./dist/types.d.mts"
   },
   "scripts": {
-    "dev": "nuxi dev playground",
-    "dev:prepare": "nuxt-module-build prepare && nuxi prepare playground",
+    "dev": "nuxt dev playground",
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
     "prepack": "tsdown"
   },
   "dependencies": {
