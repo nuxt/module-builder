@@ -425,6 +425,31 @@ export default {
     expect(await readFile(join(dir, 'dist/runtime/composables/useAliasedApp.d.ts'), 'utf-8')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
   }, 120 * 1000)
 
+  it('should prepare a module that lists its own package in `.nuxtrc` and `nuxt.config`, with or without `dist`', async () => {
+    const dir = await copyExample('.temp-tsdown-self-listed', `export default {\n  plugins: [builder()],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, name: 'self-listed-module' }, null, 2))
+    await appendFile(join(dir, '.nuxtrc'), '\nmodules[]=self-listed-module\n')
+    await writeFile(join(dir, 'nuxt.config.ts'), `export default { modules: [['self-listed-module', { apiKey: 'from-config' }]] }\n`)
+    await writeFile(join(dir, 'src/module.ts'), (await readFile(join(dir, 'src/module.ts'), 'utf-8')).replace('setup(_options, _nuxt) {', 'setup(_options, _nuxt) {\n    console.log(`[setup] ${_options.apiKey}`)'))
+    const env = { ...process.env, NODE_ENV: '', TEST: '', NUXT_TELEMETRY_DISABLED: '1' }
+    const references = async () => (await readFile(join(dir, '.nuxt/nuxt.d.ts'), 'utf-8')).split('\n').filter(line => line.includes('types="self-listed-module"'))
+
+    await rm(join(dir, '.nuxt'), { recursive: true, force: true })
+    const built = await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env } })
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
+    expect(built.stdout.match(/\[setup\] .*/g)).toEqual(['[setup] from-config'])
+    expect(await references()).toHaveLength(1)
+
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, name: 'self-listed-module', exports: { '.': './src/module.ts' }, main: './src/module.ts' }, null, 2))
+    await rm(join(dir, '.nuxt'), { recursive: true, force: true })
+    const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env } })
+    expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+    expect(prepared.stdout.match(/\[setup\] .*/g)).toEqual(['[setup] from-config'])
+    expect(await references()).toHaveLength(1)
+  }, 120 * 1000)
+
   it('should reject one plugin instance shared by two configs', async () => {
     const dir = await copyExample('.temp-tsdown-shared', `const plugin = builder()\n\nexport default [\n  { plugins: [plugin] },\n  { plugins: [plugin], outDir: 'dist-other' },\n]\n`)
     const { exitCode, stdout, stderr } = await tsdown(dir)
