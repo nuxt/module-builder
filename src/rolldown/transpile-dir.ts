@@ -156,6 +156,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
   outputs.catch(() => {})
   let latestOutputs = outputs
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
+  let latestBuild: DirectoryBuild | undefined
 
   return {
     name: 'transpile-dir',
@@ -179,7 +180,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
       for (const file of files) {
         this.addWatchFile(file)
       }
-      const build = new DirectoryBuild({ ...options, cwd, srcDir }, files.map(file => normalize(file)).sort())
+      const build = latestBuild = new DirectoryBuild({ ...options, cwd, srcDir }, files.map(file => normalize(file)).sort())
       work = build.run()
         .then((files) => {
           resolveOutputs(build.outputs)
@@ -191,6 +192,12 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
         })
       latestOutputs = work.then(result => 'error' in result ? Promise.reject(result.error) : result.build.outputs)
       latestOutputs.catch(() => {})
+    },
+    async buildEnd() {
+      await work
+      for (const source of latestBuild?.outputs.keys() ?? []) {
+        this.addWatchFile(source)
+      }
     },
     async generateBundle(outputOptions, bundle) {
       for (const [fileName, output] of Object.entries(bundle)) {

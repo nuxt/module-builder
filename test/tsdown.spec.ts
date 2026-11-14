@@ -247,6 +247,22 @@ export default {
     }
   }, 120 * 1000)
 
+  it('should rebuild when a file outside the runtime directory that a runtime file imports changes while watching', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-outside', `export default {\n  plugins: [builder()],\n}\n`)
+    await writeFile(join(dir, 'src/shared.ts'), `export const shared: string = 'first'\n`)
+    await writeFile(join(dir, 'src/runtime/use.ts'), `import { shared } from '../shared'\n\nexport const useShared = (): string => shared\n`)
+    const output = join(dir, 'dist/shared.js')
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    try {
+      await waitFor(async () => existsSync(output) && (await readFile(output, 'utf-8')).includes('first'))
+      await writeFile(join(dir, 'src/shared.ts'), `export const shared: string = 'second'\n`)
+      await waitFor(async () => (await readFile(output, 'utf-8')).includes('second'))
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
   it('should remove the output of a runtime file deleted while watching', async () => {
     const dir = await copyExample('.temp-tsdown-watch-deleted', `export default {\n  plugins: [builder()],\n}\n`)
     await writeFile(join(dir, 'src/runtime/removed.ts'), `export const removed: string = 'removed'\n`)
