@@ -117,7 +117,8 @@ A minimum `package.json` should look like this:
     "dist"
   ],
   "scripts": {
-    "prepack": "nuxt-module-build build"
+    "dev:prepare": "nuxt-module-build prepare --stub && nuxi prepare playground",
+    "prepack": "tsdown"
   },
   "dependencies": {
     "@nuxt/kit": "latest"
@@ -129,31 +130,35 @@ A minimum `package.json` should look like this:
 }
 ```
 
-`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`.
+`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. With pnpm, the playground can also load the module from its sources without a stub: see [Developing without a stub](./docs/upgrade-v2.md#developing-without-a-stub).
 
-### Additional entrypoints (optional)
+Module code (`src/module.ts`, the files it imports by value, and the build config) has to load with Node as it is: relative imports carry their `.ts` extension, and TypeScript syntax that stripping types doesn't remove, tsconfig `paths` aliases, value imports of `.vue` and `.tsx` files, JSON without `with { type: 'json' }`, and value imports of `#app`, `#imports`, and `#build/*` aren't allowed. See [Module code loads with Node](./docs/upgrade-v2.md#module-code-loads-with-node).
 
-Module builder is a preset for [tsdown](https://tsdown.dev). See [`src/build/build.ts`](./src/build/build.ts) for the options it passes to tsdown.
+### Build configuration
 
-To build entrypoints other than `src/module`, list them in the `build.entries` field of `package.json`:
+Module builder builds with [tsdown](https://tsdown.dev), through the `builder()` plugin. Add it to a `tsdown.config.ts`, and build with `tsdown`:
 
-```json [package.json]
-{
-  "build": {
-    "entries": [
-      "./src/utils"
-    ]
-  }
-}
+```ts [tsdown.config.ts]
+import { builder } from '@nuxt/module-builder/tsdown'
+import { defineConfig } from 'tsdown'
+
+export default defineConfig({
+  plugins: [
+    builder({
+      // entrypoints other than `src/module`
+      entries: ['./src/utils'],
+    }),
+  ],
+})
 ```
 
+`nuxt-module-build build` builds the same `dist`, with this config or, without one, with no options. `builder()` also takes `externals` and `replace`, and other tsdown options apply as usual apart from the ones the plugin sets. See [tsdown config](./docs/upgrade-v2.md#tsdown-config) in the upgrade guide.
+
 > [!WARNING]
-> `build.config.ts` and the `unbuild` field of `package.json` are deprecated.
-> The build still applies their `entries`, `externals`, `replace`, `rollup.replace`, and `sourcemap` options,
-> and the `build:before`, `rollup:done`, and `build:done` hooks. `mkdist:*` hooks are ignored, a few options
-> are accepted at their defaults, and any other option fails the build. Import `defineBuildConfig` from
-> `@nuxt/module-builder` instead of `unbuild`. See [Build configuration](./docs/upgrade-v2.md#build-configuration)
-> in the upgrade guide for the full list.
+> `build.config.ts` and the `unbuild` field of `package.json` are deprecated. Without a `tsdown.config.ts`,
+> the build still applies their `entries`, `externals`, `replace`, `rollup.replace`, and `sourcemap` options,
+> and the `build:before`, `rollup:done`, and `build:done` hooks, and reads `build.entries` from `package.json`.
+> See [Moving from build.config.ts](./docs/upgrade-v2.md#moving-from-buildconfigts) in the upgrade guide.
 
 ## Dist files
 
@@ -168,6 +173,14 @@ Module builder generates dist files in `dist/` directory:
   - `.css` files have their nesting flattened, and are vendor-prefixed and minified
   - `.scss` and `.sass` files are compiled to `.css` with the module's `sass` or `sass-embedded`; `_` partials aren't emitted
   - Other files are copied as they are
+
+## Output size
+
+Each build reports its output size: a summary plus one line per bundled entry and runtime directory for a module with runtime directories, or one line per file otherwise. Set `report` in `tsdown.config.ts` to change it (`{ summary: true }`, `{ gzip: false }`, `{ brotli: true }`, or `false`). For size checks in CI, `npm pack --dry-run --json` lists exactly what gets published: each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`:
+
+```bash
+npm pack --dry-run --json | jq '.[0] | { size, unpackedSize }'
+```
 
 ## Transpiling a directory with tsdown
 

@@ -14,4 +14,9 @@ export default createConfigForNuxt({
   },
 }).append({
   ignores: ['test/__snapshots__/*'],
+}, {
+  files: ['src/build/**'],
+  rules: {
+    'no-restricted-imports': ['error', { paths: [{ name: 'tsdown', message: 'The core does not depend on tsdown; tsdown-specific code belongs in `src/tsdown/`.' }] }],
+  },
 })

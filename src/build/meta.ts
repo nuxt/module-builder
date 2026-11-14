@@ -7,14 +7,14 @@ import { importModule } from './loader.ts'
 export interface WriteModuleMetaOptions {
   cwd: string
   outDir: string
-  /** Directories whose files import relative sources without extensions. */
-  runtimeDirs: string[]
   pkg: { name?: string, version?: string }
   builder: Record<string, string>
+  /** Set on rebuilds, so the rebuilt module is imported rather than the cached one. */
+  version?: number
 }
 
-export async function writeModuleMeta({ cwd, outDir, runtimeDirs, pkg, builder }: WriteModuleMetaOptions): Promise<void> {
-  const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd, runtimeDirs })
+export async function writeModuleMeta({ cwd, outDir, pkg, builder, version }: WriteModuleMetaOptions): Promise<void> {
+  const moduleExports = await importModule(resolve(outDir, 'module.mjs'), { cwd, outDir, version })
   const moduleFn = (moduleExports.default ?? moduleExports) as NuxtModule<Record<string, unknown>>
 
   const moduleMeta = await moduleFn.getMeta?.() || {}

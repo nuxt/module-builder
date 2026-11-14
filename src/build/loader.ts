@@ -1,10 +1,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { consola } from 'consola'
 import { dirname, isAbsolute, relative, resolve } from 'pathe'
-import { findExports, findStaticImports, parseStaticImport } from 'mlly'
-import type { NamedExport } from 'mlly'
+import { resolvePathSync } from 'mlly'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
@@ -13,106 +11,55 @@ import { guide } from './guide.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const ALIAS_SHAPED_RE = /^(?:#|~|@\/)/
+const NODE_MODULES_RE = /[\\/]node_modules[\\/]/
+const JSON_RE = /\.json$/
+const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
 const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
 export interface ImportModuleOptions {
-  /** Module root, used to resolve tsconfig path aliases in un-bundled sources. */
+  /** Module root, inside which `version` applies. */
   cwd?: string
+  /** The build's output directory, inside which `version` also applies. */
+  outDir?: string
   /** Source code to serve in place of these bare specifiers. */
   stubs?: Record<string, string>
-  /** Directories whose files import relative sources without extensions, such as `src/runtime`. */
-  runtimeDirs?: string[]
+  /**
+   * Distinguishes this import from earlier ones of the same file, which Node would serve
+   * from its cache: the file and every file it imports from inside `cwd`, outside
+   * `node_modules`, are loaded afresh for each version.
+   */
+  version?: number
 }
 
 /**
- * Import a file with the resolution affordances a Nuxt module's source expects
- * but plain Node ESM does not provide:
- *
- * - `#app`, `#imports` and `#build` are build-time-only aliases with no package
- *   resolution, so a module entry that transitively imports runtime code cannot be
- *   loaded at all without standing in something for them.
- * - tsconfig `paths` aliases, which matter when importing TypeScript sources directly
- *   (`--stub`, `build.config.ts`). Relative specifiers are left to Node, so they need
- *   their file extension (see {@link findUnresolvableImports}), except inside
- *   `runtimeDirs`, where the extension is probed for.
+ * Import a file as Node does, with `stubs` for bare specifiers. Module code has to load as
+ * Node loads it (see {@link findModuleCodeIssues}).
  */
 export async function importModule(path: string, options: ImportModuleOptions = {}): Promise<Record<string, unknown>> {
   const cwd = options.cwd ?? process.cwd()
-  const matchPath = options.cwd ? pathsMatcher(options.cwd) : undefined
   const stubs = options.stubs || {}
-  const runtimeDirs = options.runtimeDirs || []
 
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (Object.hasOwn(stubs, specifier)) {
         return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
       }
-
-      if (VIRTUAL_ALIAS_RE.test(specifier)) {
-        return { url: stubURL(specifier, context.parentURL), shortCircuit: true }
-      }
-
-      if (specifier.startsWith('.') && context.parentURL?.startsWith('file:')) {
-        const parentDir = dirname(fileURLToPath(context.parentURL))
-        const file = runtimeDirs.some(dir => isInside(dir, parentDir)) ? probe(resolve(parentDir, specifier)) : undefined
-        if (file) {
-          return { url: pathToFileURL(file).href, shortCircuit: true }
-        }
-      }
-
-      const fromPaths = () => {
-        for (const candidate of matchPath?.(specifier) || []) {
-          const file = probe(candidate)
-          if (file) {
-            return { url: pathToFileURL(file).href, shortCircuit: true as const }
-          }
-        }
-      }
-
-      // A wildcard `paths` entry such as `{ "*": ["./src/*"] }` matches every bare
-      // specifier, so real packages have to win over the alias table. Alias-shaped
-      // specifiers cannot name a package, so they stay paths-first.
-      if (ALIAS_SHAPED_RE.test(specifier)) {
-        return fromPaths() || nextResolve(specifier, context)
-      }
-
-      try {
-        return nextResolve(specifier, context)
-      }
-      catch (error) {
-        const resolved = fromPaths()
-        if (!resolved) {
-          throw error
-        }
+      const resolved = nextResolve(specifier, context)
+      if (!options.version || !resolved.url.startsWith('file:') || ![cwd, options.outDir ?? cwd].some(root => isInside(root, fileURLToPath(resolved.url))) || NODE_MODULES_RE.test(resolved.url)) {
         return resolved
       }
-    },
-    // Single-file components are copied to `dist/runtime` verbatim and Node has no
-    // loader for them, but a module entry only ever needs their identity here.
-    load(url, context, nextLoad) {
-      if (url.endsWith('.vue')) {
-        return { format: 'module', source: 'export default {}', shortCircuit: true }
-      }
-      if (url.startsWith('file:') && TYPESCRIPT_RE.test(url)) {
-        const result = transpile(url, cwd)
-        if (result) {
-          return result
-        }
-      }
-      try {
-        return nextLoad(url, context)
-      }
-      catch (error) {
-        if ((error as { code?: string }).code === 'ERR_IMPORT_ATTRIBUTE_MISSING' && url.startsWith('file:') && url.endsWith('.json')) {
-          return { format: 'module', source: jsonModule(readFileSync(fileURLToPath(url), 'utf8')), shortCircuit: true }
-        }
-        throw error
-      }
+      const url = new URL(resolved.url)
+      url.searchParams.set('v', String(options.version))
+      return { ...resolved, url: url.href }
     },
   })
 
   try {
-    return await import(pathToFileURL(path).href)
+    const url = pathToFileURL(path)
+    if (options.version) {
+      url.searchParams.set('v', String(options.version))
+    }
+    return await import(url.href)
   }
   finally {
     hooks.deregister()
@@ -124,7 +71,7 @@ const SOURCE_RE = /\.[cm]?[jt]sx?$/
 
 interface Oxc {
   transform: Transform
-  transformSync: (filename: string, source: string, options: Record<string, unknown>) => { code: string, errors: Array<{ message: string }> }
+  transformSync: (...args: Parameters<Transform>) => Awaited<ReturnType<Transform>>
 }
 
 let oxc: Oxc | null | undefined
@@ -142,122 +89,160 @@ export function loadOxc(): Oxc | null {
   return oxc
 }
 
-export interface NonErasableSyntax {
+export interface ModuleCodeIssue {
   /** Path relative to the module root. */
   file: string
   line: number
   column: number
-  /** What the syntax is, such as `enum` or `parameter property`. */
-  kind: string
+  /** For a file in a runtime directory, the module code that imports it, as `file:line`. */
+  importedBy?: string
+  /** What Node cannot load, and what to write instead. */
+  message: string
+}
+
+const NON_ERASABLE_FIXES: Record<string, string> = {
+  '`enum`': 'use an `as const` object and a union type of its values',
+  '`namespace`': 'use plain exports or an object',
+  'angle-bracket type assertion': 'write `value as Type`',
+  'parameter property': 'declare the field and assign it in the constructor',
+  '`import =`': 'use `import`, or `createRequire` for CommonJS',
+  '`export =`': 'use `export default`',
+  'decorator': 'call the decorator as a function',
 }
 
 /**
- * Every use of TypeScript syntax that Node's type stripping cannot erase in `entries`
- * and the sources they import, relative to `cwd`.
+ * Everything in `entries` and the sources they import by value, which Node loads with
+ * them, that Node cannot load as written: TypeScript syntax that stripping types does not
+ * remove, relative specifiers without the file's extension, tsconfig `paths` aliases and
+ * the aliases only a Nuxt app provides. Type-only imports are erased before Node sees
+ * them. Files in `runtimeDirs` that are not imported this way are left to the build.
+ *
+ * `otherEntries`, bundled entries that a stub also re-exports as they are, only need the
+ * extensions of their relative imports outside `runtimeDirs`.
  */
-export function findNonErasableSyntax(cwd: string, entries: string[]): NonErasableSyntax[] {
-  const found: NonErasableSyntax[] = []
-  walkSources(cwd, entries, (file, analysis) => {
-    found.push(...analysis.nonErasable.map(location => ({ file: relative(cwd, file), ...location })))
+export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs: string[], otherEntries: string[] = []): ModuleCodeIssue[] {
+  const found: ModuleCodeIssue[] = []
+  const checked = new Set<string>()
+  walkSources(cwd, entries, (file, analysis, importer) => {
+    checked.add(file)
+    const importedBy = importer && runtimeDirs.some(dir => isInside(dir, file)) ? `${relative(cwd, importer.file)}:${importer.line}` : undefined
+    const issue = (location: { line: number, column: number }, message: string) => found.push({ file: relative(cwd, file), ...location, ...importedBy && { importedBy }, message })
+    for (const { kind, ...location } of analysis.nonErasable) {
+      issue(location, `${kind} (${NON_ERASABLE_FIXES[kind]})`)
+    }
+    for (const { specifier, typeOnly, json, resolution, ...location } of analysis.imports) {
+      if (typeOnly) {
+        continue
+      }
+      if (VIRTUAL_ALIAS_RE.test(specifier)) {
+        issue(location, `\`${specifier}\` only exists in a Nuxt app (move the code that uses it into a runtime file the module adds, or import types only)`)
+      }
+      if (JSON_RE.test(resolution?.file ?? specifier) && !json) {
+        issue(location, `\`${specifier}\` is JSON (use \`import pkg from '${specifier}' with { type: 'json' }\` and read \`pkg.version\`; destructuring \`pkg\` bundles the whole file)`)
+      }
+      if (!resolution) {
+        continue
+      }
+      if (UNLOADABLE_RE.test(resolution.file)) {
+        issue(location, `\`${specifier}\` is ${resolution.file.endsWith('.vue') ? 'a single-file component' : 'JSX'}, which Node cannot load (move the value the module needs into a \`.ts\` file, or use \`import type\`)`)
+        continue
+      }
+      const suggestion = relativeSpecifier(dirname(file), resolution.file)
+      if (resolution.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
+        issue(location, `\`${specifier}\` (use \`${suggestion}\`)`)
+      }
+      else if (resolution.via === 'paths') {
+        issue(location, `\`${specifier}\` is a tsconfig \`paths\` alias (use \`${suggestion}\`, or an entry in the \`imports\` of \`package.json\`)`)
+      }
+    }
   })
-  return found
-}
-
-/** One line per occurrence, for a hint or warning. */
-export function listNonErasableSyntax(found: NonErasableSyntax[]): string[] {
-  return found.map(({ file, line, column, kind }) => `  - ${file}:${line}:${column}: ${kind}`)
-}
-
-export interface UnresolvableImport {
-  /** Path relative to the module root. */
-  file: string
-  line: number
-  column: number
-  specifier: string
-  /** The specifier that names the file on disk. */
-  suggestion: string
-}
-
-/**
- * Every relative value import in `entries` and the sources they import, outside
- * `runtimeDirs`, whose specifier Node cannot resolve as written because it lacks the
- * file's extension, carries another one, or names a directory, with the specifier to use
- * instead. Type-only imports are erased before Node sees them.
- */
-export function findUnresolvableImports(cwd: string, entries: string[], runtimeDirs: string[]): UnresolvableImport[] {
-  const found: UnresolvableImport[] = []
-  walkSources(cwd, entries, (file, analysis) => {
-    if (runtimeDirs.some(dir => isInside(dir, file))) {
+  walkSources(cwd, otherEntries, (file, analysis) => {
+    if (checked.has(file) || runtimeDirs.some(dir => isInside(dir, file))) {
       return
     }
-    for (const { specifier, typeOnly, line, column } of analysis.imports) {
-      if (typeOnly || !specifier.startsWith('.')) {
-        continue
+    for (const { specifier, typeOnly, json: _, resolution, ...location } of analysis.imports) {
+      if (!typeOnly && resolution?.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
+        found.push({ file: relative(cwd, file), ...location, message: `\`${specifier}\` (use \`${relativeSpecifier(dirname(file), resolution.file)}\`)` })
       }
-      const target = resolve(dirname(file), specifier)
-      const resolved = probe(target)
-      if (!resolved || resolved === target) {
-        continue
-      }
-      const suggestion = relative(dirname(file), resolved)
-      found.push({ file: relative(cwd, file), line, column, specifier, suggestion: suggestion.startsWith('.') ? suggestion : `./${suggestion}` })
     }
   })
-  return found
+  return found.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column)
 }
 
-/** Fails the build for {@link findUnresolvableImports} findings. */
-export function assertResolvableImports(cwd: string, entries: string[], runtimeDirs: string[]): void {
-  const found = findUnresolvableImports(cwd, entries, runtimeDirs)
+/** Fails for {@link findModuleCodeIssues} findings. */
+export function assertLoadableModuleCode(cwd: string, entries: string[], runtimeDirs: string[], otherEntries: string[] = []): void {
+  const found = findModuleCodeIssues(cwd, entries, runtimeDirs, otherEntries)
   if (found.length) {
-    throw new Error(formatUnresolvableImports(found))
+    throw new Error(formatModuleCodeIssues(found))
   }
 }
 
-/** The error message for {@link findUnresolvableImports} findings, one line each. */
-export function formatUnresolvableImports(found: UnresolvableImport[]): string {
-  const lines = new Set(found.map(({ file, line, column, specifier, suggestion }) => `  - ${file}:${line}:${column}: \`${specifier}\` (use \`${suggestion}\`)`))
+/** The error message for {@link findModuleCodeIssues} findings, one line each. */
+export function formatModuleCodeIssues(found: ModuleCodeIssue[]): string {
+  const lines = new Set(found.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`))
   return [
-    'Relative imports in module code need the file\'s extension, so Node can load the sources as they are:',
+    'Module code has to load with Node, which strips types and resolves imports as written:',
     ...lines,
-    `Write each specifier as suggested. ${guide('import-extensions-in-module-code')}`,
+    `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
   ].join('\n')
 }
 
-interface SourceAnalysis {
-  nonErasable: Array<Omit<NonErasableSyntax, 'file'>>
-  imports: Array<{ specifier: string, typeOnly: boolean, line: number, column: number }>
+interface Resolution {
+  file: string
+  /** How the specifier reaches `file`. */
+  via: 'relative' | 'imports' | 'paths'
 }
 
-function walkSources(cwd: string, entries: string[], visit: (file: string, analysis: SourceAnalysis) => void) {
+interface SourceAnalysis {
+  nonErasable: Array<{ line: number, column: number, kind: string }>
+  imports: Array<{ specifier: string, typeOnly: boolean, json: boolean, line: number, column: number, resolution?: Resolution }>
+}
+
+interface Importer {
+  file: string
+  line: number
+}
+
+function walkSources(cwd: string, entries: string[], visit: (file: string, analysis: SourceAnalysis, importer?: Importer) => void) {
   const matchPath = pathsMatcher(cwd)
   const seen = new Set<string>()
-  const queue = entries.map(entry => resolve(cwd, entry))
+  const queue: Array<{ file: string, importer?: Importer }> = entries.map(entry => ({ file: resolve(cwd, entry) }))
   while (queue.length) {
-    const file = queue.shift()!
+    const { file, importer } = queue.shift()!
     if (seen.has(file) || !SOURCE_RE.test(file) || !existsSync(file)) {
       continue
     }
     seen.add(file)
     const analysis = analyseSource(file, readFileSync(file, 'utf8'))
-    visit(file, analysis)
-    for (const { specifier, typeOnly } of analysis.imports) {
-      const target = typeOnly ? undefined : resolveSource(specifier, dirname(file), matchPath)
-      if (target) {
-        queue.push(target)
+    for (const entry of analysis.imports) {
+      entry.resolution = resolveSource(entry.specifier, dirname(file), cwd, matchPath)
+      if (entry.resolution && !entry.typeOnly) {
+        if (!UNLOADABLE_RE.test(entry.resolution.file)) {
+          queue.push({ file: entry.resolution.file, importer: { file, line: entry.line } })
+        }
       }
     }
+    visit(file, analysis, importer)
   }
 }
 
 function resolvesAsPackage(specifier: string, parentDir: string) {
   try {
-    createRequire(resolve(parentDir, 'index.js')).resolve(specifier)
-    return true
+    return resolvePathSync(specifier, { url: pathToFileURL(resolve(parentDir, 'index.js')), conditions: ['import', 'node', 'default'] })
   }
   catch {
-    return false
+    try {
+      return createRequire(resolve(parentDir, 'index.js')).resolve(specifier)
+    }
+    catch {
+      return undefined
+    }
   }
+}
+
+function relativeSpecifier(from: string, to: string) {
+  const path = relative(from, to)
+  return path.startsWith('.') ? path : `./${path}`
 }
 
 function isInside(dir: string, path: string) {
@@ -265,20 +250,27 @@ function isInside(dir: string, path: string) {
   return !subpath.startsWith('..') && !isAbsolute(subpath)
 }
 
-function resolveSource(specifier: string, parentDir: string, matchPath: ReturnType<typeof pathsMatcher>) {
+/**
+ * The module source `specifier` reaches: a relative file, an entry in the `imports` of the
+ * module's `package.json`, or a tsconfig `paths` alias. Packages and the aliases only a
+ * Nuxt app provides are not followed.
+ */
+function resolveSource(specifier: string, parentDir: string, cwd: string, matchPath: ReturnType<typeof pathsMatcher>): Resolution | undefined {
   if (VIRTUAL_ALIAS_RE.test(specifier)) {
     return
   }
   if (specifier.startsWith('.')) {
-    return probe(resolve(parentDir, specifier))
+    const file = probe(resolve(parentDir, specifier))
+    return file ? { file, via: 'relative' } : undefined
   }
-  if (!ALIAS_SHAPED_RE.test(specifier) && resolvesAsPackage(specifier, parentDir)) {
-    return
+  const resolved = (specifier.startsWith('#') || !ALIAS_SHAPED_RE.test(specifier)) ? resolvesAsPackage(specifier, parentDir) : undefined
+  if (resolved) {
+    return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
   }
   for (const candidate of matchPath?.(specifier) || []) {
     const file = probe(candidate)
     if (file) {
-      return file
+      return { file, via: 'paths' }
     }
   }
 }
@@ -292,6 +284,21 @@ function scriptKind(ts: typeof import('typescript'), filename: string) {
   return filename.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
 }
 
+function hasRuntimeCode(ts: typeof import('typescript'), node: ts.ModuleDeclaration): boolean {
+  const { body } = node
+  if (!body) {
+    return false
+  }
+  if (ts.isModuleDeclaration(body)) {
+    return hasRuntimeCode(ts, body)
+  }
+  return ts.isModuleBlock(body) && body.statements.some(statement => !(
+    ts.isInterfaceDeclaration(statement)
+    || ts.isTypeAliasDeclaration(statement)
+    || (ts.isModuleDeclaration(statement) && !hasRuntimeCode(ts, statement))
+  ))
+}
+
 function analyseSource(filename: string, source: string): SourceAnalysis {
   const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
   const { SyntaxKind, NodeFlags } = ts
@@ -301,22 +308,47 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
     const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
     return { line: line + 1, column: character + 1 }
   }
+  const isJson = (attributes: ts.ImportAttributes | undefined) => !!attributes?.elements.some(element => element.name.text === 'type' && ts.isStringLiteral(element.value) && element.value.text === 'json')
+  // `true` when the value is not known statically.
+  const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | true | undefined => {
+    for (const property of object.properties) {
+      if (ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
+        if (property.name.text === name) {
+          return property.initializer
+        }
+      }
+      else if (!ts.isShorthandPropertyAssignment(property) || property.name.text === name) {
+        return true
+      }
+    }
+  }
+  const isJsonOptions = (options: ts.Expression | undefined) => {
+    if (!options || !ts.isObjectLiteralExpression(options)) {
+      return !!options
+    }
+    const attributes = property(options, 'with')
+    if (!attributes || attributes === true || !ts.isObjectLiteralExpression(attributes)) {
+      return !!attributes
+    }
+    const type = property(attributes, 'type')
+    return !!type && (type === true || !ts.isStringLiteralLike(type) || type.text === 'json')
+  }
   const specifierOf = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      return { specifier: node.moduleSpecifier, typeOnly: node.importClause?.isTypeOnly ?? false }
+      return { specifier: node.moduleSpecifier, typeOnly: node.importClause?.isTypeOnly ?? false, json: isJson(node.attributes) }
     }
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      return { specifier: node.moduleSpecifier, typeOnly: node.isTypeOnly }
+      return { specifier: node.moduleSpecifier, typeOnly: node.isTypeOnly, json: isJson(node.attributes) }
     }
     if (ts.isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-      return { specifier: node.arguments[0], typeOnly: false }
+      return { specifier: node.arguments[0], typeOnly: false, json: isJsonOptions(node.arguments[1]) }
     }
   }
   const kindOf = (node: ts.Node) => {
     if (ts.isEnumDeclaration(node)) {
       return '`enum`'
     }
-    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation))) {
+    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation)) && hasRuntimeCode(ts, node)) {
       return '`namespace`'
     }
     if (ts.isTypeAssertionExpression(node)) {
@@ -345,65 +377,12 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
     }
     const imported = specifierOf(node)
     if (imported) {
-      found.imports.push({ specifier: imported.specifier.text, typeOnly: imported.typeOnly, ...position(imported.specifier) })
+      found.imports.push({ specifier: imported.specifier.text, typeOnly: imported.typeOnly, json: imported.json, ...position(imported.specifier) })
     }
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
   return found
-}
-
-const reportedNonErasable = new Set<string>()
-
-/**
- * Transpiles a TypeScript file with oxc when Node's type stripping cannot load it: JSX, or
- * syntax that only erasing types does not remove. Files Node can strip are left to Node.
- */
-function transpile(url: string, cwd: string) {
-  const oxc = loadOxc()
-  if (!oxc) {
-    return
-  }
-  const filename = resolve(fileURLToPath(url))
-  const source = readFileSync(filename, 'utf8')
-  const lang = filename.endsWith('x') ? 'tsx' : 'ts'
-  const nonErasable = lang === 'ts' && analyseSource(filename, source).nonErasable.length > 0
-  if (lang === 'ts' && !nonErasable) {
-    return
-  }
-  if (nonErasable && !process.env.CI && !reportedNonErasable.has(filename)) {
-    const found = findNonErasableSyntax(cwd, [filename])
-    for (const { file } of found) {
-      reportedNonErasable.add(resolve(cwd, file))
-    }
-    consola.warn([
-      'These files use TypeScript syntax that Node cannot strip, so they were transpiled:',
-      ...listNonErasableSyntax(found),
-      `Set \`erasableSyntaxOnly: true\` in your \`tsconfig.json\` and replace the syntax listed to keep the sources loadable by Node alone. ${guide('stub-builds')}`,
-    ].join('\n'))
-  }
-  const result = oxc.transformSync(filename, source, {
-    lang,
-    sourceType: 'module',
-    // The tsconfig of an unprepared module extends a `.nuxt/tsconfig.json` that does not exist yet.
-    tsconfig: false,
-    jsx: { runtime: 'automatic', importSource: 'vue' },
-  })
-  if (result.errors.length) {
-    throw new SyntaxError(`${filename}: ${result.errors.map(e => e.message).join('\n')}`)
-  }
-  return { format: filename.endsWith('.cts') ? 'commonjs' : 'module', source: result.code, shortCircuit: true } as const
-}
-
-function jsonModule(source: string) {
-  const data: unknown = JSON.parse(source)
-  const keys = data && typeof data === 'object' && !Array.isArray(data) ? Object.keys(data).filter(key => key !== 'default') : []
-  return [
-    `const data = JSON.parse(${JSON.stringify(source)})`,
-    `export default data`,
-    ...keys.map((key, index) => `const _${index} = data[${JSON.stringify(key)}]`),
-    ...keys.length ? [`export { ${keys.map((key, index) => `_${index} as ${JSON.stringify(key)}`).join(', ')} }`] : [],
-  ].join('\n')
 }
 
 function pathsMatcher(cwd: string) {
@@ -440,52 +419,4 @@ export function probe(path: string): string | undefined {
       return resolve(path, `index${extension}`)
     }
   }
-}
-
-/**
- * The stub has to declare the exact named exports its importer asks for, because
- * ESM named imports and re-exports are resolved statically. They are read back off
- * the importing file, which by this point is plain text on disk.
- */
-function stubURL(specifier: string, parentURL: string | undefined) {
-  const names = new Set<string>()
-
-  if (parentURL?.startsWith('file:')) {
-    const contents = readFileSync(fileURLToPath(parentURL), 'utf8')
-
-    for (const staticImport of findStaticImports(contents)) {
-      if (staticImport.specifier !== specifier) {
-        continue
-      }
-      for (const name of Object.keys(parseStaticImport(staticImport).namedImports || {})) {
-        names.add(name)
-      }
-    }
-
-    const namedExports = findExports(contents).filter((e): e is NamedExport => e.type === 'named')
-    for (const namedExport of namedExports) {
-      if (namedExport.specifier !== specifier) {
-        continue
-      }
-      // `findExports` reports the exported names; a re-export needs the source names,
-      // which are the left-hand side of any `as`.
-      for (const binding of namedExport.exports.split(',')) {
-        if (/^\s*type\s/.test(binding)) {
-          continue
-        }
-        const name = binding.split(/\bas\b/)[0]?.trim()
-        if (name) {
-          names.add(name)
-        }
-      }
-    }
-  }
-
-  const source = [
-    `const stub = new Proxy(function () {}, { get: () => stub, apply: () => stub, construct: () => ({}) })`,
-    `export default stub`,
-    ...[...names].filter(name => name !== 'default').map(name => `export { stub as ${name} }`),
-  ].join('\n')
-
-  return `data:text/javascript,${encodeURIComponent(source)}`
 }
