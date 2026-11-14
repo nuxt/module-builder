@@ -4,7 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { join } from 'pathe'
 import { exec } from 'tinyexec'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 
 import { guide } from '../src/build/guide.ts'
 
@@ -30,6 +30,9 @@ const tsdown = (cwd: string, args: string[] = []) => exec('node', [tsdownBin, ..
 function watch(cwd: string, args: string[]) {
   const result = exec('node', args, { nodeOptions: { cwd, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
   let output = ''
+  onTestFailed(() => {
+    console.error(`Output of \`node ${args.join(' ')}\`:\n${output.slice(-8000)}`)
+  })
   for (const stream of [result.process?.stdout, result.process?.stderr]) {
     stream?.on('data', (chunk) => {
       output += chunk
