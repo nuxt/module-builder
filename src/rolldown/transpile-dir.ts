@@ -177,7 +177,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
       cwd = resolve(inputOptions.cwd, options.cwd ?? '')
       const srcDir = resolve(cwd, options.srcDir)
       const files = await glob(options.include ?? ['**/*'], { cwd: srcDir, ignore: options.exclude ?? DEFAULT_EXCLUDE, absolute: true, onlyFiles: true })
-      for (const file of files) {
+      for (const file of process.env.DIAG_NO_GLOB_WATCH ? [] : files) {
         this.addWatchFile(file)
       }
       const build = latestBuild = new DirectoryBuild({ ...options, cwd, srcDir }, files.map(file => normalize(file)).sort())
@@ -195,7 +195,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
     },
     async buildEnd() {
       await work
-      for (const source of latestBuild?.outputs.keys() ?? []) {
+      for (const source of process.env.DIAG_NO_SOURCE_WATCH ? [] : latestBuild?.outputs.keys() ?? []) {
         this.addWatchFile(source)
       }
     },

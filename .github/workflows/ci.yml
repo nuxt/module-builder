@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - v1
+      - 'diag/**'
   pull_request:
     branches:
       - main
@@ -15,6 +16,27 @@ permissions:
   contents: read
 
 jobs:
+  diag-windows-watch:
+    if: startsWith(github.ref, 'refs/heads/diag/')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@26.13.0
+          cache: true
+      - run: pnpm dev:prepare
+      - run: pnpm vitest run test/diag-watch.spec.ts
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-windows-watch
+          path: .diag/
+          include-hidden-files: true
+
   lint:
     # Skip on uppt release PRs (they don't include later main/v1 merges, nothing to test).
     # Run on main/v1 pushes, standard PRs, and GitHub merge queues.

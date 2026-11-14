@@ -47,7 +47,7 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
     },
     buildStart() {
       session?.onBuildStart()
-      for (const dir of session?.watchDirs ?? []) {
+      for (const dir of process.env.DIAG_NO_DIR_WATCH ? [] : session?.watchDirs ?? []) {
         this.addWatchFile(dir)
       }
     },
