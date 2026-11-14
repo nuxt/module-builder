@@ -467,7 +467,10 @@ describe('findModuleCodeIssues', () => {
         `const loaded = await import('./options.json', { with: { type: 'json' } })`,
         `const type = 'json'`,
         `const shorthand = await import('./options.json', { with: { type } })`,
-        `export const refs = [Card, label, data, options, empty, loaded, shorthand]`,
+        `const extra = { with: { type: 'json' } }`,
+        `const spread = await import('./options.json', { with: {}, ...extra })`,
+        `const overridden = await import('./data.json', { ...extra, with: {} })`,
+        `export const refs = [Card, label, data, options, empty, loaded, shorthand, spread, overridden]`,
         `export type { CardType }`,
         ``,
       ].join('\n'))
@@ -480,6 +483,7 @@ describe('findModuleCodeIssues', () => {
         'src/module.ts:3:23: `./runtime/label` is JSX, which Node cannot load (move the value the module needs into a `.ts` file, or use `import type`)',
         'src/module.ts:4:18: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
         'src/module.ts:6:28: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
+        'src/module.ts:12:33: `./data.json` is JSON (use `import pkg from \'./data.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
       ])
     }
     finally {

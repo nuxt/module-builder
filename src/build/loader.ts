@@ -311,7 +311,7 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
   const isJson = (attributes: ts.ImportAttributes | undefined) => !!attributes?.elements.some(element => element.name.text === 'type' && ts.isStringLiteral(element.value) && element.value.text === 'json')
   // `true` when the value is not known statically.
   const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | true | undefined => {
-    for (const property of object.properties) {
+    for (const property of [...object.properties].reverse()) {
       if (ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
         if (property.name.text === name) {
           return property.initializer
