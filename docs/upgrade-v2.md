@@ -135,7 +135,7 @@ Call `builder()` once, in the config that builds the module. One plugin shared b
 
 `builder()` has no hooks of its own. Use tsdown's `hooks` in the config, which receive tsdown's context (`ctx.options.cwd` is the module root and `ctx.options.outDir` the output directory), or a plugin:
 
-- `build:prepare` runs before `builder()` checks the module's imports and empties the output directory, so it can generate sources. Files written into the output directory there are removed.
+- `build:prepare` runs before `builder()` checks the module's imports and empties the output directory, so it can generate sources. Files written into the output directory there are removed. Without `.nuxt`, `builder()` runs `nuxt-module-build prepare` before `build:prepare`, and that loads `src/module`, so generate the sources `src/module` imports before running tsdown, as for `--stub` below.
 - `build:done` runs once the build is complete, after `module.json` and `types.d.mts` are written and the paths in `package.json` are checked.
 - To add a file to the output, emit it from a plugin. It is written before the paths in `package.json` are checked:
 
