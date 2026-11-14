@@ -27,6 +27,9 @@ async function copyExample(name: string, config: string) {
   return dir
 }
 
+/** The environment that `npm pack` gives `prepack` when a pnpm script runs it. */
+const npmPackFromPnpmScript = { npm_lifecycle_event: 'prepack', npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64', NODE_ENV: '', TEST: '' }
+
 const tsdown = (cwd: string, args: string[] = []) => exec('node', [tsdownBin, ...args], { nodeOptions: { cwd, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
 
 function watch(cwd: string, args: string[]) {
@@ -509,9 +512,9 @@ export default {
       }
     }, 120 * 1000)
 
-    it('should refuse to pack with npm, which publishes the source paths', async () => {
-      const { exitCode, stdout, stderr } = await exec('npm', ['pack', '--dry-run'], { nodeOptions: { cwd: dir, env: { ...process.env, npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' } } })
-      expect(exitCode).not.toBe(0)
+    it('should refuse to build for a pack by npm, which publishes the source paths', async () => {
+      const { exitCode, stdout, stderr } = await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env: { ...process.env, ...npmPackFromPnpmScript } } })
+      expect(exitCode, stdout + stderr).not.toBe(0)
       expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
       expect(stdout + stderr).toContain(guide('publishing-source-exports'))
     }, 60 * 1000)

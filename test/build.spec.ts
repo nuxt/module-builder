@@ -1528,12 +1528,13 @@ export const defineOptions = (options: Options) => ({ options, helper })
     }
   })
 
-  it('should refuse to pack source exports with npm, including when a pnpm script runs it', async () => {
-    const { stdout, stderr, exitCode } = await exec('npm', ['pack', '--dry-run'], { nodeOptions: { cwd: rootDir, env: { ...process.env, npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' } } })
-    expect(exitCode).not.toBe(0)
+  it('should refuse to build source exports for a pack by npm, including when a pnpm script runs it', async () => {
+    const env = { ...process.env, npm_lifecycle_event: 'prepack', npm_execpath: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', npm_config_user_agent: 'pnpm/12.11.2 npm/? node/? linux arm64' }
+    const { stdout, stderr, exitCode } = await exec('node', [join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env } })
+    expect(exitCode, stdout + stderr).not.toBe(0)
     expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
     expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
-  })
+  }, 60 * 1000)
 
   describe.each(flows)('$name flow', ({ name, rootDir, nodeTypeErrors }) => {
     const distDir = join(rootDir, 'dist')

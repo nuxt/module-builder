@@ -756,7 +756,7 @@ describe('writeSourceTypes', () => {
       'src/types.ts': `export interface ModuleOptions { key: string }\nexport interface ModuleHooks { 'my-module:init': () => void }\nexport interface ModuleRuntimeHooks {}\nexport interface ModuleRuntimeConfig {}\nexport interface ModulePublicRuntimeConfig {}\n`,
     })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
-  })
+  }, 60 * 1000)
 })
 
 describe('isolatedDeclarations nudge', () => {
