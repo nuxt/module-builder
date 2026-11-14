@@ -13,7 +13,7 @@ export interface UnchangedOutputs {
    * still exist in `outDir`, so they are not written again.
    */
   prune: (bundle: Rolldown.OutputBundle) => void
-  /** Records the content of the outputs that `prune` last saw, once they are written. */
+  /** Records the content of the outputs that `prune` last saw, once they are all written. */
   commit: () => void
   /** Every output of the build that `prune` last saw, pruned or not. */
   readonly bundle: Rolldown.OutputBundle
@@ -36,6 +36,8 @@ export function unchangedOutputs(outDir: string): UnchangedOutputs {
           Reflect.deleteProperty(bundle, fileName)
         }
       }
+      // A write that fails part way leaves `outDir` matching neither build.
+      written = undefined
     },
     commit() {
       written = emitted

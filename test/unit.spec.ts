@@ -982,6 +982,19 @@ describe('unchangedOutputs', () => {
     await rm(outDir, { recursive: true, force: true })
   })
 
+  it('should write every output after a build whose writes did not all complete', async () => {
+    const outDir = await mkdtemp(join(tmpdir(), 'module-builder-unchanged-'))
+    await writeFile(join(outDir, 'a.js'), 'a')
+    const unchanged = unchangedOutputs(outDir)
+    unchanged.prune(bundleOf({ 'a.js': 'a' }))
+    unchanged.commit()
+    unchanged.prune(bundleOf({ 'a.js': 'changed' }))
+    const next = bundleOf({ 'a.js': 'a' })
+    unchanged.prune(next)
+    expect(Object.keys(next)).toEqual(['a.js'])
+    await rm(outDir, { recursive: true, force: true })
+  })
+
   it('should write a declaration again when the files its specifiers resolve to change', async () => {
     const outDir = await mkdtemp(join(tmpdir(), 'module-builder-unchanged-'))
     await writeFile(join(outDir, 'a.d.ts'), `export * from './b/index.js'\n`)
@@ -991,6 +1004,7 @@ describe('unchangedOutputs', () => {
     const same = bundleOf({ 'a.d.ts': `export * from './b'\n`, 'b/index.d.ts': '' })
     unchanged.prune(same)
     expect(Object.keys(same)).toEqual(['b/index.d.ts'])
+    unchanged.commit()
     const moved = bundleOf({ 'a.d.ts': `export * from './b'\n`, 'b.d.ts': '' })
     unchanged.prune(moved)
     expect(Object.keys(moved)).toEqual(['a.d.ts', 'b.d.ts'])
