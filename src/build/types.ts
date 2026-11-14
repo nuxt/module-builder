@@ -1,8 +1,9 @@
-import { promises as fsp } from 'node:fs'
-import { relative, resolve } from 'pathe'
+import { promises as fsp, readFileSync } from 'node:fs'
+import { dirname, relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 
+import { probe } from './loader.ts'
 import { writeIfChanged } from './write.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
@@ -23,19 +24,20 @@ export async function writeSourceTypes(dir: string, entry: string): Promise<void
     `export * from '${specifier}'`,
     ...hasDefaultExport ? [`export { default } from '${specifier}'`] : [],
   ].join('\n') + '\n', 'utf8')
-  await writeTypes(dir, source)
+  await writeTypes(dir, { exports: exportedNames(entry) })
 }
 
 /**
  * Writes `types.d.mts` into `distDir`, from the declarations in `module.d.mts` or, for
- * `module.d.mts` that re-exports the module's sources, from `entrySource`.
+ * `module.d.mts` that re-exports the module's sources, from the names the sources export.
+ * Unknown names (`exports: undefined`) count as exported.
  */
-export async function writeTypes(distDir: string, entrySource?: string): Promise<void> {
+export async function writeTypes(distDir: string, source?: { exports: Set<string> | undefined }): Promise<void> {
   const dtsFile = resolve(distDir, 'types.d.mts')
 
   const moduleReExports: ESMExport[] = []
   const typeOnlyExports = new Set<string>()
-  if (entrySource === undefined) {
+  if (!source) {
     // Read generated module types
     const moduleTypesFile = resolve(distDir, 'module.d.mts')
     const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
@@ -89,10 +91,8 @@ export async function writeTypes(distDir: string, entrySource?: string): Promise
   const schemaImports: string[] = []
   const moduleExports: string[] = []
 
-  // A star re-export in the source may export any name, so it counts as exporting all of them.
-  const sourceExports = entrySource === undefined ? undefined : [...findExports(withoutTypeModifiers(entrySource)), ...findTypeExports(entrySource)]
-  const hasTypeExport = (name: string) => sourceExports
-    ? sourceExports.some(exp => exp.type === 'star' || exp.names?.includes(name))
+  const hasTypeExport = (name: string) => source
+    ? !source.exports || source.exports.has(name)
     : moduleReExports.some(exp => exp.names?.includes(name))
 
   if (!hasTypeExport('ModuleOptions')) {
@@ -128,12 +128,38 @@ ${moduleImports.length ? `import type { ${moduleImports.join(', ')} } from './mo
 ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
-${sourceExports ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
+${source ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
 ${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexport { ${names.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + n).join(', ')} } from '${specifier}'`).join('\n')}
 ${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await writeIfChanged(dtsFile, dtsContents)
+}
+
+/**
+ * The names a source file exports, following star re-exports of relative files, or `undefined`
+ * when a star re-export cannot be followed and may export any name.
+ */
+function exportedNames(file: string, seen = new Set<string>()): Set<string> | undefined {
+  const names = new Set<string>()
+  if (seen.has(file)) {
+    return names
+  }
+  seen.add(file)
+  const code = readFileSync(file, 'utf8')
+  for (const exp of [...findExports(withoutTypeModifiers(code).replace(/\bexport\s+type\s*\*/g, 'export *')), ...findTypeExports(code)]) {
+    if (exp.type !== 'star' || exp.names?.length) {
+      exp.names?.forEach(name => names.add(name))
+      continue
+    }
+    const target = exp.specifier?.startsWith('.') ? probe(resolve(dirname(file), exp.specifier)) : undefined
+    const reExported = target && exportedNames(target, seen)
+    if (!reExported) {
+      return
+    }
+    reExported.forEach(name => name !== 'default' && names.add(name))
+  }
+  return names
 }
 
 /** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */

@@ -750,6 +750,7 @@ describe('writeSourceTypes', () => {
     ].join('\n'))
     const check = async (module: string, files: Record<string, string> = {}) => {
       for (const [file, contents] of Object.entries({ 'src/module.ts': module, ...files })) {
+        await mkdir(dirname(join(cwd, file)), { recursive: true })
         await writeFile(join(cwd, file), contents)
       }
       await writeSourceTypes(join(cwd, '.nuxt/module-builder'), join(cwd, 'src/module.ts'))
@@ -761,6 +762,13 @@ describe('writeSourceTypes', () => {
     expect(await check(module)).toEqual([])
     expect(await check(`export * from './types.ts'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
       'src/types.ts': `export interface ModuleOptions { key: string }\nexport interface ModuleHooks { 'my-module:init': () => void }\nexport interface ModuleRuntimeHooks {}\nexport interface ModuleRuntimeConfig {}\nexport interface ModulePublicRuntimeConfig {}\n`,
+    })).toEqual([])
+    expect(await check(`export * from './helpers.ts'\n${module}`, {
+      'src/helpers.ts': `export const helper = (): string => 'helper'\nexport default 'not re-exported'\n`,
+    })).toEqual([])
+    expect(await check(`export type * from './hooks.ts'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
+      'src/hooks.ts': `export * from './nested/hooks.ts'\n`,
+      'src/nested/hooks.ts': `export interface ModuleHooks { 'my-module:init': () => void }\n`,
     })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
   }, 60 * 1000)
