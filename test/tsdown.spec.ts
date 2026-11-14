@@ -462,7 +462,7 @@ export default {
     const exportShapes = {
       object: `export default {\n  plugins: [builder(${options('dist')})],\n}\n`,
       array: `export default [\n  { entry: { cli: 'src/cli.ts' }, outDir: 'dist-cli', dts: false },\n  { plugins: [builder(${options('out')})], outDir: 'out' },\n]\n`,
-      function: `export default () => ({\n  plugins: [Promise.resolve(builder(${options('dist')}))],\n})\n`,
+      function: `export default (_, { watch: { restart } }) => ({\n  plugins: [Promise.resolve(builder(${options('dist')}))],\n})\n`,
     }
     const outDirs = { object: 'dist', array: 'out', function: 'dist' }
 

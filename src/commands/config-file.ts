@@ -47,7 +47,11 @@ export async function loadBuilderConfig(cwd: string, file: string): Promise<Buil
   const exported = file.endsWith('.json')
     ? JSON.parse(await readFile(file, 'utf8')) as unknown
     : await importModule(file, { cwd }).then(module => module.default ?? module)
-  const resolved = typeof exported === 'function' ? await exported({ cwd, config: file }, { ci: !!process.env.CI }) : await exported
+  const watch = {
+    restart: () => Promise.reject(new Error('`watch.restart` is only available while tsdown watches the module.')),
+    close: async () => {},
+  }
+  const resolved = typeof exported === 'function' ? await exported({ cwd, config: file }, { ci: !!process.env.CI, watch }) : await exported
   const found: BuilderConfig[] = []
   for (const config of [resolved].flat() as Array<{ plugins?: unknown, outDir?: string, cwd?: string } | undefined>) {
     for (const plugin of await flattenPlugins(config?.plugins)) {
