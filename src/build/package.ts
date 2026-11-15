@@ -60,7 +60,7 @@ export function unpublishablePaths(cwd: string, pkg: PackageJson, files: string[
   }))
 }
 
-function packed(cwd: string, path: string, files: string[] | undefined, alwaysPacked: Set<string>) {
+function packed(cwd: string, path: string, files: string[] | undefined, alwaysPacked: Set<string>): boolean {
   const file = relative(cwd, resolve(cwd, path.split('*')[0]!))
   if (!file || file.startsWith('..')) {
     return !file
@@ -76,6 +76,11 @@ function packed(cwd: string, path: string, files: string[] | undefined, alwaysPa
   const matches = (pattern: string) => ancestors.some(ancestor => globToRegExp(pattern).test(ancestor))
   if (patterns.some(pattern => pattern.startsWith('!') && matches(pattern.slice(1)))) {
     return false
+  }
+  const suffix = path.slice(path.lastIndexOf('*') + 1)
+  if (path.includes('*') && suffix) {
+    const prefix = relative(cwd, resolve(cwd, path.slice(0, path.indexOf('*')) + 'x')).slice(0, -1)
+    return [`${prefix}x${suffix}`, `${prefix}x/x${suffix}`].some(sample => packed(cwd, `./${sample}`, files, alwaysPacked))
   }
   if (path.includes('*')) {
     return patterns.some((pattern) => {

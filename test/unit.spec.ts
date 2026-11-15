@@ -577,6 +577,8 @@ describe('deprecation checks', () => {
     expect(unpublishablePathsError(cwd, { files: ['dist'], main: './index.mjs', exports: { '.': './index.mjs', './package.json': './package.json' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private': './dist/private/a.mjs' } })).toContain('(`./dist/private/a.mjs`)')
     expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private/*': './dist/private/*' } })).toContain('(`./dist/private/*`)')
+    expect(unpublishablePathsError(cwd, { files: ['dist/module.mjs', 'dist/runtime/*.d.ts'], exports: { './runtime/*': './dist/runtime/*.js' } })).toContain('(`./dist/runtime/*.js`)')
+    expect(unpublishablePathsError(cwd, { files: ['dist/module.mjs', 'dist/runtime/**/*.js'], exports: { './runtime/*': './dist/runtime/*.js' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { files: ['dist/**/*.[cm]js', 'dist/**/*.d.mts'], exports: { './runtime': './dist/runtime/index.mjs' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { files: ['dist/**/*.[!m]js'], exports: { './runtime': './dist/runtime/index.mjs' } })).toContain('(`./dist/runtime/index.mjs`)')
     expect(unpublishablePathsError(cwd, { files: ['{dist,lib}'], exports: { './a': './lib/a.js', './b': './other/b.js' } })).toContain('(`./other/b.js`)')
