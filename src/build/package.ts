@@ -87,7 +87,10 @@ function packed(cwd: string, path: string, files: string[] | undefined, alwaysPa
 }
 
 function globToRegExp(pattern: string) {
-  const source = pattern.replace(/\*\*\/|\*\*|\{([^}]*)\}|[*?.+^$()|[\]\\]/g, (match, alternatives: string | undefined) => {
+  const source = pattern.replace(/\*\*\/|\*\*|\{([^}]*)\}|\[(!?)([^\]!][^\]]*)\]|[*?.+^$()|[\]\\]/g, (match, alternatives: string | undefined, negated: string | undefined, characters: string | undefined) => {
+    if (characters !== undefined) {
+      return `[${negated ? '^' : ''}${characters.replace(/[\\^]/g, '\\$&')}]`
+    }
     if (alternatives !== undefined) {
       return `(?:${alternatives.split(',').map(alternative => alternative.replace(/[.+^$()|[\]\\*?]/g, '\\$&')).join('|')})`
     }
