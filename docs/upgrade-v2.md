@@ -382,7 +382,7 @@ Both scripts start with `nuxt-module-build prepare`, also where the old one had 
 
 ## Module code loads with Node
 
-The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Node never loads type-only imports, so they don't stop the module loading, but a type check under `nodenext` module resolution, such as the playground's check of its `nuxt.config.ts`, still requires their extensions: write them with extensions too. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
+The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Node never loads type-only imports, so they don't stop the module loading. A type check that resolves imports like Node still requires their extensions, such as the playground's check of its `nuxt.config.ts` context when the playground sets `future.compatibilityVersion: 5`: write them with extensions too. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
 
 Set `erasableSyntaxOnly` so your editor and type check report the syntax as well:
 
@@ -636,7 +636,7 @@ Run `dev:prepare` after you install dependencies, and again when the module regi
 
 ### Source exports
 
-pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level ones. With either of them, point `exports`, `imports`, `main`, and `types` at `src`, and the same fields in `publishConfig` at `dist`. The playground then loads the module from its sources, with no build. Packing replaces each field as a whole, so `publishConfig.exports` and `publishConfig.imports` repeat every subpath and condition:
+pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level ones. With either of them, point `exports`, `imports`, and `main` at `src`, and the same fields in `publishConfig` at `dist`. The playground then loads the module from its sources, with no build. Packing replaces each field as a whole, so `publishConfig.exports` and `publishConfig.imports` repeat every subpath and condition:
 
 ```json
 {
@@ -648,7 +648,6 @@ pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level 
     "#shared/*": "./src/runtime/shared/*.ts"
   },
   "main": "./src/module.ts",
-  "types": "./.nuxt/module-builder/types.d.mts",
   "publishConfig": {
     "exports": {
       ".": { "types": "./dist/types.d.mts", "style": "./dist/runtime/index.css", "default": "./dist/module.mjs" },
@@ -657,8 +656,7 @@ pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level 
     "imports": {
       "#shared/*": "./dist/runtime/shared/*.js"
     },
-    "main": "./dist/module.mjs",
-    "types": "./dist/types.d.mts"
+    "main": "./dist/module.mjs"
   },
   "scripts": {
     "dev": "nuxt dev playground",
@@ -668,12 +666,12 @@ pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level 
 }
 ```
 
-`nuxt-module-build prepare` writes `.nuxt/module-builder/types.d.mts`. It re-exports `src/module.ts` and declares the same `#app` and `@nuxt/schema` augmentations as `dist/types.d.mts`, for the module's `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The root export's `types` condition and the top-level `types` point at it, so the playground's type check sees the module's hooks and runtime config. A subpath export has no augmentations, so it points at its source.
+`nuxt-module-build prepare` writes `.nuxt/module-builder/types.d.mts`. It re-exports `src/module.ts` and declares the same `#app` and `@nuxt/schema` augmentations as `dist/types.d.mts`, for the module's `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The root export's `types` condition points at it, so the playground's type check sees the module's hooks and runtime config. A module that supports `node10` consumers also sets `publishConfig.types` to `./dist/types.d.mts` (see [The types field](#the-types-field)). A subpath export has no augmentations, so it points at its source.
 
 The playground's type check includes the module's sources and the files they import types from. A built `dist` keeps them out, because declarations aren't checked. The errors this can report, and their fixes:
 
 - `#app`, `#imports`, or `#build/*` not found (TS2307, TS2664) in the `nuxt.config.ts` context, through types that module code imports from a runtime file that uses them: move those types into a file that doesn't import the aliases, such as `src/runtime/types.ts`.
-- Relative imports without extensions (TS2835, TS2834) in the `nuxt.config.ts` context, which resolves them like Node: add extensions to type-only relative imports as well.
+- Relative imports without extensions (TS2835, TS2834) in the `nuxt.config.ts` context, which resolves them like Node when the playground sets `future.compatibilityVersion: 5`: add extensions to type-only relative imports as well.
 - Globals that the module declares in its own `.d.ts` not found (TS2304), because the playground doesn't include that file: reference it with `/// <reference path="..." />` from the files that use the globals.
 - The module's own aliases not found (TS2307): move an alias from the module's tsconfig `paths` into the `imports` of `package.json`, with its `dist` paths in `publishConfig.imports`, as TypeScript resolves those from the module's files in any project. Declare the types of an alias that the module adds itself, such as a virtual module, with `addTypeTemplate(template, { nuxt: true, node: true })`, so both of the playground's contexts include them.
 - Other errors in runtime files, which are checked with the playground's compiler options: fix them, or check the module with the same options.
@@ -728,7 +726,6 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
     "./utils": { "types": "./dist/utils.d.mts", "default": "./dist/utils.mjs" }
   },
   "main": "./dist/module.mjs",
-  "types": "./dist/types.d.mts",
   "scripts": {
     "dev": "nuxt dev playground",
     "dev:prepare": "nuxt-module-build prepare && tsdown && nuxt prepare playground",
@@ -747,11 +744,15 @@ While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --wat
 
 Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory, with the size of its code and of its declarations; others get a line for each file. On a rebuild under `tsdown --watch`, the summary and the per-file lines only count the files that were written, while the lines for each entry and runtime directory cover the whole build. Set `report` in `tsdown.config.ts` to change it: `{ summary: true }` or `{ summary: false }`, `{ gzip: false }` to skip compressing each file, `{ brotli: true }`, or `false` to turn it off. `module.json` and `types.d.mts` are written after the report, so they aren't in it.
 
-To check the published size in CI, `npm pack --dry-run --json` lists exactly what gets published: each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`:
+To check the published size in CI, pack the module with the package manager that publishes it, into a temporary directory. Then list the tarball with `npm pack --dry-run --json`, which gives each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`. `pnpm pack --json` lists the files without their sizes.
 
 ```bash
-npm pack --dry-run --json | jq '.[0] | { size, unpackedSize, files: [.files[] | { path, size }] }'
+pack_dir=$(mktemp -d)
+pnpm pack --pack-destination "$pack_dir"
+npm pack --dry-run --json "$pack_dir"/*.tgz | jq '.[0] | { size, unpackedSize, files: [.files[] | { path, size }] }'
 ```
+
+With `package.json` pointing at `dist`, `npm pack --pack-destination "$pack_dir"` packs it the same way.
 
 ## Removed dependencies
 
@@ -770,7 +771,7 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
 1. Use Node 22.18+ or 24+ locally and in CI.
 2. Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`, then `pnpm remove unbuild` (and `mkdist` and `jiti`, if they only served the builder). Do this before step 3.
 3. Move the options of `build.config.ts` and of the `build` or `unbuild` field of `package.json` into `builder()` in a `tsdown.config.ts`, as described in [Moving from build.config.ts](#moving-from-buildconfigts), including directory entries such as `{ input: 'src/x/', outDir: 'dist/x' }`. Then delete `build.config.ts` and remove the field. A module without options still gets a `tsdown.config.ts` with `plugins: [builder()]`, so that `tsdown` builds it.
-4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Remove the top-level `types` field and `typesVersions`, unless your module supports `node10` consumers. If it does, set `types` to `./dist/types.d.mts`, and give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
+4. In `package.json`, replace `.d.ts` with `.d.mts` for `types.d.ts` and `module.d.ts`, replace `module.cjs` with `module.mjs`, and remove `.cjs` entries. Remove the top-level `types` field and `typesVersions`, unless your module supports `node10` consumers. If it does, set `types` to `./dist/types.d.mts` (in `publishConfig` with source exports, see step 8), and give every `typesVersions` path its full file name (`./dist/util.d.mts`, not `dist/util`).
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
 6. Make module code load with Node, as described in [Module code loads with Node](#module-code-loads-with-node): add the `.ts` extension to relative imports in `src/module.ts` and the files it imports by value, runtime files included (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`), replace value imports through tsconfig `paths` aliases, and move value imports of `#app`, `#imports`, and `#build/*` into runtime files. Do this before step 8: `prepare` lists each problem and doesn't generate `.nuxt` until they're fixed.
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
