@@ -146,14 +146,16 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
 }
 
 /**
- * Runs `build:before` hooks, checks the module's imports, empties the output directory and
- * writes what declaration generation reads.
+ * Runs `build:before` hooks, checks the module's imports, empties the output directory unless
+ * `keepOutput` is set, and writes what declaration generation reads.
  */
-export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
+export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { keepOutput?: boolean } = {}): Promise<PreparedBuild> {
   const { cwd, outDir, entries, runtimeDirs } = plan
   await callBuildHook(plan.config, 'build:before', plan.ctx)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
-  await rm(outDir, { recursive: true, force: true })
+  if (!keepOutput) {
+    await rm(outDir, { recursive: true, force: true })
+  }
 
   await writeServerRoutesStub(cwd)
   if (plan.moduleTsconfig && plan.declarationTsconfig) {

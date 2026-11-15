@@ -976,7 +976,7 @@ describe('builder options', () => {
       '  - `entry`: list bundled entries besides `src/module` in `builder({ entries })`',
       '  - `format`: modules are built as ES modules only',
       '  - `dts`: declarations are generated with the module\'s own tsconfig',
-      '  - `clean`: the output directory is always emptied before the build',
+      '  - `clean`: the output directory is emptied before a one-off build, and a watched build removes the files it no longer emits',
       '  - `unbundle`: the module entry is bundled, and runtime directories are transpiled file by file',
       '  - `exports`: the exports tsdown generates leave out `types.d.mts` and the runtime directories',
       '  - `fixedExtension`: the module entry is emitted as `module.mjs`',

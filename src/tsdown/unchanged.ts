@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
@@ -10,9 +10,10 @@ const DECLARATION_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
 export interface UnchangedOutputs {
   /**
    * Removes the outputs whose content matches what the last written build emitted and that
-   * still exist in `outDir`, so they are not written again.
+   * still exist in `outDir`, so they are not written again. With `compareOutDir`, an output
+   * that no build has written yet is removed when `outDir` already holds the same content.
    */
-  prune: (bundle: Rolldown.OutputBundle) => void
+  prune: (bundle: Rolldown.OutputBundle, options?: { compareOutDir?: boolean }) => void
   /** Records the content of the outputs that `prune` last saw, once they are all written. */
   commit: () => void
   /** Every output of the build that `prune` last saw, pruned or not. */
@@ -28,11 +29,15 @@ export function unchangedOutputs(outDir: string): UnchangedOutputs {
     get bundle() {
       return full
     },
-    prune(bundle) {
+    prune(bundle, { compareOutDir = false } = {}) {
       full = { ...bundle }
       emitted = new Map(Object.entries(bundle).map(([fileName, output]) => [fileName, contentHash(output, bundle)]))
       for (const [fileName, hash] of emitted) {
-        if (written?.get(fileName) === hash && existsSync(join(outDir, fileName))) {
+        const path = join(outDir, fileName)
+        if (!existsSync(path)) {
+          continue
+        }
+        if (written ? written.get(fileName) === hash : compareOutDir && writtenAs(bundle[fileName]!, path)) {
           Reflect.deleteProperty(bundle, fileName)
         }
       }
@@ -43,6 +48,18 @@ export function unchangedOutputs(outDir: string): UnchangedOutputs {
       written = emitted
     },
   }
+}
+
+/**
+ * Whether `path` holds what `output` is written as. A chunk with a source map counts as
+ * different, as the map is written from the chunk.
+ */
+function writtenAs(output: Rolldown.OutputChunk | Rolldown.OutputAsset, path: string) {
+  if (output.type === 'chunk' && output.map) {
+    return false
+  }
+  const code = output.type === 'chunk' ? output.code : output.source
+  return readFileSync(path).equals(typeof code === 'string' ? Buffer.from(code) : Buffer.from(code))
 }
 
 /**

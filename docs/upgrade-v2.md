@@ -169,7 +169,7 @@ tsdown hooks and plugins don't run for `nuxt-module-build prepare`, or for a pla
 - `entry`: list entries in `builder({ entries })` instead.
 - `format`, other than `esm`.
 - `dts`, other than `true`. Declarations are generated with the module's own tsconfig, see [Declaration errors](#declaration-errors).
-- `clean`: the output directory is always emptied before the build.
+- `clean`: the output directory is emptied before a one-off build, and a watched build removes the files it no longer emits.
 - `unbundle`, `exports`, `fixedExtension: false`, `outExtensions`, `platform` other than `node`, and `workspace`.
 - `external` and `noExternal`: use `builder({ externals })`, `deps.neverBundle`, or `deps.alwaysBundle` instead.
 - `deps.neverBundle` set to `true` or a function: list the imports instead.
@@ -312,7 +312,7 @@ export default defineBuildConfig({})
 These options also fail the build:
 
 - `stub` and `stubOptions`: remove them, and see [Stub builds](#stub-builds).
-- `clean: false`: the output directory is always emptied.
+- `clean: false`: the output directory is emptied before a one-off build.
 - `rootDir` or `outDir` set to anything other than the module root and `dist`.
 - An array of more than one config: keep a single config object.
 - A config that exports a function.
@@ -588,7 +588,7 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 ## Output directory
 
-The build empties `--outDir` (`dist` by default) before writing to it, so the directory must be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
+A one-off build empties `--outDir` (`dist` by default) before writing to it, and `tsdown --watch` removes the files in it that the build no longer emits, so the directory must be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
 
 ## Module tsconfig
 
@@ -720,7 +720,7 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
 }
 ```
 
-While `nuxt dev playground` runs, run `tsdown --watch` next to it. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
+While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
 ## Output size
 

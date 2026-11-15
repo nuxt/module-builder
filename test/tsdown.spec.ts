@@ -349,6 +349,43 @@ export default {
     }
   }, 120 * 1000)
 
+  it('should keep `dist` while a watched build starts, and empty it before a one-off build', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-kept', `export default {\n  plugins: [builder()],\n}\n`)
+    const distDir = join(dir, 'dist')
+    const stale = ['stale.txt', 'runtime/components/Removed.vue']
+    const addStale = () => Promise.all(stale.map(file => writeFile(join(distDir, file), 'stale\n')))
+    const snapshot = async () => {
+      const files = (await readdir(distDir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return new Map(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(distDir, path), (await stat(path, { bigint: true })).mtimeNs] as const
+      })))
+    }
+
+    expect((await tsdown(dir)).exitCode).toBe(0)
+    await addStale()
+    expect((await tsdown(dir)).exitCode).toBe(0)
+    expect(stale.filter(file => existsSync(join(distDir, file)))).toEqual([])
+
+    await addStale()
+    const before = await snapshot()
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    let missing = false
+    try {
+      await waitFor(async () => {
+        missing ||= !existsSync(join(distDir, 'module.mjs')) || !existsSync(join(distDir, 'runtime/plugins/plugin.js'))
+        return /Rebuilt in/.test(watcher.output())
+      })
+      const after = await snapshot()
+      expect(missing).toBe(false)
+      expect([...before.keys()].filter(file => !after.has(file)).sort()).toEqual([...stale].sort())
+      expect([...after.keys()].filter(file => before.get(file) !== after.get(file) && !file.endsWith('.d.ts'))).toEqual([])
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
   it('should only write the outputs whose content changes when a watched build rebuilds', async () => {
     const dir = await copyExample('.temp-tsdown-watch-unchanged', `export default {\n  plugins: [\n    builder({ entries: ['./src/utils'] }),\n    { name: 'user-asset', generateBundle() { this.emitFile({ type: 'asset', fileName: 'user.txt', source: 'user asset\\n' }) } },\n  ],\n}\n`)
     const distDir = join(dir, 'dist')
