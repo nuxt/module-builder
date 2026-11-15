@@ -123,6 +123,19 @@ export function unpublishableImportsError(cwd: string, pkg: PackageJson, isImpor
   return paths.length ? `The build output imports these \`imports\` of \`package.json\`, which would not work once installed. ${describeUnpublishable(paths, ({ key }) => key!)} ${PUBLISH_FIX}` : undefined
 }
 
+/** The key of `imports` that Node resolves `specifier` with: the same key, or else the matching wildcard key with the longest prefix. */
+export function importsKeyFor(keys: string[], specifier: string): string | undefined {
+  if (keys.includes(specifier)) {
+    return specifier
+  }
+  return keys
+    .filter((key) => {
+      const [prefix, suffix, ...rest] = key.split('*')
+      return suffix !== undefined && !rest.length && specifier.length >= prefix!.length + suffix.length && specifier.startsWith(prefix!) && specifier.endsWith(suffix)
+    })
+    .sort((a, b) => b.indexOf('*') - a.indexOf('*') || b.length - a.length)[0]
+}
+
 const PUBLISH_FIX = `Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`
 
 function describeUnpublishable(paths: UnpublishablePath[], name: (path: UnpublishablePath) => string) {

@@ -22,7 +22,7 @@ import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
 import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
-import { unpublishableImportsError } from './package.ts'
+import { importsKeyFor, publishedPackage, unpublishableImportsError } from './package.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
 
@@ -275,7 +275,7 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   }
 
   await checkDeprecatedPackageFields(cwd)
-  const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir))
+  const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
   if (importsError) {
     throw new Error(importsError)
   }
@@ -286,14 +286,13 @@ const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
 
 const PACKAGE_IMPORT_RE = /(?:\bfrom|\bimport(?:\s+url)?|\brequire)\s*(?:\(\s*)?(["'`])(#[^"'`]+)\1/g
 
-function importedFrom(dir: string): (key: string) => boolean {
-  let specifiers: string[] | undefined
+function importedFrom(dir: string, keys: string[]): (key: string) => boolean {
+  let used: Set<string | undefined> | undefined
   return (key) => {
-    specifiers ??= [...new Set(readdirSync(dir, { recursive: true, encoding: 'utf8' })
+    used ??= new Set(readdirSync(dir, { recursive: true, encoding: 'utf8' })
       .filter(file => OUTPUT_TEXT_RE.test(file))
-      .flatMap(file => [...readFileSync(join(dir, file), 'utf8').matchAll(PACKAGE_IMPORT_RE)].map(match => match[2]!)))]
-    const [prefix, suffix] = key.split('*') as [string, string | undefined]
-    return specifiers.some(specifier => suffix === undefined ? specifier === key : specifier.length >= prefix.length + suffix.length && specifier.startsWith(prefix) && specifier.endsWith(suffix))
+      .flatMap(file => [...readFileSync(join(dir, file), 'utf8').matchAll(PACKAGE_IMPORT_RE)].map(match => importsKeyFor(keys, match[2]!))))
+    return used.has(key)
   }
 }
 

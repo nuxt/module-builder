@@ -21,7 +21,7 @@ import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigP
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
+import { importsKeyFor, publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { guide } from '../src/build/guide.ts'
@@ -567,6 +567,15 @@ describe('deprecation checks', () => {
     expect(unpublishableImportsError(cwd, pkg, key => key === '#shared')).not.toContain('#internal')
     const publishConfig: Record<string, unknown> = { imports: { '#internal/*': './dist/internal/*.mjs', '#shared': './dist/shared.mjs' } }
     expect(unpublishableImportsError(cwd, { ...pkg, publishConfig }, () => true)).toBeUndefined()
+  })
+
+  it('should resolve a package import to the `imports` key that Node picks', () => {
+    const keys = ['#internal/*', '#internal/public', '#internal/nested/*', '#styles/*.css']
+    expect(importsKeyFor(keys, '#internal/public')).toBe('#internal/public')
+    expect(importsKeyFor(keys, '#internal/value')).toBe('#internal/*')
+    expect(importsKeyFor(keys, '#internal/nested/value')).toBe('#internal/nested/*')
+    expect(importsKeyFor(keys, '#styles/main.css')).toBe('#styles/*.css')
+    expect(importsKeyFor(keys, '#styles/main.js')).toBeUndefined()
   })
 
   it('should accept published paths that `files` lists, and `main`, which every pack includes', () => {
