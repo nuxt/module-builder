@@ -14,7 +14,7 @@ import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { bundledEntries, callBuildHook, createBuildContext, escapeRegExp, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
+import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
 import type { DirectoryEntry, LoadedBuildConfig } from './build-config.ts'
 import type { BuildContext } from './define.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
@@ -284,12 +284,16 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
 
 const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
 
+const PACKAGE_IMPORT_RE = /(?:\bfrom|\bimport(?:\s+url)?|\brequire)\s*(?:\(\s*)?(["'`])(#[^"'`]+)\1/g
+
 function importedFrom(dir: string): (key: string) => boolean {
-  let contents: string[] | undefined
+  let specifiers: string[] | undefined
   return (key) => {
-    contents ??= readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter(file => OUTPUT_TEXT_RE.test(file)).map(file => readFileSync(join(dir, file), 'utf8'))
-    const specifier = new RegExp(`["'\`]${key.split('*').map(escapeRegExp).join('[^"\'`]*')}["'\`]`)
-    return contents.some(content => specifier.test(content))
+    specifiers ??= [...new Set(readdirSync(dir, { recursive: true, encoding: 'utf8' })
+      .filter(file => OUTPUT_TEXT_RE.test(file))
+      .flatMap(file => [...readFileSync(join(dir, file), 'utf8').matchAll(PACKAGE_IMPORT_RE)].map(match => match[2]!)))]
+    const [prefix, suffix] = key.split('*') as [string, string | undefined]
+    return specifiers.some(specifier => suffix === undefined ? specifier === key : specifier.length >= prefix.length + suffix.length && specifier.startsWith(prefix) && specifier.endsWith(suffix))
   }
 }
 

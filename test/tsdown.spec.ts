@@ -208,7 +208,7 @@ export default {
     await mkdir(join(dir, 'src/internal'), { recursive: true })
     await writeFile(join(dir, 'src/ext/value.ts'), `export const ext: string = 'ext'\n`)
     await writeFile(join(dir, 'src/internal/value.ts'), `export const internal: string = 'internal'\n`)
-    await appendFile(join(dir, 'src/module.ts'), `export { ext } from '#ext/value'\nexport { internal } from '#internal/value'\n`)
+    await appendFile(join(dir, 'src/module.ts'), `export { ext } from '#ext/value'\nexport { internal } from '#internal/value'\nexport const label: string = '#internal/label'\n`)
 
     const refused = await tsdown(dir)
     expect(refused.exitCode).not.toBe(0)
