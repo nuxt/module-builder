@@ -5,9 +5,9 @@ navigation:
   title: Getting Started
 ---
 
-`@nuxt/module-builder` builds a Nuxt module for publishing to npm. It bundles the module entry with [tsdown](https://tsdown.dev) and transpiles the runtime directory file by file. It also generates type declarations against the module's own `.nuxt`, and writes the type shims that give `nuxt.config` autocompletion for the module's options.
+`@nuxt/module-builder` builds a Nuxt module for publishing to npm. Its `builder()` plugin makes [tsdown](https://tsdown.dev) bundle the module entry and transpile the runtime directory file by file. It also generates type declarations against the module's own `.nuxt`, and writes the type shims that give `nuxt.config` autocompletion for the module's options.
 
-The builder works with the layout of the [module starter](https://github.com/nuxt/starter/tree/module) and needs no configuration for it. To learn how to write the module itself (its definition, hooks, and the `@nuxt/kit` utilities), read the [Module Author Guide](/docs/guide/modules).
+The builder works with the layout of the [module starter](https://github.com/nuxt/starter/tree/module) and needs no options for it. To learn how to write the module itself (its definition, hooks, and the `@nuxt/kit` utilities), read the [Module Author Guide](/docs/guide/modules).
 
 ## Requirements
 
@@ -55,7 +55,7 @@ npm install
 npm run dev:prepare
 ```
 
-`dev:prepare` stubs the module's `dist` directory and generates the `.nuxt` directories that type the module and its playground. See [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish) for what each step does.
+`dev:prepare` generates the `.nuxt` directories that type the module and its playground. See [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish) for what each step does.
 
 ## Manual installation
 
@@ -65,25 +65,38 @@ Add the builder and its peer dependencies to an existing module:
 pnpm add -D @nuxt/module-builder tsdown@^0.23.7 typescript nuxt
 ```
 
+Add a `tsdown.config.ts` with the `builder()` plugin:
+
+```ts [tsdown.config.ts]
+import { builder } from '@nuxt/module-builder/tsdown'
+import { defineConfig } from 'tsdown'
+
+export default defineConfig({
+  plugins: [builder()],
+})
+```
+
 Then add the scripts that build the module before publishing and prepare it for development:
 
 ```json [package.json]
 {
   "scripts": {
-    "prepack": "nuxt-module-build build",
-    "dev:prepare": "nuxt-module-build build --stub && nuxt-module-build prepare && nuxt prepare playground"
+    "prepack": "tsdown",
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground"
   }
 }
 ```
+
+This `dev:prepare` suits a module that pnpm or Yarn 4 publishes, with `package.json` pointing at its sources. With npm, Yarn 3 or earlier, or bun, add `tsdown` before `nuxt prepare playground`. See [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish#preparing-a-checkout).
 
 Your module also needs the `exports` and `files` fields described in [Project structure](/docs/guide/modules/module-builder/project-structure#packagejson), and a `tsconfig.json` as described in [TypeScript](/docs/guide/modules/module-builder/typescript).
 
 ## Next steps
 
 - [Project structure](/docs/guide/modules/module-builder/project-structure): the files the builder reads.
-- [Commands](/docs/guide/modules/module-builder/commands): `build`, `build --stub`, and `prepare`.
+- [Commands](/docs/guide/modules/module-builder/commands): `tsdown`, `build`, and `prepare`.
 - [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish): the playground, and releasing to npm.
-- [Configuration](/docs/guide/modules/module-builder/configuration): extra entries and directories.
+- [Configuration](/docs/guide/modules/module-builder/configuration): `tsdown.config.ts`, extra entries, and directories.
 - [TypeScript](/docs/guide/modules/module-builder/typescript): the module's `tsconfig.json` and its declarations.
 - [Build output](/docs/guide/modules/module-builder/output): what ends up in `dist`.
 - [Exports](/docs/guide/modules/module-builder/exports): subpath exports, including runtime components.
