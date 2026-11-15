@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs'
 import { appendFile, cp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join, relative } from 'pathe'
+import { dirname, join, relative } from 'pathe'
 import { exec } from 'tinyexec'
+import ts from 'typescript'
 import { beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 
 import { guide } from '../src/build/guide.ts'
@@ -160,6 +161,43 @@ export default {
       }
     }
   }, 60 * 1000)
+
+  it('should augment the same interfaces from the types `prepare` writes as from `dist`, through star re-exports', async () => {
+    const dir = await copyExample('.temp-tsdown-star-exports', `export default {\n  plugins: [builder()],\n}\n`)
+    const files: Record<string, string> = {
+      'src/module.ts': `import { defineNuxtModule } from '@nuxt/kit'\nimport type { ModuleOptions } from './types/index.ts'\n\nexport * from './types/index.ts'\nexport type * from './types/runtime.ts'\n\nexport default defineNuxtModule<ModuleOptions>({\n  meta: { name: 'my-module', configKey: 'myModule' },\n  defaults: { apiKey: '' },\n})\n`,
+      'src/types/index.ts': `export * from './hooks.ts'\n\nexport interface ModuleOptions {\n  apiKey: string\n}\n`,
+      'src/types/hooks.ts': `export interface ModuleHooks {\n  'my-module:init': () => void\n}\n`,
+      'src/types/runtime.ts': `export interface ModuleRuntimeHooks {\n  'my-module:runtime-hook': () => void\n}\n\nexport interface ModulePublicRuntimeConfig {\n  NAME: string\n}\n`,
+    }
+    for (const [file, contents] of Object.entries(files)) {
+      await mkdir(dirname(join(dir, file)), { recursive: true })
+      await writeFile(join(dir, file), contents)
+    }
+    const env = { ...process.env, NODE_ENV: '', TEST: '', NUXT_TELEMETRY_DISABLED: '1' }
+    const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env } })
+    expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+    const built = await tsdown(dir)
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
+
+    const shims = async (file: string) => (await readFile(join(dir, file), 'utf-8')).match(/^declare module '[^']+' \{\n[\s\S]*?\n\}$/gm)
+    const sourceShims = await shims('.nuxt/module-builder/types.d.mts')
+    expect(sourceShims).toEqual(await shims('dist/types.d.mts'))
+    expect(sourceShims).toEqual([
+      `declare module '#app' {\n  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}\n}`,
+      `declare module '@nuxt/schema' {\n  interface NuxtHooks extends ModuleHooks {}\n  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}\n}`,
+    ])
+
+    const { config } = ts.readConfigFile(join(dir, '.nuxt/tsconfig.json'), ts.sys.readFile)
+    const { options } = ts.parseJsonConfigFileContent(config, ts.sys, join(dir, '.nuxt'))
+    for (const types of ['./.nuxt/module-builder/types.mjs', './dist/types.mjs']) {
+      const probe = join(dir, 'probe.ts')
+      await writeFile(probe, `import type {} from '${types}'\nimport type { RuntimeNuxtHooks } from '#app'\nimport type { NuxtHooks, PublicRuntimeConfig } from '@nuxt/schema'\n\nexport type Augmented = [NuxtHooks['my-module:init'], RuntimeNuxtHooks['my-module:runtime-hook'], PublicRuntimeConfig['NAME']]\n`)
+      const program = ts.createProgram([probe], { ...options, noEmit: true, skipLibCheck: false })
+      const diagnostics = ts.getPreEmitDiagnostics(program).filter(diagnostic => diagnostic.file && /^(?:src|dist|\.nuxt\/module-builder)\/|^probe\.ts$/.test(relative(dir, diagnostic.file.fileName)))
+      expect(diagnostics.map(diagnostic => `${relative(dir, diagnostic.file!.fileName)}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`), types).toEqual([])
+    }
+  }, 120 * 1000)
 
   it('should refuse package `imports` that the output imports and that would not work once installed', async () => {
     const dir = await copyExample('.temp-tsdown-package-imports', `export default {\n  plugins: [builder({ externals: [/^#ext\\//] })],\n}\n`)
