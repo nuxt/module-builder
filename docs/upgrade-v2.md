@@ -680,6 +680,8 @@ The playground's type check includes the module's sources and the files they imp
 
 With source exports there is no `dist` while you develop, so code that reaches into `dist` by path has to point at `src`: a playground or a test that imports `../dist/runtime/...`, or module code that resolves `../dist/runtime/...`. Resolve runtime files relative to `src/module.ts` and without an extension, as `createResolver(import.meta.url).resolve('./runtime/plugins/plugin')` does: the build keeps the layout of `src` in `dist`, and Nuxt and Vite add the extension.
 
+Build-time code that reads a runtime file's contents, such as code that inlines the file into a template, finds no file at the path without an extension, and TypeScript at the `.ts` path. Generate the template from code that doesn't depend on the built file, or build `dist` first and keep reading from it.
+
 A subpath that code outside Nuxt imports, such as a plugin for a plain Vite app, can keep pointing at `dist` in `exports`, so that code loads the built file. Run `tsdown` before using it.
 
 Yarn 4 doesn't apply `publishConfig.typesVersions`. Keep `typesVersions` at the top level, pointing at `dist`: TypeScript only reads it under `node10` module resolution, which a playground doesn't use.
@@ -736,6 +738,8 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
 ```
 
 A playground that installs the module by name lists it as `"my-module": "workspace:*"` or `"my-module": "link:.."`. npm supports neither protocol, so use `"my-module": "file:.."` there, which npm installs as a link. Yarn 1 has no `workspace:` protocol, so use `link:..` there.
+
+`nuxt-module-build prepare` installs the module from its sources even where its own `.nuxtrc` or `nuxt.config` lists it by name. Any other `nuxt prepare` that loads the module by name, such as one at the repository root with `modules[]=my-module` in `.nuxtrc`, loads it from `dist` and leaves it out when `dist` is missing. Run `tsdown` before such a `nuxt prepare` in `dev:prepare`.
 
 While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
