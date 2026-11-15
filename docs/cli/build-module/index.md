@@ -17,7 +17,7 @@ The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/modu
 
 ## `build`
 
-Builds the module into `dist` for publishing, with the module's `tsdown.config.ts` when it has one. It produces the same output as `tsdown`. See [`build`](/docs/guide/modules/module-builder/commands#build).
+Builds the module into `dist` for publishing. When the module has a `tsdown.config.ts`, `build` uses it. It produces the same output as `tsdown`. See [`build`](/docs/guide/modules/module-builder/commands#build).
 
 ### Arguments
 
@@ -35,7 +35,7 @@ Builds the module into `dist` for publishing, with the module's `tsdown.config.t
 
 ## `prepare`
 
-Generates `.nuxt` in the module root, which the module's `tsconfig.json` extends, and the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
+Generates `.nuxt` in the module root, which the module's `tsconfig.json` extends. It also writes the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
 
 ### Arguments
 
