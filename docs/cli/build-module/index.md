@@ -9,7 +9,7 @@ links:
 ---
 
 ```bash [Terminal]
-npx nuxt build-module build [ROOTDIR] [--cwd=<directory>] [--outDir=<directory>] [--sourcemap] [--stub]
+npx nuxt build-module build [ROOTDIR] [--cwd=<directory>] [--outDir=<directory>] [--sourcemap]
 npx nuxt build-module prepare [ROOTDIR] [--cwd=<directory>]
 ```
 
@@ -17,7 +17,7 @@ The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/modu
 
 ## `build`
 
-Builds the module into `dist` for publishing. With `--stub`, it writes `dist` as re-exports of your sources instead, for development. See [`build`](/docs/guide/modules/module-builder/commands#build) and [`build --stub`](/docs/guide/modules/module-builder/commands#build-stub).
+Builds the module into `dist` for publishing, with the module's `tsdown.config.ts` when it has one. It produces the same output as `tsdown`. See [`build`](/docs/guide/modules/module-builder/commands#build).
 
 ### Arguments
 
@@ -30,13 +30,12 @@ Builds the module into `dist` for publishing. With `--stub`, it writes `dist` as
 | Option | Default | Description |
 |---|---|---|
 | `--cwd=<directory>` | | The module root. Takes precedence over `ROOTDIR`. |
-| `--outDir=<directory>` | `dist` | The output directory, relative to the module root. It's emptied before every build, so it must be inside the module. |
-| `--sourcemap` | `false` | Emit a source map next to every script. |
-| `--stub` | `false` | Write a stub build instead. |
+| `--outDir=<directory>` | | The output directory, relative to the module root. Takes precedence over `outDir` in the tsdown config, which defaults to `dist`. It's emptied before every build, so it must be inside the module. |
+| `--sourcemap` | | Emit a source map next to every script. Takes precedence over `sourcemap` in the tsdown config. |
 
 ## `prepare`
 
-Generates `.nuxt` in the module root, which the module's `tsconfig.json` extends. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
+Generates `.nuxt` in the module root, which the module's `tsconfig.json` extends, and the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
 
 ### Arguments
 
