@@ -732,7 +732,7 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
 }
 ```
 
-A playground that installs the module by name lists it as `"my-module": "workspace:*"` or `"my-module": "link:.."`. Yarn 1 has no `workspace:` protocol, so use `link:..` there.
+A playground that installs the module by name lists it as `"my-module": "workspace:*"` or `"my-module": "link:.."`. npm supports neither protocol, so use `"my-module": "file:.."` there, which npm installs as a link. Yarn 1 has no `workspace:` protocol, so use `link:..` there.
 
 While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
