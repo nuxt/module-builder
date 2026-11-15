@@ -27,7 +27,6 @@ export type GuideSection
     | 'preparing-nuxt'
     | 'module-tsconfig'
     | 'output-directory'
-    | 'source-exports'
     | 'publishing-source-exports'
     | 'module-code-loads-with-node'
 

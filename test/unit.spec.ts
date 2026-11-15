@@ -20,8 +20,8 @@ import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkSourcePaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { publishedPackage, sourcePathsPackError } from '../src/build/package.ts'
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { guide } from '../src/build/guide.ts'
@@ -542,25 +542,43 @@ describe('deprecation checks', () => {
     warn.mockRestore()
   })
 
-  it('should warn about published paths that point at the module\'s sources', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+  it('should refuse published paths that point at TypeScript sources or that the pack leaves out', () => {
     const pkg = {
-      exports: { '.': { types: './src/module.ts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+      files: ['dist'],
+      exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './src/module.ts' }, './utils': './src/utils.ts' },
       imports: { '#shared/*': './src/runtime/shared/*.ts', '#dep': 'some-dependency' },
-      types: './src/module.ts',
+      types: './src/module.d.ts',
       publishConfig: {
         exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' } },
         imports: { '#shared/*': './dist/runtime/shared/*.js', '#dep': 'some-dependency' },
       },
     }
-    expect(checkSourcePaths(cwd, publishedPackage(pkg))).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(`These paths in \`package.json\` are published pointing at the module's sources: \`./src/module.ts\`. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('source-exports')}`)
-    warn.mockClear()
-    expect(checkSourcePaths(cwd, publishedPackage({ ...pkg, publishConfig: { ...pkg.publishConfig, types: './dist/types.d.mts' } }))).toBe(false)
-    expect(warn).not.toHaveBeenCalled()
-    expect(checkSourcePaths(cwd, publishedPackage({ imports: { '#shared/*': './src/runtime/shared/*.ts' } }))).toBe(true)
-    expect(checkSourcePaths(cwd, publishedPackage({ exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './dist/module.mjs' } } }))).toBe(true)
-    warn.mockRestore()
+    expect(unpublishablePathsError(cwd, pkg)).toBe(`These published fields of \`package.json\` would not work once installed. Pointing at paths that the pack leaves out: \`types\` (\`./src/module.d.ts\`). Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`)
+    expect(unpublishablePathsError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, types: './dist/types.d.mts' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { ...pkg, publishConfig: undefined })).toContain('would not work once installed. Pointing at TypeScript sources, which Node does not load from `node_modules`: `exports` (`./src/module.ts`, `./src/utils.ts`). Pointing at paths that the pack leaves out: `exports`, `types` (`./.nuxt/module-builder/types.d.mts`, `./src/module.d.ts`). Point')
+    expect(unpublishablePathsError(cwd, { files: ['dist', 'src/module.ts'], main: './src/module.ts' })).toContain('Pointing at TypeScript sources, which Node does not load from `node_modules`: `main` (`./src/module.ts`)')
+  })
+
+  it('should refuse published `imports` that point at TypeScript sources or that the pack leaves out only when the build output imports them', () => {
+    const pkg = { files: ['dist', '.nuxt/ui.static.css'], imports: { '#internal/*': './src/internal/*.ts', '#shared': './shared/index.js', '#build/ui.css': './.nuxt/ui.static.css', '#dep': 'some-dependency' } }
+    expect(unpublishablePathsError(cwd, pkg)).toBeUndefined()
+    expect(unpublishableImportsError(cwd, pkg, () => false)).toBeUndefined()
+    expect(unpublishableImportsError(cwd, pkg, () => true)).toBe(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#internal/*\` (\`./src/internal/*.ts\`). Pointing at paths that the pack leaves out: \`#shared\` (\`./shared/index.js\`). Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`)
+    expect(unpublishableImportsError(cwd, pkg, key => key === '#shared')).not.toContain('#internal')
+    const publishConfig: Record<string, unknown> = { imports: { '#internal/*': './dist/internal/*.mjs', '#shared': './dist/shared.mjs' } }
+    expect(unpublishableImportsError(cwd, { ...pkg, publishConfig }, () => true)).toBeUndefined()
+  })
+
+  it('should accept published paths that `files` lists, and `main`, which every pack includes', () => {
+    expect(unpublishablePathsError(cwd, { files: ['dist', '.nuxt/ui.static.css'], imports: { '#build/ui.css': './.nuxt/ui.static.css' }, exports: { '.': './dist/module.mjs' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { files: ['./dist/', 'lib/*.js'], main: './index.js', exports: { '.': './dist/module.mjs', './lib': './lib/a.js', './runtime/*': './dist/runtime/*' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { files: ['dist/**/*.mjs'], exports: { './runtime/*': './dist/runtime/*' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { exports: { '.': './dist/module.mjs', './types': './types/index.d.ts' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { files: ['dist'], main: './index.mjs', exports: { '.': './index.mjs', './package.json': './package.json' } })).toBeUndefined()
+    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private': './dist/private/a.mjs' } })).toContain('(`./dist/private/a.mjs`)')
+    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private/*': './dist/private/*' } })).toContain('(`./dist/private/*`)')
+    expect(unpublishablePathsError(cwd, { files: ['{dist,lib}'], exports: { './a': './lib/a.js', './b': './other/b.js' } })).toContain('(`./other/b.js`)')
+    expect(unpublishablePathsError(cwd, { exports: { '.': './.nuxt/module.mjs' } })).toContain('paths that the pack leaves out: `exports` (`./.nuxt/module.mjs`)')
   })
 
   it('should warn about referenced `module.cjs` output that is no longer generated', () => {
@@ -669,7 +687,7 @@ describe('sourcePathsPackError', () => {
   it('should refuse packs by package managers that publish the source paths as written', () => {
     const fix = `Point them at \`dist\`, or pack and publish with pnpm or Yarn 4, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`
     const paths = '`./.nuxt/module-builder/types.d.mts`, `./src/module.ts`, `./src/utils.ts`, `./src/runtime/shared/*.ts`'
-    expect(sourcePathsPackError(cwd, pkg, npm)).toBe(`\`npm@11.19.0\` packs these fields of \`package.json\` as written, and they point at the module's sources: \`exports\`, \`imports\`, \`main\`, \`types\` (${paths}). ${fix}`)
+    expect(sourcePathsPackError(cwd, pkg, npm)).toBe(`\`npm@11.19.0\` packs these fields of \`package.json\` as written, and they point at TypeScript sources or paths that \`files\` leaves out: \`exports\`, \`imports\`, \`main\`, \`types\` (${paths}). ${fix}`)
     expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_lifecycle_event: 'prepublishOnly' })).toContain('`npm@11.19.0` packs')
     expect(sourcePathsPackError(cwd, pkg, yarnClassic)).toContain('`yarn@1.22.22` packs')
     expect(sourcePathsPackError(cwd, pkg, bun)).toContain('`bun@1.3.14` packs')
@@ -685,14 +703,14 @@ describe('sourcePathsPackError', () => {
 
   it('should refuse source paths that `publishConfig` does not replace', () => {
     const { types: _, ...publishConfig } = pkg.publishConfig
-    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`package.json\` point at the module's sources, and \`publishConfig\` does not replace them, so they would be published as written: \`types\` (\`./.nuxt/module-builder/types.d.mts\`). Set \`publishConfig.types\` to the \`dist\` paths. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`package.json\` point at TypeScript sources or paths that \`files\` leaves out, and \`publishConfig\` does not replace them, so they would be published as written: \`types\` (\`./.nuxt/module-builder/types.d.mts\`). Set \`publishConfig.types\` to the \`dist\` paths. ${guide('publishing-source-exports')}`)
     expect(sourcePathsPackError(cwd, { exports: pkg.exports }, pnpm)).toContain('Set `publishConfig.exports` to the `dist` paths.')
   })
 
   it('should refuse `publishConfig` fields that point at sources', () => {
     const publishConfig = { ...pkg.publishConfig, main: './src/module.ts' }
-    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`publishConfig\` point at the module's sources, so they would be published: \`main\` (\`./src/module.ts\`). Point them at \`dist\`. ${guide('publishing-source-exports')}`)
-    expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toContain('These fields of `publishConfig` point at the module\'s sources')
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`publishConfig\` point at TypeScript sources or paths that \`files\` leaves out, so they would be published that way: \`main\` (\`./src/module.ts\`). Point them at \`dist\`. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toContain('These fields of `publishConfig` point at TypeScript sources')
     expect(sourcePathsPackError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./src/utils.ts'] } } } }, yarn)).toBeUndefined()
   })
 
@@ -700,14 +718,14 @@ describe('sourcePathsPackError', () => {
     const typesVersions = { '*': { utils: ['./src/utils.ts'] } }
     const sourceTypesVersions = { ...pkg, typesVersions, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } } } }
     expect(sourcePathsPackError(cwd, sourceTypesVersions, pnpm)).toBeUndefined()
-    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)).toBe(`\`yarn@4.18.1\` packs these fields of \`package.json\` as written, and they point at the module's sources: \`typesVersions\` (\`./src/utils.ts\`). Point them at \`dist\`, or pack and publish with pnpm, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)).toBe(`\`yarn@4.18.1\` packs these fields of \`package.json\` as written, and they point at TypeScript sources or paths that \`files\` leaves out: \`typesVersions\` (\`./src/utils.ts\`). Point them at \`dist\`, or pack and publish with pnpm, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`)
   })
 
   it('should refuse the fields that Yarn 2 and 3 pack as written', () => {
     const yarn2 = pack('yarn/2.4.2', '/tmp/xfs-b1b0ae8e/yarn')
     const yarn3 = pack('yarn/3.8.7', '/tmp/xfs-e94f6087/yarn')
-    expect(sourcePathsPackError(cwd, pkg, yarn2)).toContain('`yarn@2.4.2` packs these fields of `package.json` as written, and they point at the module\'s sources: `exports`, `imports`, `types` (')
-    expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at the module\'s sources: `types` (`./.nuxt/module-builder/types.d.mts`)')
+    expect(sourcePathsPackError(cwd, pkg, yarn2)).toContain('`yarn@2.4.2` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `imports`, `types` (')
+    expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `types` (`./.nuxt/module-builder/types.d.mts`)')
     expect(sourcePathsPackError(cwd, { main: pkg.main, publishConfig: { main: pkg.publishConfig.main } }, yarn2)).toBeUndefined()
     expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toContain('`yarn@5.0.0` packs')
   })

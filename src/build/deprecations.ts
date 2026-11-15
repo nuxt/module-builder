@@ -4,7 +4,7 @@ import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 
 import { guide } from './guide.ts'
-import { collectStrings, publishedPackage, sourcePaths } from './package.ts'
+import { collectStrings, publishedPackage } from './package.ts'
 
 /**
  * Warn about `package.json` fields that point at output this builder no longer produces.
@@ -20,7 +20,6 @@ export async function checkDeprecatedPackageFields(cwd: string): Promise<void> {
   checkLegacyDeclarationPaths(cwd, pkg)
   checkLegacyCJSPaths(cwd, pkg)
   checkStaleTypesField(cwd, pkg)
-  checkSourcePaths(cwd, pkg)
   checkNode10DeclarationPaths(cwd, pkg)
   checkMissingPaths(cwd, pkg)
 }
@@ -78,15 +77,6 @@ export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
     return false
   }
   consola.warn(`These paths in \`package.json\` do not exist after the build, so imports that resolve to them will fail: ${list(paths)}. Add the entry that produces each one, or remove the path. ${guide('paths-the-build-does-not-produce')}`)
-  return true
-}
-
-export function checkSourcePaths(cwd: string, pkg: PackageJSON): boolean {
-  const paths = sourcePaths(cwd, pkg).map(({ path }) => path)
-  if (!paths.length) {
-    return false
-  }
-  consola.warn(`These paths in \`package.json\` are published pointing at the module's sources: ${list(paths)}. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('source-exports')}`)
   return true
 }
 

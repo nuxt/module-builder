@@ -671,14 +671,30 @@ Yarn 4 doesn't apply `publishConfig.typesVersions`. Keep `typesVersions` at the 
 
 The playground has to resolve the module's name to the module directory itself, as `"my-module": "workspace:*"` or `"my-module": "link:.."` do. Vite serves the files under `src/runtime` from there, so components update in place and plugins reload the page. The playground loads `src/module.ts` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
-The build checks the `publishConfig` paths, and warns about any published path that still points into `src` or `.nuxt`. tsdown's `publint` and `attw` options lint the packed tarball, so both see `dist`.
+The build checks the published paths, as described in [Publishing source exports](#publishing-source-exports). tsdown's `publint` and `attw` options lint the packed tarball, so both see `dist`.
 
 ### Publishing source exports
 
-When `tsdown` or `nuxt-module-build build` runs as the `prepack` or `prepublishOnly` script, and fields of `package.json` point into `src` or `.nuxt`, the build fails unless they are published from `publishConfig`:
+Every build reads the path fields of `package.json` with `publishConfig` applied, and fails when one of them points at a path that doesn't work once the package is installed:
+
+- a TypeScript source other than a declaration, which Node doesn't load from `node_modules`
+- a path that the pack leaves out because `files` doesn't list it, or, without `files`, a path into `.nuxt`
+
+Every pack includes `package.json` and the file that `main` points at, so `files` doesn't have to list them. An `imports` entry is only checked when the build output still imports it, so an entry that the build bundles, or rewrites to a relative path, can keep pointing at `src`. To publish a file other than a TypeScript source as it is, list it in `files`:
+
+```json
+{
+  "files": ["dist", ".nuxt/ui.static.css"],
+  "imports": {
+    "#build/ui.css": "./.nuxt/ui.static.css"
+  }
+}
+```
+
+When `tsdown` or `nuxt-module-build build` runs as the `prepack` or `prepublishOnly` script, the build also fails when the package manager that packs would publish such a path as written:
 
 - The package manager that packs has to be pnpm or Yarn 4. npm, Yarn 1, and bun pack `package.json` as written. Yarn 4 packs `typesVersions` as written too. Yarn 2 only replaces `main` and `module`, and Yarn 3 also `exports` and `imports`.
-- `publishConfig` has to set each of those fields, to paths outside `src` and `.nuxt`.
+- `publishConfig` has to set each of those fields, to paths that pass the check above.
 
 The check reads `npm_lifecycle_event`, so it only runs when the build is the `prepack` or `prepublishOnly` script itself. A `prepack` script that runs another script, such as `"prepack": "npm run build"`, isn't checked: the nested script runs as `build`. Run `tsdown` or `nuxt-module-build build` from `prepack` directly.
 

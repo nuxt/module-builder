@@ -406,6 +406,7 @@ export const content: unknown = config
     await writeFile(buildConfigPkg, JSON.stringify({
       ...JSON.parse(await readFile(buildConfigPkg, 'utf-8')),
       imports: { '#content-alias/*': './src/alias/*.ts' },
+      publishConfig: { imports: { '#content-alias/*': './dist/alias/*.mjs' } },
       build: { entries: [{ input: 'src/features/', outDir: 'dist/features', ext: 'js' }] },
     }))
 
@@ -1532,7 +1533,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
   it('should refuse to build source exports for a pack by npm, including when a pnpm script runs it', async () => {
     const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env: npmPackFromPnpmScript() } })
     expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
-    expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
+    expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
     expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
   }, 60 * 1000)
 

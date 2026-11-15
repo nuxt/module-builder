@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
@@ -14,7 +14,7 @@ import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
+import { bundledEntries, callBuildHook, createBuildContext, escapeRegExp, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
 import type { DirectoryEntry, LoadedBuildConfig } from './build-config.ts'
 import type { BuildContext } from './define.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
@@ -22,6 +22,7 @@ import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
 import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
+import { unpublishableImportsError } from './package.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
 
@@ -272,7 +273,22 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   }
 
   await checkDeprecatedPackageFields(cwd)
+  const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir))
+  if (importsError) {
+    throw new Error(importsError)
+  }
   await callBuildHook(plan.config, 'build:done', plan.ctx)
+}
+
+const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
+
+function importedFrom(dir: string): (key: string) => boolean {
+  let contents: string[] | undefined
+  return (key) => {
+    contents ??= readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter(file => OUTPUT_TEXT_RE.test(file)).map(file => readFileSync(join(dir, file), 'utf8'))
+    const specifier = new RegExp(`["'\`]${key.split('*').map(escapeRegExp).join('[^"\'`]*')}["'\`]`)
+    return contents.some(content => specifier.test(content))
+  }
 }
 
 function valueImports(roots: string[]) {

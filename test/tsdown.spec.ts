@@ -142,6 +142,46 @@ export default {
     expect(await readFile(join(dir, 'dist/config.cjs'), 'utf-8')).toBe('module.exports = {}\n')
   }, 60 * 1000)
 
+  it('should refuse to build when a published path points at a TypeScript source or at a file the pack leaves out', async () => {
+    const dir = await copyExample('.temp-tsdown-unpublishable', `export default {\n  plugins: [builder()],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+    const cases: Array<[Record<string, string>, string]> = [
+      [{ '.': './src/module.ts' }, 'Pointing at TypeScript sources, which Node does not load from `node_modules`: `exports` (`./src/module.ts`).'],
+      [{ '.': './lib/module.mjs' }, 'Pointing at paths that the pack leaves out: `exports` (`./lib/module.mjs`).'],
+    ]
+    for (const [exports, message] of cases) {
+      await writeFile(pkgPath, JSON.stringify({ ...pkg, exports }, null, 2))
+      for (const args of [[tsdownBin], [join(repoRoot, 'src/cli.ts'), 'build']]) {
+        const { exitCode, stdout, stderr } = await exec('node', args, { nodeOptions: { cwd: dir, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+        expect(exitCode, args.join(' ')).not.toBe(0)
+        expect(stdout + stderr, args.join(' ')).toContain(message)
+        expect(existsSync(join(dir, 'dist'))).toBe(false)
+      }
+    }
+  }, 60 * 1000)
+
+  it('should refuse package `imports` that the output imports and that would not work once installed', async () => {
+    const dir = await copyExample('.temp-tsdown-package-imports', `export default {\n  plugins: [builder({ externals: [/^#ext\\//] })],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = { ...JSON.parse(await readFile(pkgPath, 'utf-8')), imports: { '#ext/*': './src/ext/*.ts', '#internal/*': './src/internal/*.ts' } }
+    await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+    await mkdir(join(dir, 'src/ext'), { recursive: true })
+    await mkdir(join(dir, 'src/internal'), { recursive: true })
+    await writeFile(join(dir, 'src/ext/value.ts'), `export const ext: string = 'ext'\n`)
+    await writeFile(join(dir, 'src/internal/value.ts'), `export const internal: string = 'internal'\n`)
+    await appendFile(join(dir, 'src/module.ts'), `export { ext } from '#ext/value'\nexport { internal } from '#internal/value'\n`)
+
+    const refused = await tsdown(dir)
+    expect(refused.exitCode).not.toBe(0)
+    expect(refused.stdout + refused.stderr).toContain(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#ext/*\` (\`./src/ext/*.ts\`).`)
+    expect(await readFile(join(dir, 'dist/module.mjs'), 'utf-8')).toContain('"#ext/value"')
+
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, publishConfig: { imports: { '#ext/*': './dist/ext/*.mjs' } } }, null, 2))
+    const built = await tsdown(dir)
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
+  }, 60 * 1000)
+
   it('should not keep more memory with each watched rebuild', async () => {
     const dir = await copyExample('.temp-tsdown-watch-memory', '')
     await rm(join(dir, 'tsdown.config.ts'))
@@ -538,7 +578,7 @@ export default {
     it('should refuse to build for a pack by npm, which publishes the source paths', async () => {
       const { exitCode, stdout, stderr } = await exec('node', [...packProbeArgs, tsdownBin], { nodeOptions: { cwd: dir, env: { ...npmPackFromPnpmScript(), NODE_ENV: '', TEST: '' } } })
       expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
-      expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at the module's sources: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
+      expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
       expect(stdout + stderr).toContain(guide('publishing-source-exports'))
     }, 60 * 1000)
 

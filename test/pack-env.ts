@@ -1,7 +1,7 @@
 import process from 'node:process'
 import { readPackageJSON } from 'pkg-types'
 
-import { sourcePaths, sourcePathsPackError } from '../src/build/package.ts'
+import { sourcePathsPackError, unpublishablePaths } from '../src/build/package.ts'
 
 const PACK_VARS = /^npm_(?:lifecycle_event|execpath|config_user_agent|command)$/i
 
@@ -41,6 +41,6 @@ if (process.env.MODULE_BUILDER_PACK_PROBE) {
     read: { npm_lifecycle_event: process.env.npm_lifecycle_event, npm_execpath: process.env.npm_execpath, npm_config_user_agent: process.env.npm_config_user_agent },
     ...extra,
   })}\n`)
-  report('start', { name: pkg.name, sourcePaths: sourcePaths(cwd, pkg), packError: sourcePathsPackError(cwd, pkg)?.slice(0, 60) ?? null })
+  report('start', { name: pkg.name, unpublishablePaths: unpublishablePaths(cwd, pkg), packError: sourcePathsPackError(cwd, pkg)?.slice(0, 60) ?? null })
   process.on('exit', () => report('exit'))
 }
