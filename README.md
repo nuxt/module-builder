@@ -10,10 +10,10 @@
 ## Features
 
 - Builds modules for Nuxt 3 and later, with no configuration for the [module starter](https://github.com/nuxt/starter/tree/module) layout
-- Bundles the module entry with [tsdown](https://tsdown.dev), and transpiles the runtime directory file by file
+- Builds with [tsdown](https://tsdown.dev) through the `builder()` plugin: bundles the module entry, and transpiles the runtime directory file by file
 - Generates declarations against the module's own `.nuxt`, for `.ts` and `.vue` files alike
 - Writes the type shims that give `nuxt.config` autocompletion for the module's options and hooks
-- Stubs `dist` for development, so a playground runs the module's sources directly
+- Lets a playground run the module's sources while `package.json` publishes `dist`, and checks the published paths before every build
 
 ## Quick start
 
@@ -29,9 +29,9 @@ Building a module requires Node `^22.18.0 || >=24.0.0`, with `tsdown` and `types
 
 - [Getting started](./docs/index.md)
 - [Project structure](./docs/1.project-structure.md)
-- [Commands](./docs/2.commands.md): `build`, `build --stub`, and `prepare`
-- [Develop and publish](./docs/3.develop-and-publish.md): the playground, and releasing to npm
-- [Configuration](./docs/4.configuration.md): extra entries, and the deprecated `build.config.ts`
+- [Commands](./docs/2.commands.md): `tsdown`, `build`, and `prepare`
+- [Develop and publish](./docs/3.develop-and-publish.md): source exports, the playground, and releasing to npm
+- [Configuration](./docs/4.configuration.md): `builder()` in `tsdown.config.ts`, extra entries, and the deprecated `build.config.ts`
 - [TypeScript](./docs/5.typescript.md): the module's `tsconfig.json`, and its declarations
 - [Build output](./docs/6.output.md)
 - [Exports](./docs/7.exports.md): subpath exports, including runtime components
