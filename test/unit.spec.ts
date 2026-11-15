@@ -773,6 +773,10 @@ describe('writeSourceTypes', () => {
     expect(await check(`export type * from './declared'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
       'src/declared.d.ts': `export interface ModuleHooks { 'my-module:init': () => void }\n`,
     })).toEqual([])
+    expect(await check(`export type * from './siblings.mjs'\nexport default { options: { key: '' } } as { options?: { key: string } }\n`, {
+      'src/siblings.d.mts': `export interface ModuleHooks { 'my-module:init': () => void }\n`,
+      'src/siblings.d.ts': `export interface ModuleRuntimeConfig { secret: string }\n`,
+    })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
   }, 60 * 1000)
 })

@@ -7,7 +7,12 @@ import { probe } from './loader.ts'
 import { writeIfChanged } from './write.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
-const DECLARATION_SUFFIXES = ['.d.ts', '.d.mts', '.d.cts', '/index.d.ts', '/index.d.mts']
+const DECLARATION_SUFFIXES: Record<string, string[]> = {
+  '': ['.d.ts', '.d.mts', '.d.cts', '/index.d.ts', '/index.d.mts'],
+  '.js': ['.d.ts'],
+  '.mjs': ['.d.mts'],
+  '.cjs': ['.d.cts'],
+}
 const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|const\s+enum|const|let|var|class|enum)\s+([$\w]+)/g
 
 /**
@@ -165,8 +170,9 @@ function exportedNames(file: string, seen = new Set<string>()): Set<string> | un
 
 /** The source file `path` resolves to, or the declaration file when there is no source. */
 function probeWithDeclarations(path: string) {
-  const base = path.replace(/\.[cm]?js$/, '')
-  return probe(path) ?? DECLARATION_SUFFIXES.map(suffix => base + suffix).find(candidate => existsSync(candidate))
+  const extension = path.match(/\.[cm]?js$/)?.[0] ?? ''
+  const base = path.slice(0, path.length - extension.length)
+  return probe(path) ?? DECLARATION_SUFFIXES[extension]!.map(suffix => base + suffix).find(candidate => existsSync(candidate))
 }
 
 /** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */
