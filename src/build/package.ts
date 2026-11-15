@@ -146,7 +146,8 @@ export function sourcePathsPackError(cwd: string, pkg: PackageJson, env: Record<
   const publishConfig = (pkg.publishConfig ?? {}) as Record<string, unknown>
   const published = paths.filter(({ field }) => !client?.fields.includes(field) || publishConfig[field] === undefined)
   if (!published.length) {
-    const replacements = unpublishablePaths(cwd, Object.fromEntries(PATH_FIELDS.filter(field => client?.fields.includes(field)).map(field => [field, publishConfig[field]])), pkg.files)
+    const replaced = PATH_FIELDS.filter(field => client?.fields.includes(field) && publishConfig[field] !== undefined)
+    const replacements = unpublishablePaths(cwd, { ...pkg, ...Object.fromEntries(replaced.map(field => [field, publishConfig[field]])) }).filter(({ field }) => replaced.includes(field))
     if (!replacements.length) {
       return
     }

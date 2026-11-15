@@ -716,6 +716,7 @@ describe('sourcePathsPackError', () => {
     expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`publishConfig\` point at TypeScript sources or paths that \`files\` leaves out, so they would be published that way: \`main\` (\`./src/module.ts\`). Point them at \`dist\`. ${guide('publishing-source-exports')}`)
     expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toContain('These fields of `publishConfig` point at TypeScript sources')
     expect(sourcePathsPackError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./src/utils.ts'] } } } }, yarn)).toBeUndefined()
+    expect(sourcePathsPackError(cwd, { files: ['dist/*.d.mts'], main: './dist/module.mjs', exports: './src/module.ts', publishConfig: { exports: './dist/module.mjs' } }, pnpm)).toBeUndefined()
   })
 
   it('should refuse `typesVersions` that point at sources when Yarn packs', () => {
