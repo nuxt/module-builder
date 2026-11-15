@@ -4,13 +4,13 @@ import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 
 import { guide } from './guide.ts'
-import { publishedPackage } from './package.ts'
+import { collectStrings, publishedPackage } from './package.ts'
 
 /**
  * Warn about `package.json` fields that point at output this builder no longer produces.
  * The paths are read as published, with `publishConfig` applied.
  */
-export async function checkDeprecatedPackageFields(cwd: string, { stub = false }: { stub?: boolean } = {}): Promise<void> {
+export async function checkDeprecatedPackageFields(cwd: string): Promise<void> {
   const read = await readPackageJSON(cwd).catch(() => undefined)
   const pkg = read && publishedPackage(read)
   if (!pkg) {
@@ -20,11 +20,8 @@ export async function checkDeprecatedPackageFields(cwd: string, { stub = false }
   checkLegacyDeclarationPaths(cwd, pkg)
   checkLegacyCJSPaths(cwd, pkg)
   checkStaleTypesField(cwd, pkg)
-  checkSourcePaths(cwd, pkg)
-  if (!stub) {
-    checkNode10DeclarationPaths(cwd, pkg)
-    checkMissingPaths(cwd, pkg)
-  }
+  checkNode10DeclarationPaths(cwd, pkg)
+  checkMissingPaths(cwd, pkg)
 }
 
 type PackageJSON = Awaited<ReturnType<typeof readPackageJSON>>
@@ -83,16 +80,6 @@ export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
   return true
 }
 
-export function checkSourcePaths(cwd: string, pkg: PackageJSON): boolean {
-  const src = resolve(cwd, 'src')
-  const paths = referencedPaths(pkg).filter(path => !relative(src, resolve(cwd, path)).startsWith('..'))
-  if (!paths.length) {
-    return false
-  }
-  consola.warn(`These paths in \`package.json\` are published pointing at the module's sources: ${list(paths)}. Point them at the build output, or set the published paths in \`publishConfig\`. ${guide('developing-without-a-stub')}`)
-  return true
-}
-
 function list(paths: string[]) {
   return [...new Set(paths)].map(path => `\`${path}\``).join(', ')
 }
@@ -129,17 +116,4 @@ function missingPaths(cwd: string, pkg: PackageJSON): string[] {
 
 function referencedPaths(pkg: PackageJSON): string[] {
   return [...[pkg.exports, pkg.typesVersions, pkg.types, pkg.main, pkg.module].flatMap(collectStrings), ...collectStrings(pkg.imports).filter(path => path.startsWith('./'))]
-}
-
-function collectStrings(value: unknown): string[] {
-  if (typeof value === 'string') {
-    return [value]
-  }
-  if (Array.isArray(value)) {
-    return value.flatMap(collectStrings)
-  }
-  if (value && typeof value === 'object') {
-    return Object.values(value).flatMap(collectStrings)
-  }
-  return []
 }

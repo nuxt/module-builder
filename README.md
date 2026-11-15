@@ -92,7 +92,7 @@ Each file is transpiled individually to `dist/runtime/`.
 
 ### `package.json`:
 
-A minimum `package.json` should look like this:
+A minimum `package.json` should look like this. It points at the module's sources while you develop, and pnpm publishes the `dist` paths in `publishConfig` in their place:
 
 ```json [package.json]
 {
@@ -101,23 +101,28 @@ A minimum `package.json` should look like this:
   "version": "1.0.0",
   "exports": {
     ".": {
-      "types": "./dist/types.d.mts",
-      "import": "./dist/module.mjs"
+      "types": "./.nuxt/module-builder/types.d.mts",
+      "import": "./src/module.ts"
     }
   },
-  "main": "./dist/module.mjs",
-  "typesVersions": {
-    "*": {
-      ".": [
-        "./dist/types.d.mts"
-      ]
-    }
-  },
+  "main": "./src/module.ts",
+  "types": "./.nuxt/module-builder/types.d.mts",
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/types.d.mts",
+        "import": "./dist/module.mjs"
+      }
+    },
+    "main": "./dist/module.mjs",
+    "types": "./dist/types.d.mts"
+  },
   "scripts": {
-    "dev:prepare": "nuxt-module-build prepare --stub && nuxi prepare playground",
+    "dev": "nuxt dev playground",
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
     "prepack": "tsdown"
   },
   "dependencies": {
@@ -130,7 +135,7 @@ A minimum `package.json` should look like this:
 }
 ```
 
-`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. With pnpm, the playground can also load the module from its sources without a stub: see [Developing without a stub](./docs/upgrade-v2.md#developing-without-a-stub).
+`tsdown` is a peer dependency, so install it alongside `@nuxt/module-builder`. `tsdown` builds the module with the `tsdown.config.ts` shown in [Build configuration](#build-configuration); without one, use `"prepack": "nuxt-module-build build"` instead. `nuxt-module-build prepare` writes `.nuxt/module-builder/types.d.mts`, the declarations of `src/module.ts` with the module's type augmentations. pnpm and Yarn 4 publish `publishConfig` in place of these fields; npm, Yarn 3 and earlier, and bun don't, and packing with them fails. With those, point `package.json` at `dist` and run `tsdown --watch` while you develop. See [Developing a module](./docs/upgrade-v2.md#developing-a-module).
 
 Module code (`src/module.ts`, the files it imports by value, and the build config) has to load with Node as it is: relative imports carry their `.ts` extension, and TypeScript syntax that stripping types doesn't remove, tsconfig `paths` aliases, value imports of `.vue` and `.tsx` files, JSON without `with { type: 'json' }`, and value imports of `#app`, `#imports`, and `#build/*` aren't allowed. See [Module code loads with Node](./docs/upgrade-v2.md#module-code-loads-with-node).
 

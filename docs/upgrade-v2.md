@@ -96,7 +96,7 @@ Build with `tsdown` itself, for example from the `prepack` script:
 }
 ```
 
-`nuxt-module-build build` stays the zero-config way to build: it builds with this config when there is one, and produces the same `dist`, with the same checks and warnings. `nuxt-module-build build --stub` and `nuxt-module-build prepare` read the options of `builder()` from the config as well, and fail when the config sets `cwd` to another directory. `tsdown --watch` rebuilds `dist` when a source file changes.
+`nuxt-module-build build` stays the zero-config way to build: it builds with this config when there is one, and produces the same `dist`, with the same checks and warnings. `nuxt-module-build prepare` reads the options of `builder()` from the config as well, and fails when the config sets `cwd` to another directory. `tsdown --watch` rebuilds `dist` when a source file changes, see [Developing against dist](#developing-against-dist).
 
 `builder()` takes these options:
 
@@ -135,7 +135,7 @@ Call `builder()` once, in the config that builds the module. One plugin shared b
 
 `builder()` has no hooks of its own. Use tsdown's `hooks` in the config, which receive tsdown's context (`ctx.options.cwd` is the module root and `ctx.options.outDir` the output directory), or a plugin:
 
-- `build:prepare` runs before `builder()` checks the module's imports and empties the output directory, so it can generate sources. Files written into the output directory there are removed. Without `.nuxt`, `builder()` runs `nuxt-module-build prepare` before `build:prepare`, and that loads `src/module`, so generate the sources `src/module` imports before running tsdown, as for `--stub` below.
+- `build:prepare` runs before `builder()` checks the module's imports and empties the output directory, so it can generate sources. Files written into the output directory there are removed. Without `.nuxt`, `builder()` runs `nuxt-module-build prepare` before `build:prepare`, and that loads `src/module`, so generate the sources `src/module` imports before running tsdown, as described below.
 - `build:done` runs once the build is complete, after `module.json` and `types.d.mts` are written and the paths in `package.json` are checked.
 - To add a file to the output, emit it from a plugin. It is written before the paths in `package.json` are checked:
 
@@ -158,7 +158,7 @@ export default defineConfig({
 
 Point `package.json` at the files the build emits, such as `./dist/module.mjs`, rather than renaming them afterwards.
 
-tsdown hooks and plugins don't run for `--stub`, which doesn't build with tsdown. Commit generated sources, or generate them in the module's own `dev:prepare` script before `nuxt-module-build build --stub`.
+tsdown hooks and plugins don't run for `nuxt-module-build prepare`, or for a playground that loads the module from its sources. Commit generated sources, or generate them in the module's own `dev:prepare` script before `nuxt-module-build prepare`.
 
 `builder()` fails when it's given `hooks`.
 
@@ -169,7 +169,7 @@ tsdown hooks and plugins don't run for `--stub`, which doesn't build with tsdown
 - `entry`: list entries in `builder({ entries })` instead.
 - `format`, other than `esm`.
 - `dts`, other than `true`. Declarations are generated with the module's own tsconfig, see [Declaration errors](#declaration-errors).
-- `clean`: the output directory is always emptied before the build.
+- `clean`: the output directory is emptied before a one-off build, and a watched build removes the files it no longer emits.
 - `unbundle`, `exports`, `fixedExtension: false`, `outExtensions`, `platform` other than `node`, and `workspace`.
 - `external` and `noExternal`: use `builder({ externals })`, `deps.neverBundle`, or `deps.alwaysBundle` instead.
 - `deps.neverBundle` set to `true` or a function: list the imports instead.
@@ -227,15 +227,17 @@ export default defineConfig({
 })
 ```
 
-`nuxt-module-build build --stub` and `nuxt-module-build prepare` load `tsdown.config.ts` with Node, so relative imports in it carry their file extension, as in [module code](#module-code-loads-with-node).
+Then build with `tsdown` instead of `nuxt-module-build build` in the module's scripts, such as `"prepack": "tsdown"`, and set up `dev:prepare` as described in [Developing a module](#developing-a-module).
+
+`nuxt-module-build prepare` loads `tsdown.config.ts` with Node, so relative imports in it carry their file extension, as in [module code](#module-code-loads-with-node).
 
 ## Unsupported build options
 
-The build fails with a list of every option it can't apply and the file each one comes from. `nuxt-module-build build --stub` prints the same list as a warning and continues. Remove each option as described in the following sections, then build again.
+The build fails with a list of every option it can't apply and the file each one comes from. Remove each option as described in the following sections, then build again.
 
 ### Hooks
 
-Only `build:before`, `rollup:done`, and `build:done` run. They receive a context with `options.name`, `options.rootDir`, `options.outDir`, `options.entries`, `options.declaration`, `options.stub`, `options.sourcemap`, and `pkg`.
+Only `build:before`, `rollup:done`, and `build:done` run. They receive a context with `options.name`, `options.rootDir`, `options.outDir`, `options.entries`, `options.declaration`, `options.stub` (always `false`), `options.sourcemap`, and `pkg`.
 
 - `mkdist:*` hooks are ignored with a warning. Remove them. See [mkdist options](#mkdist-options) for what they used to configure.
 - Every other hook (`rollup:options`, `build:prepare`, `rollup:dts:options`, and so on) fails the build. Remove it. For hooks that adjusted rollup options, see [Rollup options](#rollup-options).
@@ -309,8 +311,8 @@ export default defineBuildConfig({})
 
 These options also fail the build:
 
-- `stub` and `stubOptions`: use `nuxt-module-build build --stub` instead.
-- `clean: false`: the output directory is always emptied.
+- `stub` and `stubOptions`: remove them, and see [Stub builds](#stub-builds).
+- `clean: false`: the output directory is emptied before a one-off build.
 - `rootDir` or `outDir` set to anything other than the module root and `dist`.
 - An array of more than one config: keep a single config object.
 - A config that exports a function.
@@ -366,11 +368,18 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 
 ## Stub builds
 
-`nuxt-module-build build --stub` writes `dist/module.mjs` and `dist/module.d.mts` as re-exports of `src/module.ts`. Whatever imports the stub, such as a playground's Nuxt, loads the TypeScript sources itself, so they follow the rules in [Module code loads with Node](#module-code-loads-with-node). `nuxt-module-build prepare --stub` writes the stub and then prepares `.nuxt`. With pnpm, a module can do without the stub: see [Developing without a stub](#developing-without-a-stub).
+`nuxt-module-build build --stub` and `nuxt-module-build prepare --stub` have been removed, and fail with a link to this section. Replace the scripts that use them as described in [Developing a module](#developing-a-module):
+
+- With pnpm or Yarn 4, point `package.json` at the module's sources as in [Source exports](#source-exports), and set `"dev:prepare": "nuxt-module-build prepare && nuxt prepare playground"`.
+- With npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`, set `"dev:prepare": "nuxt-module-build prepare && tsdown && nuxt prepare playground"`, and run `tsdown --watch` next to `nuxt dev playground`, as in [Developing against dist](#developing-against-dist).
+
+Both scripts start with `nuxt-module-build prepare`, also where the old one had no `prepare` step, such as `nuxt-module-build build --stub . && nuxi prepare playground`. It writes the `.nuxt` that the build reads and, with source exports, the `.nuxt/module-builder/types.d.mts` that `package.json` points at.
+
+`nuxt-module-build prepare`, and a playground that loads the module from its sources, run `src/module.ts` with Node, so module code follows the rules in [Module code loads with Node](#module-code-loads-with-node).
 
 ## Module code loads with Node
 
-The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `--stub`, and `prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Type-only imports are erased before Node loads a file, so they can use any of the forms below. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
+The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Node never loads type-only imports, so they don't stop the module loading, but a type check under `nodenext` module resolution, such as the playground's check of its `nuxt.config.ts`, still requires their extensions: write them with extensions too. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
 
 Set `erasableSyntaxOnly` so your editor and type check report the syntax as well:
 
@@ -581,7 +590,7 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 ## Output directory
 
-The build empties `--outDir` (`dist` by default) before writing to it, so the directory must be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
+A one-off build empties `--outDir` (`dist` by default) before writing to it, and `tsdown --watch` removes the files in it that the build no longer emits, so the directory must be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
 
 ## Module tsconfig
 
@@ -602,32 +611,41 @@ The declaration program starts from your module's own files only. Files the tsco
 
 ## Preparing .nuxt
 
-Declarations are generated against `.nuxt/tsconfig.json`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` in your module's `dev:prepare` script so the build doesn't have to:
+Declarations are generated against `.nuxt/tsconfig.json`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` first in your module's `dev:prepare` script, as in [Developing a module](#developing-a-module), so the build doesn't have to:
 
 ```json
 {
   "scripts": {
-    "dev:prepare": "nuxt-module-build prepare --stub && nuxi prepare playground",
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
     "prepack": "tsdown"
   }
 }
 ```
 
-## Developing without a stub
+## Developing a module
 
-With pnpm, the playground can load the module from its sources, with no stub. Point `exports`, `imports`, `main`, and `types` at `src`, and the same fields in `publishConfig` at `dist`. `pnpm pack` and `pnpm publish` replace each of the former with the latter as a whole, so `publishConfig.exports` and `publishConfig.imports` repeat every subpath and condition:
+The playground installs the module by its package name, so it loads whatever `package.json` points at. Which setup to use depends on the package manager that publishes the module:
+
+- With pnpm or Yarn 4, `package.json` points at the module's sources, and `publishConfig` holds the `dist` paths that are published. See [Source exports](#source-exports).
+- With npm, Yarn 3 or earlier, or bun, `package.json` points at `dist`, and `tsdown --watch` rebuilds it while you develop. See [Developing against dist](#developing-against-dist).
+
+Run `dev:prepare` after you install dependencies, and again when the module registers something new for types, such as a template or a server route.
+
+### Source exports
+
+pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level ones. With either of them, point `exports`, `imports`, `main`, and `types` at `src`, and the same fields in `publishConfig` at `dist`. The playground then loads the module from its sources, with no build. Packing replaces each field as a whole, so `publishConfig.exports` and `publishConfig.imports` repeat every subpath and condition:
 
 ```json
 {
   "exports": {
-    ".": { "types": "./src/module.ts", "style": "./src/runtime/index.css", "default": "./src/module.ts" },
+    ".": { "types": "./.nuxt/module-builder/types.d.mts", "style": "./src/runtime/index.css", "default": "./src/module.ts" },
     "./utils": { "types": "./src/utils.ts", "default": "./src/utils.ts" }
   },
   "imports": {
     "#shared/*": "./src/runtime/shared/*.ts"
   },
   "main": "./src/module.ts",
-  "types": "./src/module.ts",
+  "types": "./.nuxt/module-builder/types.d.mts",
   "publishConfig": {
     "exports": {
       ".": { "types": "./dist/types.d.mts", "style": "./dist/runtime/index.css", "default": "./dist/module.mjs" },
@@ -640,17 +658,87 @@ With pnpm, the playground can load the module from its sources, with no stub. Po
     "types": "./dist/types.d.mts"
   },
   "scripts": {
-    "dev:prepare": "nuxt-module-build prepare && nuxi prepare playground",
+    "dev": "nuxt dev playground",
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
     "prepack": "tsdown"
   }
 }
 ```
 
-The build checks the `publishConfig` paths, and warns about any published path that still points into `src`. tsdown's `publint` and `attw` options lint the packed tarball, so both see `dist`. npm and yarn don't apply `publishConfig` to these fields: with them, keep pointing `package.json` at `dist` and use `nuxt-module-build prepare --stub`.
+`nuxt-module-build prepare` writes `.nuxt/module-builder/types.d.mts`. It re-exports `src/module.ts` and declares the same `#app` and `@nuxt/schema` augmentations as `dist/types.d.mts`, for the module's `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The root export's `types` condition and the top-level `types` point at it, so the playground's type check sees the module's hooks and runtime config. A subpath export has no augmentations, so it points at its source.
+
+The playground's type check includes the module's sources and the files they import types from. A built `dist` keeps them out, because declarations aren't checked. The errors this can report, and their fixes:
+
+- `#app`, `#imports`, or `#build/*` not found (TS2307, TS2664) in the `nuxt.config.ts` context, through types that module code imports from a runtime file that uses them: move those types into a file that doesn't import the aliases, such as `src/runtime/types.ts`.
+- Relative imports without extensions (TS2835, TS2834) in the `nuxt.config.ts` context, which resolves them like Node: add extensions to type-only relative imports as well.
+- Globals that the module declares in its own `.d.ts` not found (TS2304), because the playground doesn't include that file: reference it with `/// <reference path="..." />` from the files that use the globals.
+- The module's own aliases not found (TS2307): move an alias from the module's tsconfig `paths` into the `imports` of `package.json`, with its `dist` paths in `publishConfig.imports`, as TypeScript resolves those from the module's files in any project. Declare the types of an alias that the module adds itself, such as a virtual module, with `addTypeTemplate(template, { nuxt: true, node: true })`, so both of the playground's contexts include them.
+- Other errors in runtime files, which are checked with the playground's compiler options: fix them, or check the module with the same options.
+
+With source exports there is no `dist` while you develop, so code that reaches into `dist` by path has to point at `src`: a playground or a test that imports `../dist/runtime/...`, or module code that resolves `../dist/runtime/...`. Resolve runtime files relative to `src/module.ts` and without an extension, as `createResolver(import.meta.url).resolve('./runtime/plugins/plugin')` does: the build keeps the layout of `src` in `dist`, and Nuxt and Vite add the extension.
+
+A subpath that code outside Nuxt imports, such as a plugin for a plain Vite app, can keep pointing at `dist` in `exports`, so that code loads the built file. Run `tsdown` before using it.
+
+Yarn 4 doesn't apply `publishConfig.typesVersions`. Keep `typesVersions` at the top level, pointing at `dist`: TypeScript only reads it under `node10` module resolution, which a playground doesn't use.
+
+A playground that lists the module by relative path, such as `modules: ['../src/module']`, keeps working unchanged: it loads `src/module.ts` and never resolves the package. It doesn't load `types.d.mts` either, so its type check doesn't see the augmentations for `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The module's name only has to resolve where something imports the module or one of its subpaths by name: the playground's `nuxt.config.ts` or code, tests, or the module's own runtime files. Then the playground has to resolve the name to the module directory itself, as `"my-module": "workspace:*"` or `"my-module": "link:.."` do. Vite serves the files under `src/runtime` from there, so components update in place and plugins reload the page. The playground loads `src/module.ts` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
+
+The build checks the published paths, as described in [Publishing source exports](#publishing-source-exports). tsdown's `publint` and `attw` options lint the packed tarball, so both see `dist`.
+
+### Publishing source exports
+
+Every build reads the path fields of `package.json` with `publishConfig` applied, and fails when one of them points at a path that doesn't work once the package is installed:
+
+- a TypeScript source other than a declaration, which Node doesn't load from `node_modules`
+- a path that the pack leaves out because `files` doesn't list it, or, without `files`, a path into `.nuxt`
+
+Every pack includes `package.json` and the file that `main` points at, so `files` doesn't have to list them. An `imports` entry is only checked when the build output still imports it, so an entry that the build bundles, or rewrites to a relative path, can keep pointing at `src`. To publish a file other than a TypeScript source as it is, list it in `files`:
+
+```json
+{
+  "files": ["dist", ".nuxt/ui.static.css"],
+  "imports": {
+    "#build/ui.css": "./.nuxt/ui.static.css"
+  }
+}
+```
+
+When `tsdown` or `nuxt-module-build build` runs as the `prepack` or `prepublishOnly` script, the build also fails when the package manager that packs would publish such a path as written:
+
+- The package manager that packs has to be pnpm or Yarn 4. npm, Yarn 1, and bun pack `package.json` as written. Yarn 4 packs `typesVersions` as written too. Yarn 2 only replaces `main` and `module`, and Yarn 3 also `exports` and `imports`.
+- `publishConfig` has to set each of those fields, to paths that pass the check above.
+
+The check reads `npm_lifecycle_event`, so it only runs when the build is the `prepack` or `prepublishOnly` script itself. A `prepack` script that runs another script, such as `"prepack": "npm run build"`, isn't checked: the nested script runs as `build`. Run `tsdown` or `nuxt-module-build build` from `prepack` directly.
+
+The package manager is read from the `npm_config_user_agent` and `npm_execpath` environment variables. Publish with `pnpm publish` or `yarn npm publish`. A `release` script that runs `npm publish` fails, even when `pnpm run` starts it. `npm publish` of a tarball that `pnpm pack` wrote works, as its `package.json` already has the `dist` paths and the build doesn't run again. `bun pm pack` and `bun publish` started from a pnpm or Yarn 4 script pass on that script's variables, so the build can't tell them apart from pnpm or Yarn.
+
+### Developing against dist
+
+npm, Yarn 3 and earlier, and bun publish some or all of these fields as written. With them, point `package.json` at `dist`, and build it before the playground is prepared:
+
+```json
+{
+  "exports": {
+    ".": { "types": "./dist/types.d.mts", "default": "./dist/module.mjs" },
+    "./utils": { "types": "./dist/utils.d.mts", "default": "./dist/utils.mjs" }
+  },
+  "main": "./dist/module.mjs",
+  "types": "./dist/types.d.mts",
+  "scripts": {
+    "dev": "nuxt dev playground",
+    "dev:prepare": "nuxt-module-build prepare && tsdown && nuxt prepare playground",
+    "prepack": "tsdown"
+  }
+}
+```
+
+A playground that installs the module by name lists it as `"my-module": "workspace:*"` or `"my-module": "link:.."`. npm supports neither protocol, so use `"my-module": "file:.."` there, which npm installs as a link. Yarn 1 has no `workspace:` protocol, so use `link:..` there.
+
+While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
 ## Output size
 
-Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory, with the size of its code and of its declarations; others get a line for each file. Set `report` in `tsdown.config.ts` to change it: `{ summary: true }` or `{ summary: false }`, `{ gzip: false }` to skip compressing each file, `{ brotli: true }`, or `false` to turn it off. `module.json` and `types.d.mts` are written after the report, so they aren't in it.
+Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory, with the size of its code and of its declarations; others get a line for each file. On a rebuild under `tsdown --watch`, the summary and the per-file lines only count the files that were written, while the lines for each entry and runtime directory cover the whole build. Set `report` in `tsdown.config.ts` to change it: `{ summary: true }` or `{ summary: false }`, `{ gzip: false }` to skip compressing each file, `{ brotli: true }`, or `false` to turn it off. `module.json` and `types.d.mts` are written after the report, so they aren't in it.
 
 To check the published size in CI, `npm pack --dry-run --json` lists exactly what gets published: each file's `size`, plus the gzipped tarball's `size` and the `unpackedSize`:
 
@@ -679,7 +767,7 @@ Follow these steps in order to upgrade a module. Each step is mechanical until t
 5. Add `"erasableSyntaxOnly": true` to `tsconfig.json`, and rewrite any `enum`, `namespace`, parameter property, or `<T>value` assertion the type check reports.
 6. Make module code load with Node, as described in [Module code loads with Node](#module-code-loads-with-node): add the `.ts` extension to relative imports in `src/module.ts` and the files it imports by value, runtime files included (`./utils` becomes `./utils.ts`, `./dir` becomes `./dir/index.ts`), replace value imports through tsconfig `paths` aliases, and move value imports of `#app`, `#imports`, and `#build/*` into runtime files. Do this before step 8: `prepare` lists each problem and doesn't generate `.nuxt` until they're fixed.
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
-8. Set the `prepack` script to `tsdown`, and `dev:prepare` to `nuxt-module-build prepare --stub && nuxi prepare playground` (or see [Developing without a stub](#developing-without-a-stub)). Run `nuxt-module-build prepare`, then `tsdown`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.
+8. Set the `prepack` script to `tsdown`. With pnpm or Yarn 4, point `package.json` at the module's sources and the same fields in `publishConfig` at `dist`, and set `dev:prepare` to `nuxt-module-build prepare && nuxt prepare playground`, as in [Source exports](#source-exports). With npm, Yarn 3 or earlier, or bun, set `dev:prepare` to `nuxt-module-build prepare && tsdown && nuxt prepare playground`, as in [Developing against dist](#developing-against-dist). Run `nuxt-module-build prepare`, then `tsdown`. Fix what the build reports: remove each unsupported build option and annotate each export in a portability error. Build again until it passes.
 9. Run your module's own type check (for example, `nuxt typecheck` or `vue-tsc --noEmit`) and fix what it reports. A build warning about type errors that the type check doesn't reproduce is safe to ignore. Annotate exports whose type is inferred through a `#build/*` alias; otherwise `dist` declares them as `any`.
 10. Run `pnpm dlx publint`. Then run `pnpm pack` and `pnpm dlx @arethetypeswrong/cli <name>-<version>.tgz`, and fix any path they report. (`attw --pack .` only works with npm, and `npm pack` fails on packages with `devEngines`.)
-11. Run your module's tests and the playground against `dist`.
+11. Run your module's tests and the playground.

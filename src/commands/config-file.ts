@@ -57,7 +57,7 @@ export async function loadBuilderConfig(cwd: string, file: string): Promise<Buil
     for (const plugin of await flattenPlugins(config?.plugins)) {
       if (plugin && typeof plugin === 'object' && BUILDER_OPTIONS in plugin) {
         if (config?.cwd !== undefined && resolve(dirname(file), config.cwd) !== resolve(cwd)) {
-          throw new Error(`\`${basename(file)}\` sets \`cwd\`, but \`build --stub\` and \`prepare\` read the module in the directory of the tsdown config. Move the tsdown config into the module, or remove \`cwd\`. ${guide('tsdown-config')}`)
+          throw new Error(`\`${basename(file)}\` sets \`cwd\`, but \`prepare\` reads the module in the directory of the tsdown config. Move the tsdown config into the module, or remove \`cwd\`. ${guide('tsdown-config')}`)
         }
         found.push({ options: plugin[BUILDER_OPTIONS] as BuilderOptions, outDir: config?.outDir })
       }

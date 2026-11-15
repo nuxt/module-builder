@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
@@ -22,6 +22,7 @@ import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
 import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
+import { importsKeyFor, publishedPackage, unpublishableImportsError } from './package.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
 
@@ -115,7 +116,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
 
   const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const resolvedSourcemap = sourcemap || config.sourcemap
-  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, stub: false, sourcemap: resolvedSourcemap })
+  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap: resolvedSourcemap })
   const entries = bundledEntries(cwd, config)
 
   const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))
@@ -145,14 +146,16 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
 }
 
 /**
- * Runs `build:before` hooks, checks the module's imports, empties the output directory and
- * writes what declaration generation reads.
+ * Runs `build:before` hooks, checks the module's imports, empties the output directory unless
+ * `keepOutput` is set, and writes what declaration generation reads.
  */
-export async function prepareBuild(plan: BuildPlan): Promise<PreparedBuild> {
+export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { keepOutput?: boolean } = {}): Promise<PreparedBuild> {
   const { cwd, outDir, entries, runtimeDirs } = plan
   await callBuildHook(plan.config, 'build:before', plan.ctx)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
-  await rm(outDir, { recursive: true, force: true })
+  if (!keepOutput) {
+    await rm(outDir, { recursive: true, force: true })
+  }
 
   await writeServerRoutesStub(cwd)
   if (plan.moduleTsconfig && plan.declarationTsconfig) {
@@ -262,9 +265,8 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   const typesFile = join(outDir, 'types.d.mts')
   plan.writesTypes ??= !existsSync(typesFile)
   if (plan.writesTypes) {
-    await rm(typesFile, { force: true })
+    await writeTypes(outDir)
   }
-  await writeTypes(outDir, false)
   await callBuildHook(plan.config, 'rollup:done', plan.ctx)
   await rewriteRuntimeDeclarations(outDir, outputs)
 
@@ -273,7 +275,25 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   }
 
   await checkDeprecatedPackageFields(cwd)
+  const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
+  if (importsError) {
+    throw new Error(importsError)
+  }
   await callBuildHook(plan.config, 'build:done', plan.ctx)
+}
+
+const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
+
+const PACKAGE_IMPORT_RE = /(?:\bfrom|\bimport(?:\s+url)?|\brequire)\s*(?:\(\s*)?(["'`])(#[^"'`]+)\1/g
+
+function importedFrom(dir: string, keys: string[]): (key: string) => boolean {
+  let used: Set<string | undefined> | undefined
+  return (key) => {
+    used ??= new Set(readdirSync(dir, { recursive: true, encoding: 'utf8' })
+      .filter(file => OUTPUT_TEXT_RE.test(file))
+      .flatMap(file => [...readFileSync(join(dir, file), 'utf8').matchAll(PACKAGE_IMPORT_RE)].map(match => importsKeyFor(keys, match[2]!))))
+    return used.has(key)
+  }
 }
 
 function valueImports(roots: string[]) {

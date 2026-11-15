@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'pathe'
 import { consola } from 'consola'
@@ -11,12 +11,14 @@ import { assertNoLegacyBuildConfig, loadBuildConfig, resolveModuleOptions, resol
 import type { BuilderOptions } from '../build/build-config.ts'
 import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
+import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
 import { externalDependencyDeclarations } from './externals.ts'
 import { replacePlugin } from './replace.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { runtimeExternals } from './runtime-externals.ts'
+import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
   /** Read `build.config.*` and `package.json`'s `build` or `unbuild` field. */
@@ -34,9 +36,12 @@ export interface BuilderSession {
   /** Refreshes the source analysis for a rebuild, before the directory plugins start. */
   onBuildStart: () => void
   onBuildEnd: (error?: Error) => Promise<void>
-  /** Fails when the bundled entries are not emitted at the file names `builder()` sets. */
-  checkBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
-  onWriteBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
+  /**
+   * Fails when the bundled entries are not emitted at the file names `builder()` sets, and
+   * leaves out the outputs a watched rebuild emits unchanged, so they are not written again.
+   */
+  onGenerateBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
+  onWriteBundle: () => Promise<void>
 }
 
 const ESM_FORMATS = new Set(['es', 'esm', 'module'])
@@ -45,7 +50,7 @@ const FORBIDDEN: Array<[option: string, isSet: (config: UserConfig) => boolean, 
   ['entry', config => config.entry !== undefined, 'list bundled entries besides `src/module` in `builder({ entries })`'],
   ['format', config => config.format !== undefined && !(typeof config.format === 'string' ? [config.format] : Array.isArray(config.format) ? config.format : ['object']).every(format => ESM_FORMATS.has(format)), 'modules are built as ES modules only'],
   ['dts', config => config.dts !== undefined && config.dts !== true, 'declarations are generated with the module\'s own tsconfig'],
-  ['clean', config => config.clean !== undefined, 'the output directory is always emptied before the build'],
+  ['clean', config => config.clean !== undefined, 'the output directory is emptied before a one-off build, and a watched build removes the files it no longer emits'],
   ['unbundle', config => !!config.unbundle, 'the module entry is bundled, and runtime directories are transpiled file by file'],
   ['exports', config => !!config.exports, 'the exports tsdown generates leave out `types.d.mts` and the runtime directories'],
   ['fixedExtension', config => config.fixedExtension === false, 'the module entry is emitted as `module.mjs`'],
@@ -73,6 +78,10 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   const cwd = resolve(config.cwd ?? process.cwd())
   const pkg = await readPackageJSON(cwd)
+  const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
+  if (packageError) {
+    throw new Error(packageError)
+  }
   const outDirOption = config.outDir ?? 'dist'
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
   if (!legacy) {
@@ -103,6 +112,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   let resolvedConfig: ResolvedConfig | undefined
   let failed = false
   let written: Set<string> | undefined
+  let keptOutput = false
+  const unchanged = unchangedOutputs(outDir)
   let builds = 0
   const fail = async (error: unknown, directory?: boolean) => {
     if (!failed) {
@@ -164,7 +175,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       }
       hooks.hook('build:prepare', async () => {
         session.started = true
-        await prepareBuild(plan)
+        await prepareBuild(plan, { keepOutput: watch })
+        if (watch && existsSync(outDir)) {
+          keptOutput = true
+          written = new Set(filesIn(outDir).filter(file => !FINISHED_FILES.has(file)))
+        }
       })
     },
     plugins: [
@@ -211,7 +226,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         failed = false
       }
     },
-    async checkBundle(bundle) {
+    async onGenerateBundle(bundle) {
       const missing = Object.keys(plan.entries).map(name => `${name}.mjs`).filter((fileName) => {
         const output = bundle[fileName]
         return output?.type !== 'chunk' || !output.isEntry
@@ -221,8 +236,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         await fail(error)
         throw error
       }
+      unchanged.prune(bundle, { compareOutDir: keptOutput })
     },
-    async onWriteBundle(bundle) {
+    async onWriteBundle() {
+      unchanged.commit()
+      const bundle = unchanged.bundle
       const current = new Set(Object.keys(bundle))
       if (watch && written) {
         await Promise.all([...written].filter(file => !current.has(file)).map(file => rm(resolve(outDir, file), { force: true })))
@@ -234,6 +252,9 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         }
       }
       const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
+      if (keptOutput) {
+        plan.writesTypes ??= !Object.hasOwn(bundle, 'types.d.mts')
+      }
       await finishBuild(plan, {
         outputs: outputs.flatMap(map => [...map.values()]),
         builder: { tsdown: await readPackageJSON('tsdown', { from: import.meta.url }).then(r => r.version || 'unknown').catch(() => 'unknown') },
@@ -241,6 +262,13 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     },
   }
   return session
+}
+
+/** The files that `finishBuild` writes after the bundle. */
+const FINISHED_FILES = new Set(['module.json', 'types.d.mts'])
+
+function filesIn(dir: string) {
+  return readdirSync(dir, { recursive: true, withFileTypes: true }).filter(entry => entry.isFile()).map(entry => relative(dir, `${entry.parentPath}/${entry.name}`))
 }
 
 /** `dir`, or the closest directory above it that exists, so a watcher sees `dir` being created. */

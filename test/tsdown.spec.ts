@@ -1,12 +1,16 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { appendFile, cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, cp, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { join } from 'pathe'
+import { dirname, join, relative } from 'pathe'
 import { exec } from 'tinyexec'
+import ts from 'typescript'
 import { beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 
 import { guide } from '../src/build/guide.ts'
+import { publishedPackage } from '../src/build/package.ts'
+import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const exampleDir = join(repoRoot, 'example')
@@ -19,7 +23,7 @@ async function copyExample(name: string, config: string) {
   await cp(exampleDir, dir, { recursive: true })
   await rm(join(dir, 'dist'), { recursive: true, force: true })
   const pkgPath = join(dir, 'package.json')
-  const { build: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
+  const { build: _, publishConfig: __, ...pkg } = publishedPackage(JSON.parse(await readFile(pkgPath, 'utf-8')))
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
   await writeFile(join(dir, 'tsdown.config.ts'), `${builderImport}\n${config}`)
   return dir
@@ -137,6 +141,83 @@ export default {
     expect(exitCode).toBe(0)
     expect(stdout + stderr).not.toContain('do not exist after the build')
     expect(await readFile(join(dir, 'dist/config.cjs'), 'utf-8')).toBe('module.exports = {}\n')
+  }, 60 * 1000)
+
+  it('should refuse to build when a published path points at a TypeScript source or at a file the pack leaves out', async () => {
+    const dir = await copyExample('.temp-tsdown-unpublishable', `export default {\n  plugins: [builder()],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+    const cases: Array<[Record<string, string>, string]> = [
+      [{ '.': './src/module.ts' }, 'Pointing at TypeScript sources, which Node does not load from `node_modules`: `exports` (`./src/module.ts`).'],
+      [{ '.': './lib/module.mjs' }, 'Pointing at paths that the pack leaves out: `exports` (`./lib/module.mjs`).'],
+    ]
+    for (const [exports, message] of cases) {
+      await writeFile(pkgPath, JSON.stringify({ ...pkg, exports }, null, 2))
+      for (const args of [[tsdownBin], [join(repoRoot, 'src/cli.ts'), 'build']]) {
+        const { exitCode, stdout, stderr } = await exec('node', args, { nodeOptions: { cwd: dir, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
+        expect(exitCode, args.join(' ')).not.toBe(0)
+        expect(stdout + stderr, args.join(' ')).toContain(message)
+        expect(existsSync(join(dir, 'dist'))).toBe(false)
+      }
+    }
+  }, 60 * 1000)
+
+  it('should augment the same interfaces from the types `prepare` writes as from `dist`, through star re-exports', async () => {
+    const dir = await copyExample('.temp-tsdown-star-exports', `export default {\n  plugins: [builder()],\n}\n`)
+    const files: Record<string, string> = {
+      'src/module.ts': `import { defineNuxtModule } from '@nuxt/kit'\nimport type { ModuleOptions } from './types/index.ts'\n\nexport * from './types/index.ts'\nexport type * from './types/runtime.ts'\n\nexport default defineNuxtModule<ModuleOptions>({\n  meta: { name: 'my-module', configKey: 'myModule' },\n  defaults: { apiKey: '' },\n})\n`,
+      'src/types/index.ts': `export * from './hooks.ts'\n\nexport interface ModuleOptions {\n  apiKey: string\n}\n`,
+      'src/types/hooks.ts': `export interface ModuleHooks {\n  'my-module:init': () => void\n}\n`,
+      'src/types/runtime.ts': `export interface ModuleRuntimeHooks {\n  'my-module:runtime-hook': () => void\n}\n\nexport interface ModulePublicRuntimeConfig {\n  NAME: string\n}\n`,
+    }
+    for (const [file, contents] of Object.entries(files)) {
+      await mkdir(dirname(join(dir, file)), { recursive: true })
+      await writeFile(join(dir, file), contents)
+    }
+    const env = { ...process.env, NODE_ENV: '', TEST: '', NUXT_TELEMETRY_DISABLED: '1' }
+    const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env } })
+    expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+    const built = await tsdown(dir)
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
+
+    const shims = async (file: string) => (await readFile(join(dir, file), 'utf-8')).match(/^declare module '[^']+' \{\n[\s\S]*?\n\}$/gm)
+    const sourceShims = await shims('.nuxt/module-builder/types.d.mts')
+    expect(sourceShims).toEqual(await shims('dist/types.d.mts'))
+    expect(sourceShims).toEqual([
+      `declare module '#app' {\n  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}\n}`,
+      `declare module '@nuxt/schema' {\n  interface NuxtHooks extends ModuleHooks {}\n  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}\n}`,
+    ])
+
+    const { config } = ts.readConfigFile(join(dir, '.nuxt/tsconfig.json'), ts.sys.readFile)
+    const { options } = ts.parseJsonConfigFileContent(config, ts.sys, join(dir, '.nuxt'))
+    for (const types of ['./.nuxt/module-builder/types.mjs', './dist/types.mjs']) {
+      const probe = join(dir, 'probe.ts')
+      await writeFile(probe, `import type {} from '${types}'\nimport type { RuntimeNuxtHooks } from '#app'\nimport type { NuxtHooks, PublicRuntimeConfig } from '@nuxt/schema'\n\nexport type Augmented = [NuxtHooks['my-module:init'], RuntimeNuxtHooks['my-module:runtime-hook'], PublicRuntimeConfig['NAME']]\n`)
+      const program = ts.createProgram([probe], { ...options, noEmit: true, skipLibCheck: false })
+      const diagnostics = ts.getPreEmitDiagnostics(program).filter(diagnostic => diagnostic.file && /^(?:src|dist|\.nuxt\/module-builder)\/|^probe\.ts$/.test(relative(dir, diagnostic.file.fileName)))
+      expect(diagnostics.map(diagnostic => `${relative(dir, diagnostic.file!.fileName)}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`), types).toEqual([])
+    }
+  }, 120 * 1000)
+
+  it('should refuse package `imports` that the output imports and that would not work once installed', async () => {
+    const dir = await copyExample('.temp-tsdown-package-imports', `export default {\n  plugins: [builder({ externals: [/^#ext\\//] })],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = { ...JSON.parse(await readFile(pkgPath, 'utf-8')), imports: { '#ext/*': './src/ext/*.ts', '#internal/*': './src/internal/*.ts' } }
+    await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
+    await mkdir(join(dir, 'src/ext'), { recursive: true })
+    await mkdir(join(dir, 'src/internal'), { recursive: true })
+    await writeFile(join(dir, 'src/ext/value.ts'), `export const ext: string = 'ext'\n`)
+    await writeFile(join(dir, 'src/internal/value.ts'), `export const internal: string = 'internal'\n`)
+    await appendFile(join(dir, 'src/module.ts'), `export { ext } from '#ext/value'\nexport { internal } from '#internal/value'\nexport const label: string = '#internal/label'\n`)
+
+    const refused = await tsdown(dir)
+    expect(refused.exitCode).not.toBe(0)
+    expect(refused.stdout + refused.stderr).toContain(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#ext/*\` (\`./src/ext/*.ts\`).`)
+    expect(await readFile(join(dir, 'dist/module.mjs'), 'utf-8')).toContain('"#ext/value"')
+
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, publishConfig: { imports: { '#ext/*': './dist/ext/*.mjs' } } }, null, 2))
+    const built = await tsdown(dir)
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
   }, 60 * 1000)
 
   it('should not keep more memory with each watched rebuild', async () => {
@@ -306,6 +387,95 @@ export default {
     }
   }, 120 * 1000)
 
+  it('should keep `dist` while a watched build starts, and empty it before a one-off build', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-kept', `export default {\n  plugins: [builder()],\n}\n`)
+    const distDir = join(dir, 'dist')
+    const stale = ['stale.txt', 'runtime/components/Removed.vue']
+    const addStale = () => Promise.all(stale.map(file => writeFile(join(distDir, file), 'stale\n')))
+    const snapshot = async () => {
+      const files = (await readdir(distDir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return new Map(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(distDir, path), (await stat(path, { bigint: true })).mtimeNs] as const
+      })))
+    }
+
+    expect((await tsdown(dir)).exitCode).toBe(0)
+    await addStale()
+    expect((await tsdown(dir)).exitCode).toBe(0)
+    expect(stale.filter(file => existsSync(join(distDir, file)))).toEqual([])
+
+    await addStale()
+    const before = await snapshot()
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    let missing = false
+    try {
+      await waitFor(async () => {
+        missing ||= !existsSync(join(distDir, 'module.mjs')) || !existsSync(join(distDir, 'runtime/plugins/plugin.js'))
+        return /Rebuilt in/.test(watcher.output())
+      })
+      const after = await snapshot()
+      expect(missing).toBe(false)
+      expect([...before.keys()].filter(file => !after.has(file)).sort()).toEqual([...stale].sort())
+      expect([...after.keys()].filter(file => before.get(file) !== after.get(file) && !file.endsWith('.d.ts'))).toEqual([])
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
+  it('should only write the outputs whose content changes when a watched build rebuilds', async () => {
+    const dir = await copyExample('.temp-tsdown-watch-unchanged', `export default {\n  plugins: [\n    builder({ entries: ['./src/utils'] }),\n    { name: 'user-asset', generateBundle() { this.emitFile({ type: 'asset', fileName: 'user.txt', source: 'user asset\\n' }) } },\n  ],\n}\n`)
+    const distDir = join(dir, 'dist')
+    const snapshot = async () => {
+      const files = (await readdir(distDir, { recursive: true, withFileTypes: true })).filter(file => file.isFile())
+      return new Map(await Promise.all(files.map(async (file) => {
+        const path = join(file.parentPath, file.name)
+        return [relative(distDir, path), { mtime: (await stat(path, { bigint: true })).mtimeNs, hash: createHash('sha256').update(await readFile(path)).digest('hex') }] as const
+      })))
+    }
+    const changes = (before: Awaited<ReturnType<typeof snapshot>>, after: Awaited<ReturnType<typeof snapshot>>) => ({
+      changed: [...after.keys()].filter(file => before.has(file) && before.get(file)!.mtime !== after.get(file)!.mtime).sort(),
+      added: [...after.keys()].filter(file => !before.has(file)).sort(),
+      removed: [...before.keys()].filter(file => !after.has(file)).sort(),
+    })
+    const watcher = watch(dir, [tsdownBin, '--watch'])
+    const rebuilds = () => watcher.output().match(/Rebuilt in/g)?.length ?? 0
+    const rebuild = async (change: () => Promise<void>) => {
+      const before = await snapshot()
+      const count = rebuilds()
+      await change()
+      await waitFor(async () => rebuilds() > count)
+      return changes(before, await snapshot())
+    }
+    const edit = async (file: string, from: string, to: string) => writeFile(join(dir, file), (await readFile(join(dir, file), 'utf-8')).replace(from, to))
+    try {
+      await waitFor(async () => rebuilds() > 0 && existsSync(join(distDir, 'module.json')) && existsSync(join(distDir, 'types.d.mts')))
+      expect(await readFile(join(distDir, 'user.txt'), 'utf-8')).toBe('user asset\n')
+
+      await rm(join(distDir, 'runtime/plugins/plugin.js'))
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: ['runtime/plugins/plugin.js'], removed: [] })
+
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '{{ count }}', 'count: {{ count }}'))).toEqual({ changed: ['runtime/components/TestMe.vue'], added: [], removed: [] })
+      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(() => edit('src/module.ts', `name: 'my-module'`, `name: 'my-renamed-module'`))).toEqual({ changed: ['module.json', 'module.mjs'], added: [], removed: [] })
+      expect(await rebuild(() => rm(join(dir, 'src/runtime/composables/useAppNuxt.ts')))).toEqual({ changed: [], added: [], removed: ['runtime/composables/useAppNuxt.d.ts', 'runtime/composables/useAppNuxt.js'] })
+
+      const before = await snapshot()
+      const plugin = await readFile(join(dir, 'src/runtime/plugins/plugin.ts'), 'utf-8')
+      const failures = () => watcher.output().match(/Failed to transpile/g)?.length ?? 0
+      const failed = failures()
+      await writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), `${plugin}\nexport const broken: = 1\n`)
+      await waitFor(async () => failures() > failed)
+      expect(changes(before, await snapshot())).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(() => writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), plugin))).toEqual({ changed: [], added: [], removed: [] })
+      expect([...(await snapshot()).entries()].map(([file, { hash }]) => [file, hash])).toEqual([...before.entries()].map(([file, { hash }]) => [file, hash]))
+    }
+    finally {
+      await watcher.stop()
+    }
+  }, 120 * 1000)
+
   it('should rewrite `types.d.mts` and `module.json` when a watched build rebuilds', async () => {
     const dir = await copyExample('.temp-tsdown-watch', `export default {\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`)
     const types = join(dir, 'dist/types.d.mts')
@@ -334,10 +504,6 @@ export default {
       expect(built.exitCode, String(report)).toBe(0)
       expect(rows(built.stdout + built.stderr), String(report)).toEqual(expected)
       if (report === undefined) {
-        const stubbed = await exec('pnpm', ['nuxt-module-build', 'build', '--stub', dir], { nodeOptions: { cwd: repoRoot } })
-        expect(stubbed.exitCode).toBe(0)
-        expect(rows(stubbed.stdout + stubbed.stderr)).toEqual([])
-
         const watcher = watch(dir, [tsdownBin, '--watch'])
         const types = join(dir, 'dist/types.d.mts')
         try {
@@ -372,6 +538,31 @@ export default {
     expect(stdout + stderr).toContain(guide('preparing-nuxt'))
     expect(existsSync(join(dir, '.nuxt/tsconfig.json'))).toBe(true)
     expect(await readFile(join(dir, 'dist/runtime/composables/useAliasedApp.d.ts'), 'utf-8')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
+  }, 120 * 1000)
+
+  it('should prepare a module that lists its own package in `.nuxtrc` and `nuxt.config`, with or without `dist`', async () => {
+    const dir = await copyExample('.temp-tsdown-self-listed', `export default {\n  plugins: [builder()],\n}\n`)
+    const pkgPath = join(dir, 'package.json')
+    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, name: 'self-listed-module' }, null, 2))
+    await appendFile(join(dir, '.nuxtrc'), '\nmodules[]=self-listed-module\n')
+    await writeFile(join(dir, 'nuxt.config.ts'), `export default { modules: [['self-listed-module', { apiKey: 'from-config' }]] }\n`)
+    await writeFile(join(dir, 'src/module.ts'), (await readFile(join(dir, 'src/module.ts'), 'utf-8')).replace('setup(_options, _nuxt) {', 'setup(_options, _nuxt) {\n    console.log(`[setup] ${_options.apiKey}`)'))
+    const env = { ...process.env, NODE_ENV: '', TEST: '', NUXT_TELEMETRY_DISABLED: '1' }
+    const references = async () => (await readFile(join(dir, '.nuxt/nuxt.d.ts'), 'utf-8')).split('\n').filter(line => line.includes('types="self-listed-module"'))
+
+    await rm(join(dir, '.nuxt'), { recursive: true, force: true })
+    const built = await exec('node', [tsdownBin], { nodeOptions: { cwd: dir, env } })
+    expect(built.exitCode, built.stdout + built.stderr).toBe(0)
+    expect(built.stdout.match(/\[setup\] .*/g)).toEqual(['[setup] from-config'])
+    expect(await references()).toHaveLength(1)
+
+    await writeFile(pkgPath, JSON.stringify({ ...pkg, name: 'self-listed-module', exports: { '.': './src/module.ts' }, main: './src/module.ts' }, null, 2))
+    await rm(join(dir, '.nuxt'), { recursive: true, force: true })
+    const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env } })
+    expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+    expect(prepared.stdout.match(/\[setup\] .*/g)).toEqual(['[setup] from-config'])
+    expect(await references()).toHaveLength(1)
   }, 120 * 1000)
 
   it('should reject one plugin instance shared by two configs', async () => {
@@ -410,9 +601,9 @@ export default {
       const { typesVersions: _, ...pkg } = JSON.parse(await readFile(pkgPath, 'utf-8'))
       await writeFile(pkgPath, JSON.stringify({
         ...pkg,
-        exports: { '.': { types: './src/module.ts', default: './src/module.ts' }, './utils': './src/utils.ts' },
+        exports: { '.': { types: './.nuxt/module-builder/types.d.mts', default: './src/module.ts' }, './utils': './src/utils.ts' },
         main: './src/module.ts',
-        types: './src/module.ts',
+        types: './.nuxt/module-builder/types.d.mts',
         scripts: { prepack: 'node ../node_modules/tsdown/dist/run.mjs' },
         publishConfig: {
           exports: { '.': { types: './dist/types.d.mts', default: './dist/module.mjs' }, './utils': { types: './dist/utils.d.mts', default: './dist/utils.mjs' } },
@@ -423,15 +614,48 @@ export default {
       }, null, 2))
       await rm(join(dir, 'playground/node_modules/my-module'), { force: true })
       await symlink(dir, join(dir, 'playground/node_modules/my-module'))
+      for (const nuxtDir of ['.nuxt', 'playground/.nuxt']) {
+        await rm(join(dir, nuxtDir), { recursive: true, force: true })
+      }
+      await writeFile(join(dir, 'src/module.ts'), (await readFile(join(dir, 'src/module.ts'), 'utf-8')).replace(`import type { SharedTypeFromRuntime } from './runtime/plugins/plugin'`, `type SharedTypeFromRuntime = 'shared-type'`))
     }, 60 * 1000)
 
-    it('should let the playground load the module from its sources, without `dist`', async () => {
-      await rm(join(dir, 'playground/.nuxt'), { recursive: true, force: true })
-      const { exitCode, stdout, stderr } = await exec('node', [join(repoRoot, 'node_modules/nuxt/bin/nuxt.mjs'), 'prepare', 'playground'], { nodeOptions: { cwd: dir, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
+    const nuxtEnv = { ...process.env, NUXT_TELEMETRY_DISABLED: '1' }
+    const typecheckPlayground = (context: string) => exec(join(repoRoot, 'node_modules/.bin/vue-tsc'), ['--noEmit', '-p', join(dir, `playground/.nuxt/tsconfig.${context}.json`)], { nodeOptions: { cwd: dir } })
+
+    it('should let the playground load the module and its type augmentations from its sources, without `dist`', async () => {
+      const prepared = await exec('node', [join(repoRoot, 'src/cli.ts'), 'prepare'], { nodeOptions: { cwd: dir, env: nuxtEnv } })
+      expect(prepared.exitCode, prepared.stdout + prepared.stderr).toBe(0)
+      const { exitCode, stdout, stderr } = await exec('node', [join(repoRoot, 'node_modules/nuxt/bin/nuxt.mjs'), 'prepare', 'playground'], { nodeOptions: { cwd: dir, env: nuxtEnv } })
       expect(exitCode, stdout + stderr).toBe(0)
       expect(existsSync(join(dir, 'dist'))).toBe(false)
       expect(await readFile(join(dir, 'playground/.nuxt/types/plugins.d.ts'), 'utf-8')).toContain('src/runtime/plugins/plugin')
+
+      for (const context of ['app', 'node']) {
+        const typecheck = await typecheckPlayground(context)
+        expect(typecheck.stdout + typecheck.stderr, context).toBe('')
+        expect(typecheck.exitCode, context).toBe(0)
+      }
+
+      const pkgPath = join(dir, 'package.json')
+      const pkg = await readFile(pkgPath, 'utf-8')
+      await writeFile(pkgPath, pkg.replaceAll('./.nuxt/module-builder/types.d.mts', './src/module.ts'))
+      try {
+        const [app, node] = await Promise.all(['app', 'node'].map(typecheckPlayground))
+        expect(app!.stdout).toContain(`'"my-module:runtime-hook"' is not assignable`)
+        expect(node!.stdout).toContain(`''my-module:init'' does not exist`)
+      }
+      finally {
+        await writeFile(pkgPath, pkg)
+      }
     }, 120 * 1000)
+
+    it('should refuse to build for a pack by npm, which publishes the source paths', async () => {
+      const { exitCode, stdout, stderr } = await exec('node', [...packProbeArgs, tsdownBin], { nodeOptions: { cwd: dir, env: { ...npmPackFromPnpmScript(), NODE_ENV: '', TEST: '' } } })
+      expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
+      expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
+      expect(stdout + stderr).toContain(guide('publishing-source-exports'))
+    }, 60 * 1000)
 
     it('should check the published paths of `package.json` after a build', async () => {
       const { exitCode, stdout, stderr } = await tsdown(dir)
@@ -488,25 +712,22 @@ export default {
       return dir
     }
 
-    it.each(Object.keys(exportShapes) as Array<keyof typeof exportShapes>)('should stub, prepare and build a module whose tsdown config exports %s', async (shape) => {
+    it.each(Object.keys(exportShapes) as Array<keyof typeof exportShapes>)('should prepare and build a module whose tsdown config exports %s', async (shape) => {
       const dir = await copyWithShape(shape)
       const outDir = join(dir, outDirs[shape])
 
-      const stubbed = await cli(['build', '--stub', dir])
-      expect(stubbed.stdout + stubbed.stderr).not.toContain('ERROR')
-      expect(stubbed.exitCode).toBe(0)
-      expect(await readFile(join(outDir, 'helpers.mjs'), 'utf-8')).toContain(`from '../src/utils.ts'`)
-      expect(JSON.parse(await readFile(join(outDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module' })
-
       const prepared = await cli(['prepare', dir])
+      expect(prepared.stdout + prepared.stderr).not.toContain('ERROR')
       expect(prepared.exitCode).toBe(0)
       expect(existsSync(join(dir, '.nuxt/tsconfig.json'))).toBe(true)
+      expect(existsSync(join(dir, '.nuxt/module-builder/types.d.mts'))).toBe(true)
 
       const built = await cli(['build', dir])
       expect(built.exitCode).toBe(0)
       expect(await readFile(join(outDir, 'shared/value.mjs'), 'utf-8')).toContain(`from "./other.mjs"`)
       expect(existsSync(join(outDir, 'helpers.mjs'))).toBe(true)
       expect(existsSync(join(outDir, 'types.d.mts'))).toBe(true)
+      expect(JSON.parse(await readFile(join(outDir, 'module.json'), 'utf-8'))).toMatchObject({ name: 'my-module' })
       if (shape === 'array') {
         expect(await readFile(join(dir, 'dist-cli/cli.mjs'), 'utf-8')).toContain(`const cli = "cli"`)
       }
@@ -527,14 +748,14 @@ export default {
 
     it('should refuse `hooks` in `builder()` and point at tsdown\'s own', async () => {
       const dir = await copyExample('.temp-tsdown-builder-hooks', `export default {\n  plugins: [builder({ hooks: { 'build:before': () => {} } })],\n}\n`)
-      for (const args of [['build'], ['build', '--stub']]) {
+      for (const args of [['build'], ['prepare']]) {
         const { exitCode, stdout, stderr } = await cli([...args, dir])
         expect(exitCode, args.join(' ')).not.toBe(0)
         expect(stdout + stderr, args.join(' ')).toContain(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
       }
     }, 60 * 1000)
 
-    it('should load the package root and stub a module without tsdown', async () => {
+    it('should load the package root without tsdown, and point at installing it to build', async () => {
       const dir = await copyExample('.temp-tsdown-without-tsdown', `export default {\n  plugins: [builder({ entries: [{ input: './src/utils', name: 'helpers' }] })],\n}\n`)
       const hook = join(dir, 'no-tsdown.mjs')
       await writeFile(hook, `import { registerHooks } from 'node:module'\n\nregisterHooks({\n  resolve(specifier, context, nextResolve) {\n    if (/^(?:tsdown|rolldown)(?:\\/|$)/.test(specifier)) {\n      throw Object.assign(new Error(\`Cannot find package '\${specifier}'\`), { code: 'ERR_MODULE_NOT_FOUND' })\n    }\n    return nextResolve(specifier, context)\n  },\n})\n`)
@@ -543,48 +764,33 @@ export default {
       const root = await node(['--input-type=module', '-e', `await import('tsdown').then(() => console.log('tsdown found'), () => {})\nconst root = await import(${JSON.stringify(pathToFileURL(join(repoRoot, 'src/index.ts')).href)})\nconsole.log(Object.keys(root).sort().join(','))`])
       expect(root.stdout.trim()).toBe('build,defineBuildConfig,prepare')
 
-      const stubbed = await node([join(repoRoot, 'src/cli.ts'), 'build', '--stub', dir])
-      expect(stubbed.exitCode, stubbed.stdout + stubbed.stderr).toBe(0)
-      expect(existsSync(join(dir, 'dist/helpers.mjs'))).toBe(true)
-
       const built = await node([join(repoRoot, 'src/cli.ts'), 'build', dir])
       expect(built.exitCode).not.toBe(0)
       expect(built.stdout + built.stderr).toContain(guide('install-tsdown'))
     }, 60 * 1000)
 
-    it.each([['without a tsdown config', ''], ['with a tsdown config', `export default {\n  outDir: 'out',\n  plugins: [builder()],\n}\n`]])('should stub the module and then prepare `.nuxt` with `prepare --stub`, %s', async (_, config) => {
-      const dir = await copyExample(`.temp-tsdown-prepare-stub-${config ? 'config' : 'zero'}`, config)
-      if (!config) {
-        await rm(join(dir, 'tsdown.config.ts'))
+    it('should fail on `--stub` and point at what replaces it', async () => {
+      const dir = await copyExample('.temp-tsdown-stub-flag', `export default {\n  plugins: [builder()],\n}\n`)
+      for (const command of ['build', 'prepare']) {
+        const { exitCode, stdout, stderr } = await cli([command, '--stub', dir])
+        expect(exitCode, command).not.toBe(0)
+        expect(stdout + stderr, command).toContain(`\`nuxt-module-build ${command} --stub\` has been removed. With pnpm or Yarn 4, point \`package.json\` at the module's sources. Otherwise, build \`dist\` with \`tsdown\` and rebuild it with \`tsdown --watch\`. ${guide('stub-builds')}`)
       }
-      await rm(join(dir, '.nuxt'), { recursive: true, force: true })
-      const { exitCode, stdout, stderr } = await cli(['prepare', '--stub', dir])
-      expect(exitCode, stdout + stderr).toBe(0)
-      expect(await readFile(join(dir, config ? 'out' : 'dist', 'module.mjs'), 'utf-8')).toContain(`from '../src/module.ts'`)
-      expect(existsSync(join(dir, '.nuxt/tsconfig.json'))).toBe(true)
-    }, 120 * 1000)
-
-    it('should stub into `--outDir` over the tsdown config\'s `outDir`', async () => {
-      const dir = await copyExample('.temp-tsdown-stub-out-dir', `export default {\n  outDir: 'out',\n  plugins: [builder()],\n}\n`)
-      expect((await cli(['build', '--stub', '--outDir', '.stub', dir])).exitCode).toBe(0)
-      expect(existsSync(join(dir, '.stub/module.mjs'))).toBe(true)
-      expect(existsSync(join(dir, 'out'))).toBe(false)
+      expect(existsSync(join(dir, 'dist'))).toBe(false)
     }, 60 * 1000)
 
-    it('should fail to stub or prepare with a tsdown config whose `cwd` is another directory', async () => {
+    it('should fail to prepare with a tsdown config whose `cwd` is another directory', async () => {
       const dir = await copyExample('.temp-tsdown-config-cwd', `export default {\n  cwd: './elsewhere',\n  plugins: [builder()],\n}\n`)
-      for (const args of [['build', '--stub'], ['prepare']]) {
-        const { exitCode, stdout, stderr } = await cli([...args, dir])
-        expect(exitCode, args.join(' ')).not.toBe(0)
-        expect(stdout + stderr, args.join(' ')).toContain('`tsdown.config.ts` sets `cwd`, but `build --stub` and `prepare` read the module in the directory of the tsdown config.')
-      }
+      const { exitCode, stdout, stderr } = await cli(['prepare', dir])
+      expect(exitCode).not.toBe(0)
+      expect(stdout + stderr).toContain('`tsdown.config.ts` sets `cwd`, but `prepare` reads the module in the directory of the tsdown config.')
       await writeFile(join(dir, 'tsdown.config.ts'), `${builderImport}\nexport default {\n  cwd: '.',\n  plugins: [builder()],\n}\n`)
-      expect((await cli(['build', '--stub', dir])).exitCode).toBe(0)
+      expect((await cli(['prepare', dir])).exitCode).toBe(0)
     }, 120 * 1000)
 
     it('should fail on a tsdown config that Node cannot load', async () => {
       const dir = await copyExample('.temp-tsdown-config-enum', `enum Mode { Build }\nexport default {\n  define: { __MODE__: String(Mode.Build) },\n  plugins: [builder()],\n}\n`)
-      for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
+      for (const args of [['build'], ['prepare']]) {
         const { exitCode, stdout, stderr } = await cli([...args, dir])
         expect(exitCode, args.join(' ')).not.toBe(0)
         expect(stdout + stderr, args.join(' ')).toContain('tsdown.config.ts:2:1: `enum` (use an `as const` object and a union type of its values)')
@@ -594,7 +800,7 @@ export default {
 
     it('should fail on a tsdown config without `builder()` and show how to add it', async () => {
       const dir = await copyExample('.temp-tsdown-without-plugin', `export default {}\n`)
-      for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
+      for (const args of [['build'], ['prepare']]) {
         const { exitCode, stdout, stderr } = await cli([...args, dir])
         expect(exitCode, args.join(' ')).not.toBe(0)
         expect(stdout + stderr, args.join(' ')).toContain([
@@ -623,7 +829,7 @@ export default {
       const dir = await copyExample('.temp-tsdown-legacy-field', `export default {\n  plugins: [builder()],\n}\n`)
       const pkgPath = join(dir, 'package.json')
       await writeFile(pkgPath, JSON.stringify({ ...JSON.parse(await readFile(pkgPath, 'utf-8')), build: { entries: ['./src/utils'] } }))
-      for (const args of [['build'], ['build', '--stub'], ['prepare']]) {
+      for (const args of [['build'], ['prepare']]) {
         const { exitCode, stdout, stderr } = await cli([...args, dir])
         expect(exitCode, args.join(' ')).not.toBe(0)
         expect(stdout + stderr, args.join(' ')).toContain('The `build` field of `package.json` configures the build, and so does `builder()` in the tsdown config.')

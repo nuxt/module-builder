@@ -36,6 +36,18 @@ export async function rewriteRuntimeDeclarations(outDir: string, outputs: string
   }))
 }
 
+/**
+ * The paths, relative to `outDir`, whose presence decides how {@link rewriteRuntimeDeclarations}
+ * rewrites the relative specifiers in `code`, the declaration emitted as `fileName`.
+ */
+export function declarationTargets(fileName: string, code: string): string[] {
+  return [...code.matchAll(RELATIVE_SPECIFIER_RE)].flatMap(([, , , specifier]) => {
+    const path = join(dirname(fileName), specifier!).replace(/\/+$/, '')
+    const base = path.replace(/\.m?js$/, '')
+    return [path, path.replace(/\.(m?)js$/, '.d.$1ts'), ...DECLARATION_TARGETS.map(([declaration]) => base + declaration), `${base}.vue`]
+  })
+}
+
 function declarationsOf(output: string) {
   if (/\.d\.[cm]?ts$/.test(output)) {
     return [output]

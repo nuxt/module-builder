@@ -1,8 +1,8 @@
-import { writeFile } from 'node:fs/promises'
 import { resolve } from 'pathe'
 import type { NuxtModule } from '@nuxt/schema'
 
 import { importModule } from './loader.ts'
+import { writeIfChanged } from './write.ts'
 
 export interface WriteModuleMetaOptions {
   cwd: string
@@ -22,5 +22,5 @@ export async function writeModuleMeta({ cwd, outDir, pkg, builder, version }: Wr
   moduleMeta.version ||= pkg.version
   moduleMeta.builder = builder
 
-  await writeFile(resolve(outDir, 'module.json'), JSON.stringify(moduleMeta, null, 2), 'utf8')
+  await writeIfChanged(resolve(outDir, 'module.json'), JSON.stringify(moduleMeta, null, 2))
 }
