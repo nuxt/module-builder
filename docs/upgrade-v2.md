@@ -373,11 +373,13 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 - With pnpm or Yarn 4, point `package.json` at the module's sources as in [Source exports](#source-exports), and set `"dev:prepare": "nuxt-module-build prepare && nuxt prepare playground"`.
 - With npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`, set `"dev:prepare": "nuxt-module-build prepare && tsdown && nuxt prepare playground"`, and run `tsdown --watch` next to `nuxt dev playground`, as in [Developing against dist](#developing-against-dist).
 
+Both scripts start with `nuxt-module-build prepare`, also where the old one had no `prepare` step, such as `nuxt-module-build build --stub . && nuxi prepare playground`. It writes the `.nuxt` that the build reads and, with source exports, the `.nuxt/module-builder/types.d.mts` that `package.json` points at.
+
 `nuxt-module-build prepare`, and a playground that loads the module from its sources, run `src/module.ts` with Node, so module code follows the rules in [Module code loads with Node](#module-code-loads-with-node).
 
 ## Module code loads with Node
 
-The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Type-only imports are erased before Node loads a file, so they can use any of the forms below. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
+The module's build-time code has to load with Node as it is, because Nuxt 5 loads modules with Node itself. That covers `src/module.ts`, every file it imports by value (runtime files included), `build.config.ts`, and `tsdown.config.ts`. Node strips types and resolves imports as written, so `nuxt-module-build build`, `tsdown`, and `nuxt-module-build prepare` stop with a list of everything it can't load, each with its file, line, column, and fix. A runtime file in the list also names the module code that imports it. Node never loads type-only imports, so they don't stop the module loading, but a type check under `nodenext` module resolution, such as the playground's check of its `nuxt.config.ts`, still requires their extensions: write them with extensions too. Runtime files that module code doesn't import keep extensionless imports, as they're emitted with the extension added.
 
 Set `erasableSyntaxOnly` so your editor and type check report the syntax as well:
 
@@ -665,11 +667,21 @@ pnpm and Yarn 4 publish the fields of `publishConfig` in place of the top-level 
 
 `nuxt-module-build prepare` writes `.nuxt/module-builder/types.d.mts`. It re-exports `src/module.ts` and declares the same `#app` and `@nuxt/schema` augmentations as `dist/types.d.mts`, for the module's `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The root export's `types` condition and the top-level `types` point at it, so the playground's type check sees the module's hooks and runtime config. A subpath export has no augmentations, so it points at its source.
 
-The playground's type check then includes the module's sources, and the files they import types from. In the playground's `nuxt.config.ts` context, `#app`, `#imports`, and `#build/*` don't resolve, so a type that module code imports from a runtime file that uses them fails there with TS2307. Move such types into a file that doesn't import those aliases, such as `src/runtime/types.ts`.
+The playground's type check includes the module's sources and the files they import types from. A built `dist` keeps them out, because declarations aren't checked. The errors this can report, and their fixes:
+
+- `#app`, `#imports`, or `#build/*` not found (TS2307, TS2664) in the `nuxt.config.ts` context, through types that module code imports from a runtime file that uses them: move those types into a file that doesn't import the aliases, such as `src/runtime/types.ts`.
+- Relative imports without extensions (TS2835, TS2834) in the `nuxt.config.ts` context, which resolves them like Node: add extensions to type-only relative imports as well.
+- Globals that the module declares in its own `.d.ts` not found (TS2304), because the playground doesn't include that file: reference it with `/// <reference path="..." />` from the files that use the globals.
+- The module's own aliases not found (TS2307): move an alias from the module's tsconfig `paths` into the `imports` of `package.json`, with its `dist` paths in `publishConfig.imports`, as TypeScript resolves those from the module's files in any project. Declare the types of an alias that the module adds itself, such as a virtual module, with `addTypeTemplate(template, { nuxt: true, node: true })`, so both of the playground's contexts include them.
+- Other errors in runtime files, which are checked with the playground's compiler options: fix them, or check the module with the same options.
+
+With source exports there is no `dist` while you develop, so code that reaches into `dist` by path has to point at `src`: a playground or a test that imports `../dist/runtime/...`, or module code that resolves `../dist/runtime/...`. Resolve runtime files relative to `src/module.ts` and without an extension, as `createResolver(import.meta.url).resolve('./runtime/plugins/plugin')` does: the build keeps the layout of `src` in `dist`, and Nuxt and Vite add the extension.
+
+A subpath that code outside Nuxt imports, such as a plugin for a plain Vite app, can keep pointing at `dist` in `exports`, so that code loads the built file. Run `tsdown` before using it.
 
 Yarn 4 doesn't apply `publishConfig.typesVersions`. Keep `typesVersions` at the top level, pointing at `dist`: TypeScript only reads it under `node10` module resolution, which a playground doesn't use.
 
-The playground has to resolve the module's name to the module directory itself, as `"my-module": "workspace:*"` or `"my-module": "link:.."` do. Vite serves the files under `src/runtime` from there, so components update in place and plugins reload the page. The playground loads `src/module.ts` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
+A playground that lists the module by relative path, such as `modules: ['../src/module']`, keeps working unchanged: it loads `src/module.ts` and never resolves the package. It doesn't load `types.d.mts` either, so its type check doesn't see the augmentations for `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The module's name only has to resolve where something imports the module or one of its subpaths by name: the playground's `nuxt.config.ts` or code, tests, or the module's own runtime files. Then the playground has to resolve the name to the module directory itself, as `"my-module": "workspace:*"` or `"my-module": "link:.."` do. Vite serves the files under `src/runtime` from there, so components update in place and plugins reload the page. The playground loads `src/module.ts` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
 The build checks the published paths, as described in [Publishing source exports](#publishing-source-exports). tsdown's `publint` and `attw` options lint the packed tarball, so both see `dist`.
 
@@ -719,6 +731,8 @@ npm, Yarn 3 and earlier, and bun publish some or all of these fields as written.
   }
 }
 ```
+
+A playground that installs the module by name lists it as `"my-module": "workspace:*"` or `"my-module": "link:.."`. Yarn 1 has no `workspace:` protocol, so use `link:..` there.
 
 While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
