@@ -881,8 +881,8 @@ describe('with a root tsconfig that only lists references', () => {
     const dir = await copyExample('.temp-tsdown-references-contexts', 'export default { plugins: [builder()] }\n')
     const moduleSrc = join(dir, 'src/module.ts')
     await writeFile(moduleSrc, (await readFile(moduleSrc, 'utf-8'))
-      .replace('import { defineNuxtModule, addPlugin, createResolver } from \'@nuxt/kit\'', 'import { defineNuxtModule, addPlugin, addImports, addTypeTemplate, createResolver } from \'@nuxt/kit\'\nimport { moduleHelper } from \'./helpers/name.ts\'')
-      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    _nuxt.options.alias[\'#my-types\'] = resolver.resolve(\'./runtime/types\')\n    addImports({ name: \'useThing\', from: resolver.resolve(\'./runtime/composables/useThing\') })\n    addTypeTemplate({ filename: \'module/my-module-names.d.ts\', getContents: () => \'declare module "#my-module/names" {\\n  export const names: string[]\\n}\\n\' }, { nuxt: false })\n    _nuxt.hook(\'prepare:types\', ({ tsConfig }) => { tsConfig.include?.push(\'./module/my-module-names.d.ts\') })\n    moduleHelper()'))
+      .replace('import { defineNuxtModule, addPlugin, createResolver } from \'@nuxt/kit\'', 'import { defineNuxtModule, addPlugin, addImports, addTemplate, addTypeTemplate, createResolver } from \'@nuxt/kit\'\nimport { moduleHelper } from \'./helpers/name.ts\'')
+      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    _nuxt.options.alias[\'#my-types\'] = resolver.resolve(\'./runtime/types\')\n    addImports({ name: \'useThing\', from: resolver.resolve(\'./runtime/composables/useThing\') })\n    addTypeTemplate({ filename: \'module/my-module-names.d.ts\', getContents: () => \'declare module "#my-module/names" {\\n  export const names: string[]\\n}\\n\' }, { nuxt: false })\n    _nuxt.hook(\'prepare:types\', ({ tsConfig }) => { tsConfig.include?.push(\'./module/my-module-names.d.ts\') })\n    addTemplate({ filename: \'my-module-virtual.mjs\', getContents: () => \'export default 1\\n\' })\n    moduleHelper()'))
     await mkdir(join(dir, 'src/helpers'), { recursive: true })
     await mkdir(join(dir, 'src/runtime/types'), { recursive: true })
     await mkdir(join(dir, 'src/runtime/server'), { recursive: true })
@@ -892,6 +892,7 @@ describe('with a root tsconfig that only lists references', () => {
       writeFile(join(dir, 'types/virtual.d.ts'), `declare module '#my-root-virtual' {\n  export const rootValue: string\n}\n`),
       writeFile(join(dir, 'content.d.ts'), `export * from './dist/content'\n`),
       writeFile(join(dir, 'src/helpers/name.ts'), `import { useNuxt } from '@nuxt/kit'\n\nexport type { Linked } from '../runtime/linked.ts'\nexport type Jsx = typeof import('../runtime/components/JsxComponent.tsx').default\nexport type Names = ReturnType<typeof import('../runtime/composables/useNames.ts').useNames>\n\nexport function moduleHelper(): unknown {\n  return import.meta.vitest ? undefined : useNuxt().options.myModule\n}\n\nexport const callInit = (): unknown => useNuxt().callHook('my-module:init', 'shared-type')\n`),
+      writeFile(join(dir, 'src/runtime/composables/useVirtual.ts'), `import value from '#build/my-module-virtual'\n\nexport const useVirtual = (): unknown => value\n`),
       writeFile(join(dir, 'src/runtime/composables/useNames.ts'), `import { names } from '#my-module/names'\n\nexport const useNames = (): string[] => names\n`),
       writeFile(join(dir, 'src/runtime/linked.ts'), `import type { NuxtLink } from '#components'\n\nexport type Linked = typeof NuxtLink\n`),
       writeFile(join(dir, 'src/env.d.ts'), `declare const __MY_MODULE_FLAG__: boolean\n`),
@@ -929,6 +930,9 @@ describe('with a root tsconfig that only lists references', () => {
     }
     expect(await readFile(join(dir, '.nuxt/nuxt.shared.d.ts'), 'utf-8')).not.toContain('augments.d.ts')
     expect(await readFile(join(dir, '.nuxt/nuxt.node.d.ts'), 'utf-8')).toContain('/// <reference path="module-builder/types.d.mts" />')
+    const buildTypes = (await readFile(join(dir, '.nuxt/types/build.d.ts'), 'utf-8')).split('\n')
+    expect(buildTypes).toContain('declare module "#build/my-module-virtual";')
+    expect(buildTypes).not.toContain('declare module "#build/my-module-virtual.mjs";')
     const app = await generated('app')
     expect(app.include).not.toContain('../**/*')
     const typecheck = await exec(join(repoRoot, 'node_modules/.bin/vue-tsc'), ['-b', '--noEmit'], { nodeOptions: { cwd: dir } })

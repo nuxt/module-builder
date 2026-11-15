@@ -18,6 +18,7 @@ import { probe } from '../rolldown/resolve.ts'
 import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../rolldown/tsconfig.ts'
 import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
 
+const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/
 const PATH_OPTIONS = new Set(['paths', 'baseUrl', 'rootDir', 'rootDirs', 'outDir', 'outFile', 'declarationDir', 'typeRoots', 'tsBuildInfoFile'])
 
 async function loadPrepareConfig(cwd: string): Promise<{ config: TranslatedBuildConfig, outDir: string }> {
@@ -118,8 +119,20 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
             nuxt.options.modules[index] = entryPath
           }
           nuxt.hooks.hook('app:templates', (app) => {
+            const virtual = new Set(app.templates.filter(template => !template.write).map(template => template.filename))
             for (const template of app.templates) {
               template.write = true
+            }
+            // `types/build.d.ts` only declares templates kept in memory; of those written here, it keeps the specifiers TypeScript does not resolve.
+            const buildTypes = app.templates.find(template => template.filename === 'types/build.d.ts')
+            const getContents = buildTypes?.getContents
+            if (buildTypes && getContents) {
+              buildTypes.getContents = async (data) => {
+                const written = new Set(data.app.templates.map(template => template.filename))
+                const resolves = (path: string) => ['', '.ts', '.tsx', '.d.ts', '.js', '.jsx'].some(extension => written.has(path + extension))
+                const contents = await getContents({ ...data, app: { ...data.app, templates: data.app.templates.map(template => virtual.has(template.filename) ? { ...template, write: false } : template) } })
+                return contents.split('\n').filter(line => !resolves(line.match(BUILD_DECLARATION_RE)?.[1] ?? '')).join('\n')
+              }
             }
           })
           // Nuxt adds `dist` paths in the directory of each module's entry, the package root of an installed module.
