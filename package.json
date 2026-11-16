@@ -42,8 +42,7 @@
     "nuxt-module-build": "node ./src/cli.ts",
     "prepack": "pnpm build",
     "test": "pnpm vitest",
-    "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz",
-    "test:publint": "cd example && publint",
+    "test:pack": "pnpm -C example pack --out ../.temp-pack/example.tgz && attw .temp-pack/example.tgz && publint .temp-pack/example.tgz",
     "test:engines": "pnpm exec installed-check -d -i tsdown --no-workspaces --ignore @nuxt/cli",
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"

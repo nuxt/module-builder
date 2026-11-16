@@ -51,11 +51,8 @@ jobs:
       - name: ⚙️ Check package engines
         run: pnpm test:engines
 
-      - name: 💪 Check published types (example)
-        run: pnpm test:attw
-
-      - name: 📦 Check `package.json` (example)
-        run: pnpm test:publint
+      - name: 📦 Check packed types and `package.json` (example)
+        run: pnpm test:pack
 
   ci:
     # Skip on uppt release PRs (they don't include later main/v1 merges, nothing to test).
