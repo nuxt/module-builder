@@ -91,7 +91,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    ```
 
 4. Point the `exports` of `package.json` at your module, as described in [Project Structure](/docs/guide/modules/module-builder/project-structure#packagejson).
-5. Create a `tsconfig.json` that extends `.nuxt/tsconfig.json`, as described in [TypeScript](/docs/guide/modules/module-builder/typescript).
+5. Create a `tsconfig.json` that references the tsconfigs in `.nuxt`, and a `tsconfig.module.json` for module code, as described in [TypeScript](/docs/guide/modules/module-builder/typescript).
 
 The `dev:prepare` script in step 3 is for a module that you publish with pnpm or Yarn 4. If you publish with npm, Yarn 3 or earlier, or bun, add `tsdown` before `nuxt prepare playground`. [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish#preparing-a-checkout) explains the difference.
 

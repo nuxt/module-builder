@@ -2,41 +2,94 @@ import { pathToFileURL } from 'node:url'
 import type { Nuxt, NuxtConfig, NuxtModule } from '@nuxt/schema'
 import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
+import { readFile, writeFile } from 'node:fs/promises'
+import { parseTsconfig } from 'get-tsconfig'
 import { resolvePathSync } from 'mlly'
-import { resolve } from 'pathe'
+import { dirname, join, relative, resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
+import { glob } from 'tinyglobby'
 import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
 import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
+import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
+import { selfReferencePaths } from '../build/tsconfig.ts'
 import { writeSourceTypes } from '../build/types.ts'
+import { probe } from '../rolldown/resolve.ts'
+import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../rolldown/tsconfig.ts'
 import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
 
-async function loadPrepareConfig(cwd: string): Promise<TranslatedBuildConfig> {
+const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/
+const PATH_OPTIONS = new Set(['paths', 'baseUrl', 'rootDir', 'rootDirs', 'outDir', 'outFile', 'declarationDir', 'typeRoots', 'tsBuildInfoFile'])
+
+async function loadPrepareConfig(cwd: string): Promise<{ config: TranslatedBuildConfig, outDir: string }> {
   const pkg = await readPackageJSON(cwd)
   const moduleConfig = await loadModuleConfig(cwd)
   const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
   if (!moduleConfig) {
-    return loadBuildConfig(cwd, pkg, outDir)
+    return { config: await loadBuildConfig(cwd, pkg, outDir), outDir }
   }
   assertNoLegacyBuildConfig(cwd, pkg)
-  return resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options)
+  return { config: resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options), outDir }
 }
 
-export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildConfig): Promise<{ result: unknown }> {
+/**
+ * The module's `.d.ts` files outside the runtime directories and `exclude`, split
+ * into those that only declare globals and ambient modules, and module augmentations. Other
+ * modules, which only declare types for files that import them, are left out.
+ */
+async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: string[]) {
+  const { default: ts } = await import('typescript')
+  const ignore = [...runtimeDirs, ...exclude].flatMap((pattern) => {
+    const path = relative(cwd, pattern)
+    return [path, `${path}/**`]
+  })
+  const files = await glob(['**/*.d.ts'], { cwd, absolute: true, ignore: [...ignore, '**/node_modules/**'] })
+  const globals: string[] = []
+  const augmentations: string[] = []
+  for (const file of files.filter(file => isModuleFile(file, cwd)).sort()) {
+    const source = ts.createSourceFile(file, await readFile(file, 'utf8'), ts.ScriptTarget.Latest)
+    if (!ts.isExternalModule(source)) {
+      globals.push(file)
+    }
+    else if (source.statements.some(statement => ts.isModuleDeclaration(statement))) {
+      augmentations.push(file)
+    }
+  }
+  return { globals, augmentations }
+}
+
+export async function prepareModule(cwd: string, buildConfig?: { config: TranslatedBuildConfig, outDir: string }): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
-  const config = buildConfig ?? await loadPrepareConfig(cwd)
+  const { config, outDir } = buildConfig ?? await loadPrepareConfig(cwd)
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
   const moduleExports = await importModule(resolve(cwd, entries.module), { cwd })
   const nuxtModule = (moduleExports.default ?? moduleExports) as NuxtModule
-  const entryPath = resolve(cwd, './src/module')
-  const { name } = await readPackageJSON(cwd)
+  const pkg = await readPackageJSON(cwd)
+  const { name } = pkg
   const useNuxt = name ? await loadUseNuxt(cwd) : undefined
+  const entryPath = resolve(cwd, entries.module)
+  const rootConfig = await rootTsconfig(cwd)
+  const ambient = await ambientDeclarations(cwd, runtimeDirs, [...rootConfig.exclude ?? [], outDir])
+  const selfPaths = selfReferencePaths(cwd, pkg, outDir)
+  const declarationsDir = join(sourceTypesDir(cwd), 'declarations')
+  const ownTypes = join(declarationsDir, 'types.d.mts')
+  const ownPaths = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : {}
+  let perContext = false
+  const isOwnTypes = (reference: { path: string } | { types: string }) => 'types' in reference && (reference.types === name || reference.types === entryPath)
+  const compilerOptions = Object.fromEntries(Object.entries(rootConfig.compilerOptions).filter(([key]) => !PATH_OPTIONS.has(key)))
+  const withRootOptions = (options: Record<string, unknown> = {}) => ({
+    ...options,
+    ...compilerOptions,
+    ...compilerOptions.types !== undefined && { types: [...new Set([...options.types as string[] ?? [], ...compilerOptions.types as string[]])] },
+  })
 
   const result = await runCommand('prepare', [cwd], {
     overrides: {
+      buildDir: resolve(cwd, '.nuxt'),
+      typesDir: resolve(cwd, '.nuxt'),
       compatibilityDate: '2024-04-03',
       hooks: {
         'modules:before': () => {
@@ -48,7 +101,9 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
       },
       typescript: {
         builder: 'shared',
+        tsConfig: { exclude: rootConfig.exclude ?? [] },
       },
+      nitro: { typescript: { tsConfig: { ...ambient.globals.length && { files: ambient.globals }, compilerOptions: withRootOptions() } } },
       imports: {
         autoImport: false,
       },
@@ -65,16 +120,139 @@ export async function prepareModule(cwd: string, buildConfig?: TranslatedBuildCo
             nuxt.options.modules[index] = entryPath
           }
           nuxt.hooks.hook('app:templates', (app) => {
+            const virtual = new Set(app.templates.filter(template => !template.write).map(template => template.filename))
             for (const template of app.templates) {
               template.write = true
             }
+            // `types/build.d.ts` only declares templates kept in memory; of those written here, it keeps the specifiers TypeScript does not resolve.
+            const buildTypes = app.templates.find(template => template.filename === 'types/build.d.ts')
+            const getContents = buildTypes?.getContents
+            if (buildTypes && getContents) {
+              buildTypes.getContents = async (data) => {
+                const written = new Set(data.app.templates.map(template => template.filename))
+                const resolves = (path: string) => ['', '.ts', '.tsx', '.d.ts', '.js', '.jsx'].some(extension => written.has(path + extension))
+                const contents = await getContents({ ...data, app: { ...data.app, templates: data.app.templates.map(template => virtual.has(template.filename) ? { ...template, write: false } : template) } })
+                return contents.split('\n').filter(line => !resolves(line.match(BUILD_DECLARATION_RE)?.[1] ?? '')).join('\n')
+              }
+            }
+          })
+          // Nuxt adds `dist` paths in the directory of each module's entry, the package root of an installed module.
+          const entryDist = dirname(entryPath) === cwd ? undefined : join(relative(nuxt.options.buildDir, dirname(entryPath)), 'dist')
+          const outsideEntryDist = (pattern: string) => entryDist === undefined || (pattern !== entryDist && !pattern.startsWith(`${entryDist}/`))
+          // Nuxt 3 generates a single tsconfig, which is left as it is.
+          nuxt.hooks.hook('prepare:types', ({ nodeTsConfig }) => {
+            perContext = nodeTsConfig !== undefined
+          })
+          nuxt.hooks.hook('nitro:init', (nitro) => {
+            nitro.hooks.hook('types:extend', ({ tsConfig }: { tsConfig?: { include?: string[], exclude?: string[], compilerOptions?: { paths?: Record<string, string[]> } } }) => {
+              if (tsConfig) {
+                tsConfig.include &&= tsConfig.include.filter(outsideEntryDist)
+                tsConfig.exclude &&= tsConfig.exclude.filter(outsideEntryDist)
+              }
+              if (tsConfig && perContext) {
+                tsConfig.compilerOptions = { ...tsConfig.compilerOptions, paths: { ...tsConfig.compilerOptions?.paths, ...ownPaths } }
+              }
+            })
+          })
+          // Registered once every module is set up, so that it sees the aliases and options they add.
+          nuxt.hooks.hook('modules:done', () => {
+            nuxt.hooks.hook('prepare:types', ({ references, nodeReferences = [], tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig }) => {
+              if (!nodeTsConfig) {
+                return
+              }
+              // The app's tsconfig covers the module root as a Nuxt app's source directory, and the workspace, so it is narrowed to the runtime directories.
+              const rootGlobs = new Set([cwd, nuxt.options.workspaceDir].flatMap((dir) => {
+                const root = relative(nuxt.options.buildDir, dir) || '.'
+                return [join(root, '**/*'), join(root, '**/*.vue')]
+              }))
+              tsConfig.include = [...(tsConfig.include ?? []).filter(pattern => !rootGlobs.has(pattern)), ...runtimeDirs.filter(dir => !dir.startsWith(`${runtimeDirs[0]}/`))]
+              tsConfig.exclude = [...tsConfig.exclude ?? [], resolve(cwd, '**/nuxt.config.*')]
+              for (const context of [tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig].filter(context => context !== undefined)) {
+                context.include &&= context.include.filter(outsideEntryDist)
+                context.exclude &&= context.exclude.filter(outsideEntryDist)
+                context.compilerOptions = withRootOptions(context.compilerOptions)
+                if (ambient.globals.length) {
+                  context.files = [...context.files ?? [], ...ambient.globals]
+                }
+              }
+              // Referenced from the declaration entries, so that the augmentations follow Nuxt's own declarations.
+              for (const list of [references, nodeReferences]) {
+                list.push(...ambient.augmentations.map(path => ({ path })))
+              }
+              // Module code can import types from runtime sources, which rely on the app's aliases, declarations and JSX options.
+              const appDeclarations = (tsConfig.include ?? []).filter(pattern => !relative(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)).startsWith('..'))
+              nodeTsConfig.include = [...new Set([...nodeTsConfig.include ?? [], ...appDeclarations])]
+              // A type reference does not resolve the module's own package name.
+              const ownReference = nodeReferences.findIndex(isOwnTypes)
+              nodeReferences.splice(ownReference === -1 ? nodeReferences.length : ownReference, ownReference === -1 ? 0 : 1, { path: join(sourceTypesDir(cwd), 'types.d.mts') })
+              const { jsx, jsxImportSource } = tsConfig.compilerOptions ?? {}
+              nodeTsConfig.compilerOptions = { jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
+              nodeTsConfig.compilerOptions.paths = { ...tsConfig.compilerOptions?.paths, ...nodeTsConfig.compilerOptions.paths }
+              // The module's own package resolves to declarations of module code here, so module code is not type checked in these parts.
+              // Included rather than referenced from `nuxt.d.ts`, which `.nuxt/tsconfig.json` also includes.
+              const appReference = references.findIndex(isOwnTypes)
+              if (appReference !== -1) {
+                references.splice(appReference, 1)
+              }
+              if (name) {
+                tsConfig.include = [...tsConfig.include ?? [], ownTypes]
+              }
+              for (const context of [tsConfig, serverTsConfig, sharedTsConfig].filter(context => context !== undefined)) {
+                context.compilerOptions = { ...context.compilerOptions, paths: { ...context.compilerOptions?.paths, ...ownPaths } }
+              }
+            })
           })
         },
       ],
     } satisfies NuxtConfig,
   })
-  await writeSourceTypes(resolve(cwd, '.nuxt/module-builder'), resolve(cwd, entries.module))
+  await writeSourceTypes(sourceTypesDir(cwd), entryPath)
+  await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
+  if (name && perContext) {
+    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => !relative(dir, file).startsWith('..')))
+    const tsconfigs = await createTsconfigResolver(cwd)
+    const project = tsconfigs.resolve(entryPath)
+    const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
+    const tsconfig = project && project !== tsconfigs.root ? project : { path: nodeTsconfig, config: parseTsconfig(nodeTsconfig) }
+    await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths })
+  }
   return result
+}
+
+const sourceTypesDir = (cwd: string) => resolve(cwd, '.nuxt/module-builder')
+
+interface CompatibilityOptions {
+  ownPaths: Record<string, string[]>
+  ownTypes: string
+  entryPath: string
+  /** The module's ambient declarations, which the program's `include` already covers. */
+  ambient: string[]
+}
+
+/**
+ * Rewrites `.nuxt/tsconfig.json`, one program over the module root, without the app's mapping of
+ * the module's own package to declarations of module code, as that program has its sources, and
+ * without the paths Nuxt derives from the directory of the module's entry, which exclude its
+ * server runtime.
+ */
+async function writeCompatibilityTsconfig(file: string, cwd: string, { ownPaths, ownTypes, entryPath, ambient }: CompatibilityOptions) {
+  const config = JSON.parse(await readFile(file, 'utf8')) as { include?: string[], exclude?: string[], files?: string[], compilerOptions?: { paths?: Record<string, string[]> } }
+  config.files = config.files?.filter(path => !ambient.includes(resolve(dirname(file), path)))
+  if (!config.files?.length) {
+    delete config.files
+  }
+  const entryDir = dirname(entryPath)
+  const isDerived = (pattern: string) => {
+    const path = resolve(dirname(file), pattern)
+    const inEntryDist = entryDir !== cwd && !relative(join(entryDir, 'dist'), path).startsWith('..')
+    return path === ownTypes || path === join(entryDir, 'runtime/server') || inEntryDist
+  }
+  config.include = config.include?.filter(pattern => !isDerived(pattern))
+  config.exclude = config.exclude?.filter(pattern => !isDerived(pattern))
+  for (const alias of Object.keys(ownPaths)) {
+    delete config.compilerOptions?.paths?.[alias]
+  }
+  await writeFile(file, JSON.stringify(config, null, 2))
 }
 
 /**

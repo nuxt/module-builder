@@ -10,7 +10,7 @@ import { createDeclarationProgram, DeclarationError, declarationError, relativeS
 import type { DeclarationProgram } from './declarations.ts'
 import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, scriptExtension, valueSpecifiers } from './resolve.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
-import { createTsconfigResolver, writeDerivedTsconfig } from './tsconfig.ts'
+import { createTsconfigResolver, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
 import { declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
 import type { VueDeclarations, VueOptions } from './vue.ts'
 
@@ -25,6 +25,7 @@ export interface TransformOptions {
   sourcemap?: boolean
   jsx?: 'preserve' | { runtime?: 'automatic' | 'classic', importSource?: string }
   typescript?: { onlyRemoveTypeImports?: boolean }
+  tsconfig?: string
 }
 
 /** The shape of `transform` from `rolldown/utils`. */
@@ -237,6 +238,7 @@ class DirectoryBuild {
   private resolutions = new Map<string, Promise<Resolution>>()
   private references = new Map<string, Set<string>>()
   private transform: Promise<Transform> | undefined
+  private resolver: ReturnType<DirectoryBuild['tsconfigs']> | undefined
   private extension: string
   private dtsExtension: string
   private outBase: string
@@ -423,11 +425,14 @@ class DirectoryBuild {
 
   private async transpileSource(file: string, source: string, sourcemap = false) {
     const transform = await this.loadTransform()
+    const resolver = await (this.resolver ??= this.tsconfigs())
+    const project = resolver?.resolve(file)
     const result = await transform(file, /\.[cm]?tsx?$/.test(file) ? source.replace(EMPTY_IMPORT_RE, match => ' '.repeat(match.length)) : source, {
       lang: file.match(/\.[cm]?([jt]sx?)$/)![1],
       sourcemap,
       jsx: this.jsx(file),
       typescript: { onlyRemoveTypeImports: false },
+      ...project && project !== resolver?.root && { tsconfig: project.path },
     })
     if (result.errors.length) {
       throw new Error(`Failed to transpile ${relative(this.options.cwd, file)}:\n${result.errors.map(error => error.message).join('\n')}`)
@@ -540,11 +545,12 @@ class DirectoryBuild {
    */
   private async createEmitter(): Promise<Emitter> {
     const resolver = await this.tsconfigs()
+    const imports = await writeDependencyImports(this.options.cwd, resolver?.root)
     const programs = new Map<string | undefined, Promise<DeclarationProgram>>()
     const programFor = (tsconfig: TsConfigResult | undefined) => {
       let program = programs.get(tsconfig?.path)
       if (!program) {
-        program = createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths ?? {} }, [...this.scripts, ...this.outside.keys()])
+        program = createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths ?? {} }, [...this.scripts, ...this.outside.keys(), ...imports ? [imports] : []])
         programs.set(tsconfig?.path, program)
       }
       return program
@@ -556,7 +562,7 @@ class DirectoryBuild {
           return emitDeclarations([...this.vue, ...[...this.scripts, ...this.outside.keys()].filter(file => TYPESCRIPT_RE.test(file))], {
             ...this.options.vue || {},
             cwd: this.options.cwd,
-            tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths ?? {}),
+            tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths ?? {}, { vue: true, imports }),
           })
         })()
       : undefined

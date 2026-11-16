@@ -11,7 +11,7 @@ import builderPkg from '../../package.json' with { type: 'json' }
 import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
 import { DEFAULT_EXCLUDE } from '../rolldown/transpile-dir.ts'
 import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
 import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
@@ -74,6 +74,10 @@ export interface BuildPlan {
   ctx: BuildContext
   neverBundle: (string | RegExp)[]
   moduleTsconfig: TsConfigResult | undefined
+  /** The nearest tsconfig, which may delegate files to `references`. */
+  rootTsconfig: TsConfigResult | undefined
+  /** The referenced project that includes the module entry, which the bundler reads in place of a root tsconfig that only lists references. */
+  moduleProject?: string
   isolatedDeclarations: boolean
   selfPaths: Record<string, string[]>
   /** The tsconfig the module entry's declarations are generated with, written by {@link prepareBuild}, or `false` for none. */
@@ -134,6 +138,8 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     ctx,
     neverBundle: [...NUXT_EXTERNALS, ...config.neverBundle],
     moduleTsconfig,
+    rootTsconfig: tsconfigs.root,
+    ...moduleTsconfig && moduleTsconfig.path !== tsconfigs.root?.path && !tsconfigs.replaced && { moduleProject: moduleTsconfig.path },
     isolatedDeclarations: hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
     declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
@@ -159,7 +165,8 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { ke
 
   await writeServerRoutesStub(cwd)
   if (plan.moduleTsconfig && plan.declarationTsconfig) {
-    await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, plan.declarationTsconfig)
+    const imports = plan.moduleProject ? await writeDependencyImports(cwd, plan.rootTsconfig) : undefined
+    await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, { file: plan.declarationTsconfig, imports })
   }
 
   plan.prepared = analyseSources(plan)
@@ -271,7 +278,9 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
   await rewriteRuntimeDeclarations(outDir, outputs)
 
   if (shouldNudge(plan.isolatedDeclarations)) {
-    consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in your \`tsconfig.json\` to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
+    const project = plan.moduleProject && relative(cwd, plan.moduleProject)
+    const where = !project ? 'your `tsconfig.json`' : project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${project}\``
+    consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
   }
 
   await checkDeprecatedPackageFields(cwd)

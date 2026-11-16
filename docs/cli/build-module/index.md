@@ -35,7 +35,7 @@ Builds the module into `dist` for publishing. When the module has a `tsdown.conf
 
 ## `prepare`
 
-Generates `.nuxt` in the module root, which the module's `tsconfig.json` extends. It also writes the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
+Generates `.nuxt` in the module root, whose tsconfigs the module's `tsconfig.json` references. It also writes the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
 
 ### Arguments
 

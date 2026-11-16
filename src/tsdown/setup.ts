@@ -91,7 +91,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
     consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
-    await prepareModule(cwd, buildConfig)
+    await prepareModule(cwd, { config: buildConfig, outDir })
   }
 
   const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, loadConfig: async () => buildConfig })
@@ -148,6 +148,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   Object.assign(config, {
     entry: plan.entries,
+    ...config.tsconfig === undefined && plan.moduleProject && { tsconfig: plan.moduleProject },
     format: 'esm',
     outDir,
     clean: false,

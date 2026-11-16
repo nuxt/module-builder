@@ -17,7 +17,7 @@ import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
 import { selfReferencePaths } from '../src/build/tsconfig.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
@@ -1181,6 +1181,47 @@ describe('createTsconfigResolver', () => {
     expect(tsconfigPaths(root)).toEqual({ '#build/*': [join(cwd, '.nuxt/*')], '#shared': [join(cwd, 'shared')], '#mine/*': [join(cwd, 'mine/*')] })
     expect(root!.config.references).toEqual([{ path: join(cwd, 'tsconfig.node.json') }])
     expect(root!.config.include).toEqual(['../../../.nuxt/nuxt.d.ts', '../../../.nuxt/../src/**/*'])
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('should resolve each file to the referenced project that includes it, preferring the module\'s own tsconfigs and leaving the app\'s last', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-references-'))
+    await mkdir(join(cwd, '.nuxt'))
+    const write = (file: string, config: object) => writeFile(join(cwd, file), JSON.stringify(config))
+    await write('.nuxt/tsconfig.app.json', { include: ['../src/runtime'] })
+    await write('.nuxt/tsconfig.server.json', { include: ['../src/runtime/server'] })
+    await write('.nuxt/tsconfig.node.json', { include: ['../src/*.ts'] })
+    await write('tsconfig.module.json', { extends: './.nuxt/tsconfig.node.json', references: [{ path: './tsconfig.extra.json' }] })
+    await write('tsconfig.extra.json', { include: ['extra'] })
+    await write('tsconfig.json', { files: [], references: [{ path: './.nuxt/tsconfig.app.json' }, { path: './.nuxt/tsconfig.server.json' }, { path: './tsconfig.module.json' }] })
+    const { resolve: projectOf } = await createTsconfigResolver(cwd)
+    expect(projectOf(join(cwd, 'src/module.ts'))?.path).toBe(join(cwd, 'tsconfig.module.json'))
+    expect(projectOf(join(cwd, 'extra/helper.ts'))?.path).toBe(join(cwd, 'tsconfig.extra.json'))
+    expect(projectOf(join(cwd, 'src/runtime/server/api.ts'))?.path).toBe(join(cwd, '.nuxt/tsconfig.server.json'))
+    expect(projectOf(join(cwd, 'src/runtime/plugin.ts'))?.path).toBe(join(cwd, '.nuxt/tsconfig.app.json'))
+
+    await write('tsconfig.runtime.json', { extends: './.nuxt/tsconfig.app.json' })
+    await write('tsconfig.json', { files: [], references: [{ path: './.nuxt/tsconfig.app.json' }, { path: './.nuxt/tsconfig.server.json' }, { path: './tsconfig.runtime.json' }] })
+    expect((await createTsconfigResolver(cwd)).resolve(join(cwd, 'src/runtime/plugin.ts'))?.path).toBe(join(cwd, 'tsconfig.runtime.json'))
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('should read the root `compilerOptions` and `exclude` through `extends`, apart from tsconfigs in `.nuxt`', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-root-'))
+    await mkdir(join(cwd, '.nuxt'))
+    await mkdir(join(cwd, 'config'))
+    const write = (file: string, config: object) => writeFile(join(cwd, file), JSON.stringify(config))
+    await write('.nuxt/tsconfig.node.json', { compilerOptions: { types: ['generated'] }, exclude: ['../generated'] })
+    await write('config/base.json', { compilerOptions: { types: ['vitest/config', './types/globals.d.ts'], strict: true }, exclude: ['../test'] })
+    await write('tsconfig.json', { extends: ['./config/base', './.nuxt/tsconfig.node.json'], files: [], compilerOptions: { strict: false } })
+    expect(await rootTsconfig(cwd)).toEqual({ compilerOptions: { types: ['vitest/config', join(cwd, 'types/globals.d.ts')], strict: false }, exclude: [join(cwd, 'test')] })
+    await write('tsconfig.json', { extends: './config/base.json', exclude: ['dist'] })
+    expect((await rootTsconfig(cwd)).exclude).toEqual([join(cwd, 'dist')])
+    await mkdir(join(cwd, 'node_modules/shared-config'), { recursive: true })
+    await write('node_modules/shared-config/package.json', { name: 'shared-config', tsconfig: 'base.json' })
+    await write('node_modules/shared-config/base.json', { compilerOptions: { types: ['youtube'] } })
+    await write('tsconfig.json', { extends: 'shared-config', files: [] })
+    expect((await rootTsconfig(cwd)).compilerOptions).toEqual({ types: ['youtube'] })
     await rm(cwd, { recursive: true, force: true })
   })
 

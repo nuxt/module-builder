@@ -53,6 +53,8 @@ export type JsxComponentType = typeof JsxComponent
 export type { NuxtApp } from '#app'
 `
 
+const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '../src'] }
+
 describe('module builder', () => {
   const repoRoot = fileURLToPath(new URL('..', import.meta.url))
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
@@ -112,10 +114,16 @@ describe('module builder', () => {
   const flowOutput = new Map<string, { appTypes: string, nodeTypes: string, pack: string }>()
 
   beforeAll(async () => {
+    const legacyRootDir = rootDir.replace('example', '.temp-example-legacy-tsconfig')
+    await rm(legacyRootDir, { force: true, recursive: true })
+    await cp(rootDir, legacyRootDir, { recursive: true })
+    await writeFile(join(legacyRootDir, 'tsconfig.json'), JSON.stringify(LEGACY_TSCONFIG, null, 2))
+    await exec('pnpm', ['nuxt-module-build', 'prepare', legacyRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true })
+
     const copyExample = async (target: string, transform: (contents: string) => string) => {
       await mkdir(dirname(target), { recursive: true })
       await rm(target, { force: true, recursive: true })
-      await cp(rootDir, target, { recursive: true })
+      await cp(legacyRootDir, target, { recursive: true })
       const pkgPath = join(target, 'package.json')
       const { publishConfig: _, ...pkg } = publishedPackage(JSON.parse(await readFile(pkgPath, 'utf-8')))
       await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
@@ -868,7 +876,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const { stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'prepare', prepareLoaderRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
     expect(stderr).not.toContain('ERR_INTERNAL_ASSERTION')
     expect(exitCode).toBe(0)
-    expect(await readFile(join(prepareLoaderRootDir, '.nuxt/nuxt.d.ts'), 'utf-8')).toContain('/// <reference types="my-module" />')
+    expect(await readFile(join(prepareLoaderRootDir, '.nuxt/nuxt.node.d.ts'), 'utf-8')).toContain('/// <reference path="module-builder/types.d.mts" />')
     const modulesDts = await readFile(join(prepareLoaderRootDir, '.nuxt/types/modules.d.ts'), 'utf-8')
     expect(modulesDts).toContain(`typeof import(${JSON.stringify(join(prepareLoaderRootDir, 'src/module'))}).default`)
   }, 120 * 1000)
