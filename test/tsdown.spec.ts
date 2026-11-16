@@ -950,7 +950,7 @@ describe('with a root tsconfig that only lists references', () => {
     const result = await tsdown(dir, [], { CI: '' })
     expect(result.exitCode, result.stdout + result.stderr).toBe(0)
     expect(result.stdout).toContain('tsconfig: tsconfig.module.json')
-    expect(result.stdout).toContain('Set isolatedDeclarations: true in tsconfig.module.json')
+    expect(result.stdout).toMatch(/Set `?isolatedDeclarations: true`? in `?tsconfig\.module\.json`?/)
     expect(await ownsField()).toBe(false)
     const referencesDist = await readFile(join(dir, 'dist/module.d.mts'), 'utf-8')
 
