@@ -41,7 +41,7 @@
     "lint": "eslint .",
     "nuxt-module-build": "node ./src/cli.ts",
     "prepack": "pnpm build",
-    "test": "pnpm vitest --coverage",
+    "test": "pnpm vitest",
     "test:attw": "pnpm -C example pack --out ../.temp-attw/example.tgz && attw .temp-attw/example.tgz",
     "test:publint": "cd example && publint",
     "test:engines": "pnpm exec installed-check -d -i tsdown --no-workspaces --ignore @nuxt/cli",

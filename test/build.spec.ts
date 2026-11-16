@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { availableParallelism } from 'node:os'
 import process from 'node:process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
-import { exec } from 'tinyexec'
+import { exec as spawn } from 'tinyexec'
 import { readPackageJSON } from 'pkg-types'
 import { dirname, join, relative, resolve } from 'pathe'
 import { findStaticImports } from 'mlly'
@@ -14,6 +15,30 @@ import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
 import { publishedPackage } from '../src/build/package.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
+import { builderImport, repoRoot, tsdownBin } from './utils.ts'
+
+let running = 0
+const waiting: Array<() => void> = []
+async function exec(...args: Parameters<typeof spawn>) {
+  if (running < availableParallelism()) {
+    running++
+  }
+  else {
+    await new Promise<void>(resolve => waiting.push(resolve))
+  }
+  try {
+    return await spawn(...args)
+  }
+  finally {
+    const next = waiting.shift()
+    if (next) {
+      next()
+    }
+    else {
+      running--
+    }
+  }
+}
 
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
 
@@ -56,7 +81,6 @@ export type { NuxtApp } from '#app'
 const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '../src'] }
 
 describe('module builder', () => {
-  const repoRoot = fileURLToPath(new URL('..', import.meta.url))
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
   const secondRootDir = rootDir.replace('example', '.temp-example-without-options')
   const thirdRootDir = rootDir.replace('example', '.temp-example-with-runtime-imports')
@@ -89,18 +113,17 @@ describe('module builder', () => {
   let routesBuild = ''
   let buildConfigBuild = ''
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
+  const sourceFlowRootDir = rootDir.replace('example', '.temp-example-source-flow')
   const distFlowRootDir = rootDir.replace('example', '.temp-example-dist-flow')
   const packDir = rootDir.replace('example', '.temp-packs')
   const secondDistDir = join(secondRootDir, 'dist')
   const thirdDistDir = join(thirdRootDir, 'dist')
   const fourthDistDir = join(fourthRootDir, 'dist')
-  const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
-  const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
 
   const flows = [
     {
       name: 'source exports',
-      rootDir,
+      rootDir: sourceFlowRootDir,
       pack: ['pnpm', 'pack', '--pack-destination', join(packDir, 'source-exports')],
       nodeTypeErrors: [expect.stringContaining(`src/runtime/plugins/plugin.ts(1,34): error TS2307: Cannot find module '#app'`)],
     },
@@ -131,6 +154,24 @@ describe('module builder', () => {
       await writeFile(moduleSrc, transform(await readFile(moduleSrc, 'utf-8')))
     }
 
+    const enableIsolatedDeclarations = async (target: string) => {
+      const tsconfig = join(target, 'tsconfig.json')
+      await writeFile(tsconfig, JSON.stringify({ ...JSON.parse(await readFile(tsconfig, 'utf-8')), compilerOptions: { isolatedDeclarations: true } }))
+    }
+
+    // Builds the module declarations with oxc, for fixtures that do not test them
+    const isolate = async (target: string) => {
+      const moduleSrc = join(target, 'src/module.ts')
+      const contents = await readFile(moduleSrc, 'utf-8')
+      await writeFile(moduleSrc, [
+        `import type { NuxtModule } from '@nuxt/schema'`,
+        contents.replace(/export default defineNuxtModule(<ModuleOptions>)?\(\{/, (_, options = '') => `const module: NuxtModule${options} = defineNuxtModule${options}({`),
+        'export default module',
+      ].join('\n'))
+      await writeFile(join(target, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
+      await enableIsolatedDeclarations(target)
+    }
+
     // Prepare second root directory without type export
     await copyExample(secondRootDir, contents => contents.replace('export interface ModuleOptions', 'interface ModuleOptions'))
 
@@ -147,6 +188,7 @@ describe('module builder', () => {
     for (const directory of ['components', 'composables', 'assets']) {
       await rm(join(fourthRootDir, 'src/runtime', directory), { force: true, recursive: true })
     }
+    await isolate(fourthRootDir)
 
     const minimalModule = (name: string) => () => `import { defineNuxtModule } from '@nuxt/kit'
 
@@ -167,16 +209,13 @@ export default defineNuxtModule({
 
     await copyExample(noRuntimeRootDir, minimalModule('no-runtime'))
     await rm(join(noRuntimeRootDir, 'src/runtime'), { force: true, recursive: true })
+    await isolate(noRuntimeRootDir)
 
     await copyExample(vueOnlyRootDir, minimalModule('vue-only'))
     for (const file of ['assets', 'composables', 'plugins', 'components/JsxComponent.tsx']) {
       await rm(join(vueOnlyRootDir, 'src/runtime', file), { force: true, recursive: true })
     }
-
-    const enableIsolatedDeclarations = async (target: string) => {
-      const tsconfig = join(target, 'tsconfig.json')
-      await writeFile(tsconfig, JSON.stringify({ ...JSON.parse(await readFile(tsconfig, 'utf-8')), compilerOptions: { isolatedDeclarations: true } }))
-    }
+    await isolate(vueOnlyRootDir)
 
     await copyExample(isolatedRootDir, contents => contents)
     await enableIsolatedDeclarations(isolatedRootDir)
@@ -216,15 +255,9 @@ void [light, dark, options]
     await copyExample(valueExportsRootDir, contents => `${contents}\n${valueExports}\n`)
     await prepareValueExportsConsumer(valueExportsRootDir)
 
-    await copyExample(valueExportsIsolatedRootDir, contents => [
-      `import type { NuxtModule } from '@nuxt/schema'`,
-      contents.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
-      'export default module',
-      valueExports,
-    ].join('\n'))
+    await copyExample(valueExportsIsolatedRootDir, contents => `${contents}\n${valueExports}\n`)
     await prepareValueExportsConsumer(valueExportsIsolatedRootDir)
-    await writeFile(join(valueExportsIsolatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
-    await enableIsolatedDeclarations(valueExportsIsolatedRootDir)
+    await isolate(valueExportsIsolatedRootDir)
 
     await copyExample(nonErasableRootDir, contents => `import { name as packageName } from '../package.json'
 import { Level } from './levels.ts'
@@ -239,6 +272,7 @@ ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<str
 
     await copyExample(autoPrepareRootDir, contents => contents)
     await rm(join(autoPrepareRootDir, '.nuxt'), { recursive: true, force: true })
+    await isolate(autoPrepareRootDir)
 
     await copyExample(typeErrorRootDir, contents => contents)
     await rm(join(typeErrorRootDir, 'src/runtime/components'), { recursive: true, force: true })
@@ -254,13 +288,8 @@ ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<str
     await writeFile(join(semanticErrorRootDir, 'src/runtime/composables/useSize.ts'), `import { computed } from 'vue'\nimport type { Props } from '../components/Sized.vue'\n\nexport function useSize(props: Props) {\n  return computed(() => props.size)\n}\n`)
     await copyExample(vueErrorRootDir, minimalModule('vue-error'))
     await rm(join(vueErrorRootDir, 'src/runtime'), { recursive: true, force: true })
-    await copyExample(annotatedRootDir, contents => [
-      `import type { NuxtModule } from '@nuxt/schema'`,
-      contents.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
-      'export default module',
-    ].join('\n'))
-    await writeFile(join(annotatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
-    await enableIsolatedDeclarations(annotatedRootDir)
+    await copyExample(annotatedRootDir, contents => contents)
+    await isolate(annotatedRootDir)
 
     // Prepare a root directory whose tsconfig maps every bare specifier into `src/`,
     // with a file that shadows a real package
@@ -419,6 +448,7 @@ export const content: unknown = config
     }))
 
     await copyExample(replaceRootDir, contents => contents)
+    await isolate(replaceRootDir)
     await writeFiles(replaceRootDir, {
       'build.config.ts': `import { defineBuildConfig } from 'unbuild'
 
@@ -574,6 +604,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await writeFile(portableNuxtTypes, `/// <reference types="fake-schema" />\n${await readFile(portableNuxtTypes, 'utf-8')}`)
 
     await copyExample(stylesheetsRootDir, contents => contents)
+    await isolate(stylesheetsRootDir)
     await writeFiles(join(stylesheetsRootDir, 'src/runtime'), {
       'styles/card.css': `@import "./base.css";\n\n.card {\n  user-select: none;\n  & .title { font-weight: bold; }\n  &:hover { color: rebeccapurple; }\n}\n`,
       'styles/base.css': `.base { margin: 0px 0px; }\n`,
@@ -678,6 +709,14 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await rm(join(routesRootDir, 'playground/node_modules/my-module'), { force: true })
     await symlink(routesRootDir, join(routesRootDir, 'playground/node_modules/my-module'))
 
+    await rm(sourceFlowRootDir, { recursive: true, force: true })
+    await cp(rootDir, sourceFlowRootDir, { recursive: true })
+    for (const dir of ['dist', '.nuxt', 'playground/.nuxt', 'playground/.output']) {
+      await rm(join(sourceFlowRootDir, dir), { recursive: true, force: true })
+    }
+    await rm(join(sourceFlowRootDir, 'playground/node_modules/my-module'), { force: true })
+    await symlink(sourceFlowRootDir, join(sourceFlowRootDir, 'playground/node_modules/my-module'))
+
     await copyExample(distFlowRootDir, contents => contents)
     const { build: distFlowBuild, ...distFlowPkg } = JSON.parse(await readFile(join(distFlowRootDir, 'package.json'), 'utf-8'))
     await writeFile(join(distFlowRootDir, 'package.json'), JSON.stringify({
@@ -739,7 +778,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       exec('pnpm', ['nuxt-module-build', 'build', valueExportsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', valueExportsIsolatedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
     ])
-  }, 180 * 1000)
+  }, 300 * 1000)
 
   it('should build `build.config.ts` entries under the names unbuild gave them', async () => {
     const files = await listFiles(join(buildConfigRootDir, 'dist'))
@@ -826,7 +865,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       expect(stdout + stderr, args.join(' ')).toMatch(/src\/module\.ts:\d+:\d+: angle-bracket type assertion \(write `value as Type`\)/)
       expect(stdout + stderr, args.join(' ')).toContain(guide('module-code-loads-with-node'))
     }
-  }, 120 * 1000)
+  })
 
   it('should refuse an `outDir` that contains the module root', async () => {
     for (const outDir of ['.', '..']) {
@@ -853,7 +892,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).not.toContain('build.config.ts: hooks[\'mkdist:entry:options\']')
     expect(stdout + stderr).toContain(`build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`)
     expect(stdout + stderr).toContain(guide('unsupported-build-options'))
-  }, 60 * 1000)
+  })
 
   it('should surface isolated declaration diagnostics when the tsconfig opts in', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', isolatedRootDir], { nodeOptions: { cwd: repoRoot } })
@@ -862,7 +901,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(/TS90\d\d/)
     expect(stdout + stderr).toContain(guide('isolated-declarations'))
     expect(stdout + stderr).not.toMatch(/Type declarations could not be generated/)
-  }, 60 * 1000)
+  })
 
   it('should prepare a module without `.nuxt` before building it', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', autoPrepareRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NODE_ENV: '', TEST: '' } } })
@@ -870,7 +909,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(new RegExp(`\\.nuxt\`? not found, running \`?nuxt-module-build prepare\`? first\\..*${guide('preparing-nuxt')}`))
     const declaration = await readFile(join(autoPrepareRootDir, 'dist/runtime/composables/useAliasedApp.d.ts'), 'utf-8')
     expect(declaration).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
-  }, 120 * 1000)
+  })
 
   it('should prepare a module whose entry Node cannot import natively without handing it to jiti', async () => {
     const { stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'prepare', prepareLoaderRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } } })
@@ -879,7 +918,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(await readFile(join(prepareLoaderRootDir, '.nuxt/nuxt.node.d.ts'), 'utf-8')).toContain('/// <reference path="module-builder/types.d.mts" />')
     const modulesDts = await readFile(join(prepareLoaderRootDir, '.nuxt/types/modules.d.ts'), 'utf-8')
     expect(modulesDts).toContain(`typeof import(${JSON.stringify(join(prepareLoaderRootDir, 'src/module'))}).default`)
-  }, 120 * 1000)
+  })
 
   it('should explain type errors that prevent declaration generation', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', typeErrorRootDir], { nodeOptions: { cwd: repoRoot } })
@@ -889,7 +928,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(/cannot reference by name.*explicit type annotation, such as `ReturnType<typeof fn>` for a value produced by an imported `fn`:\n- `defineCachedHandler` in \S*src\/runtime\/server\/cached\.ts:3\n/)
     expect(stdout + stderr).toContain(guide('portability-errors'))
     expect(existsSync(join(typeErrorRootDir, 'dist'))).toBe(false)
-  }, 60 * 1000)
+  })
 
   it('should fail on portability errors in a single-file component and in a script sharing its program', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', vueErrorRootDir], { nodeOptions: { cwd: repoRoot } })
@@ -900,7 +939,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(stdout + stderr).toMatch(/\n- `defineCachedHandler` in \S*src\/runtime\/server\/cached\.ts:3\n/)
     expect(stdout + stderr).toContain(guide('portability-errors'))
     expect(existsSync(join(vueErrorRootDir, 'dist'))).toBe(false)
-  }, 60 * 1000)
+  })
 
   it('should warn about type errors that do not affect runtime declarations and build anyway', async () => {
     const { stdout, stderr, exitCode } = await exec('pnpm', ['nuxt-module-build', 'build', semanticErrorRootDir], { nodeOptions: { cwd: repoRoot } })
@@ -918,7 +957,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     const composable = await readFile(join(semanticErrorRootDir, 'dist/runtime/composables/useSize.d.ts'), 'utf-8')
     expect(composable).toContain(`import type { Props } from '../components/Sized.vue';`)
     expect(composable).toMatch(/export declare function useSize\(props: Props\): import\("vue"\)\.ComputedRef<"xs" \| "sm" \| "md" \| undefined>;/)
-  }, 60 * 1000)
+  })
 
   it('should build an annotated module under `isolatedDeclarations` while still inferring runtime types', async () => {
     const annotatedDistDir = join(annotatedRootDir, 'dist')
@@ -952,7 +991,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     expect(built).toContain('loaded helper')
     expect(built).toContain('through imports')
     expect(built).not.toContain('#internal')
-  }, 60 * 1000)
+  })
 
   it('should re-export the module\'s default export from the types that `prepare` writes', async () => {
     await exec('pnpm', ['nuxt-module-build', 'prepare', packageImportsRootDir], { nodeOptions: { cwd: repoRoot, env: { ...process.env, NUXT_TELEMETRY_DISABLED: '1' } }, throwOnError: true })
@@ -1323,7 +1362,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       expect(stdout + stderr, root).toBe('')
       expect(exitCode).toBe(0)
     }
-  }, 60 * 1000)
+  })
 
   it('should generate types when no ModuleOptions are exported', async () => {
     const types = await readFile(join(secondDistDir, 'types.d.mts'), 'utf-8')
@@ -1428,8 +1467,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
   describe('with plain `tsdown` and `builder()`', () => {
     const env = { ...process.env, NODE_ENV: '', TEST: '' }
-    const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
-    const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
     const ejectedExampleRootDir = rootDir.replace('example', '.temp-example-ejected')
 
     const hashDir = async (dir: string) => {
@@ -1522,7 +1559,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       }
       expect(isolated!.exitCode).not.toBe(0)
       expect(isolated!.stdout + isolated!.stderr).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
-    }, 120 * 1000)
+    })
   })
 
   it('should pack the `dist` paths in `publishConfig` with pnpm, and `dist` with npm, without warnings', async () => {
@@ -1539,11 +1576,11 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should refuse to build source exports for a pack by npm, including when a pnpm script runs it', async () => {
-    const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env: npmPackFromPnpmScript() } })
+    const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: sourceFlowRootDir, env: npmPackFromPnpmScript() } })
     expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
     expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
-    expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
-  }, 60 * 1000)
+    expect(existsSync(join(sourceFlowRootDir, 'dist/module.mjs'))).toBe(true)
+  })
 
   describe.each(flows)('$name flow', ({ name, rootDir, nodeTypeErrors }) => {
     const distDir = join(rootDir, 'dist')

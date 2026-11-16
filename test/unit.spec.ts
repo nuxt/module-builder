@@ -838,7 +838,7 @@ describe('writeSourceTypes', () => {
       'src/siblings.d.ts': `export interface ModuleRuntimeConfig { secret: string }\n`,
     })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
-  }, 60 * 1000)
+  })
 })
 
 describe('isolatedDeclarations nudge', () => {
@@ -1264,7 +1264,7 @@ describe('writeDerivedTsconfig', () => {
     expect(diagnostics(project)).toEqual([])
     expect(diagnostics(parse(join(cwd, 'tsconfig.app.json')))).not.toEqual([])
     await rm(cwd, { recursive: true, force: true })
-  }, 60 * 1000)
+  })
 
   it('should list the files of the module, leaving out its playground, docs and tests, for a tsconfig without `include` or `files`', async () => {
     const { default: ts } = await import('typescript')
