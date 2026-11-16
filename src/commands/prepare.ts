@@ -77,6 +77,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
   const declarationsDir = join(sourceTypesDir(cwd), 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
   const ownPaths = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : {}
+  let perContext = false
   const isOwnTypes = (reference: { path: string } | { types: string }) => 'types' in reference && (reference.types === name || reference.types === entryPath)
   const compilerOptions = Object.fromEntries(Object.entries(rootConfig.compilerOptions).filter(([key]) => !PATH_OPTIONS.has(key)))
   const withRootOptions = (options: Record<string, unknown> = {}) => ({
@@ -138,18 +139,27 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
           // Nuxt adds `dist` paths in the directory of each module's entry, the package root of an installed module.
           const entryDist = dirname(entryPath) === cwd ? undefined : join(relative(nuxt.options.buildDir, dirname(entryPath)), 'dist')
           const outsideEntryDist = (pattern: string) => entryDist === undefined || (pattern !== entryDist && !pattern.startsWith(`${entryDist}/`))
+          // Nuxt 3 generates a single tsconfig, which is left as it is.
+          nuxt.hooks.hook('prepare:types', ({ nodeTsConfig }) => {
+            perContext = nodeTsConfig !== undefined
+          })
           nuxt.hooks.hook('nitro:init', (nitro) => {
             nitro.hooks.hook('types:extend', ({ tsConfig }: { tsConfig?: { include?: string[], exclude?: string[], compilerOptions?: { paths?: Record<string, string[]> } } }) => {
               if (tsConfig) {
                 tsConfig.include &&= tsConfig.include.filter(outsideEntryDist)
                 tsConfig.exclude &&= tsConfig.exclude.filter(outsideEntryDist)
+              }
+              if (tsConfig && perContext) {
                 tsConfig.compilerOptions = { ...tsConfig.compilerOptions, paths: { ...tsConfig.compilerOptions?.paths, ...ownPaths } }
               }
             })
           })
           // Registered once every module is set up, so that it sees the aliases and options they add.
           nuxt.hooks.hook('modules:done', () => {
-            nuxt.hooks.hook('prepare:types', ({ references, nodeReferences, tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig }) => {
+            nuxt.hooks.hook('prepare:types', ({ references, nodeReferences = [], tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig }) => {
+              if (!nodeTsConfig) {
+                return
+              }
               // The app's tsconfig covers the module root as a Nuxt app's source directory, and the workspace, so it is narrowed to the runtime directories.
               const rootGlobs = new Set([cwd, nuxt.options.workspaceDir].flatMap((dir) => {
                 const root = relative(nuxt.options.buildDir, dir) || '.'
@@ -157,7 +167,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
               }))
               tsConfig.include = [...(tsConfig.include ?? []).filter(pattern => !rootGlobs.has(pattern)), ...runtimeDirs.filter(dir => !dir.startsWith(`${runtimeDirs[0]}/`))]
               tsConfig.exclude = [...tsConfig.exclude ?? [], resolve(cwd, '**/nuxt.config.*')]
-              for (const context of [tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig]) {
+              for (const context of [tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig].filter(context => context !== undefined)) {
                 context.include &&= context.include.filter(outsideEntryDist)
                 context.exclude &&= context.exclude.filter(outsideEntryDist)
                 context.compilerOptions = withRootOptions(context.compilerOptions)
@@ -187,7 +197,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
               if (name) {
                 tsConfig.include = [...tsConfig.include ?? [], ownTypes]
               }
-              for (const context of [tsConfig, serverTsConfig, sharedTsConfig]) {
+              for (const context of [tsConfig, serverTsConfig, sharedTsConfig].filter(context => context !== undefined)) {
                 context.compilerOptions = { ...context.compilerOptions, paths: { ...context.compilerOptions?.paths, ...ownPaths } }
               }
             })
@@ -198,7 +208,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
   })
   await writeSourceTypes(sourceTypesDir(cwd), entryPath)
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
-  if (name) {
+  if (name && perContext) {
     const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => !relative(dir, file).startsWith('..')))
     const tsconfigs = await createTsconfigResolver(cwd)
     const project = tsconfigs.resolve(entryPath)
