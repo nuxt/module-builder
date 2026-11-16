@@ -154,6 +154,24 @@ describe('module builder', () => {
       await writeFile(moduleSrc, transform(await readFile(moduleSrc, 'utf-8')))
     }
 
+    const enableIsolatedDeclarations = async (target: string) => {
+      const tsconfig = join(target, 'tsconfig.json')
+      await writeFile(tsconfig, JSON.stringify({ ...JSON.parse(await readFile(tsconfig, 'utf-8')), compilerOptions: { isolatedDeclarations: true } }))
+    }
+
+    // Builds the module declarations with oxc, for fixtures that do not test them
+    const isolate = async (target: string) => {
+      const moduleSrc = join(target, 'src/module.ts')
+      const contents = await readFile(moduleSrc, 'utf-8')
+      await writeFile(moduleSrc, [
+        `import type { NuxtModule } from '@nuxt/schema'`,
+        contents.replace(/export default defineNuxtModule(<ModuleOptions>)?\(\{/, (_, options = '') => `const module: NuxtModule${options} = defineNuxtModule${options}({`),
+        'export default module',
+      ].join('\n'))
+      await writeFile(join(target, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
+      await enableIsolatedDeclarations(target)
+    }
+
     // Prepare second root directory without type export
     await copyExample(secondRootDir, contents => contents.replace('export interface ModuleOptions', 'interface ModuleOptions'))
 
@@ -170,6 +188,7 @@ describe('module builder', () => {
     for (const directory of ['components', 'composables', 'assets']) {
       await rm(join(fourthRootDir, 'src/runtime', directory), { force: true, recursive: true })
     }
+    await isolate(fourthRootDir)
 
     const minimalModule = (name: string) => () => `import { defineNuxtModule } from '@nuxt/kit'
 
@@ -190,16 +209,13 @@ export default defineNuxtModule({
 
     await copyExample(noRuntimeRootDir, minimalModule('no-runtime'))
     await rm(join(noRuntimeRootDir, 'src/runtime'), { force: true, recursive: true })
+    await isolate(noRuntimeRootDir)
 
     await copyExample(vueOnlyRootDir, minimalModule('vue-only'))
     for (const file of ['assets', 'composables', 'plugins', 'components/JsxComponent.tsx']) {
       await rm(join(vueOnlyRootDir, 'src/runtime', file), { force: true, recursive: true })
     }
-
-    const enableIsolatedDeclarations = async (target: string) => {
-      const tsconfig = join(target, 'tsconfig.json')
-      await writeFile(tsconfig, JSON.stringify({ ...JSON.parse(await readFile(tsconfig, 'utf-8')), compilerOptions: { isolatedDeclarations: true } }))
-    }
+    await isolate(vueOnlyRootDir)
 
     await copyExample(isolatedRootDir, contents => contents)
     await enableIsolatedDeclarations(isolatedRootDir)
@@ -239,15 +255,9 @@ void [light, dark, options]
     await copyExample(valueExportsRootDir, contents => `${contents}\n${valueExports}\n`)
     await prepareValueExportsConsumer(valueExportsRootDir)
 
-    await copyExample(valueExportsIsolatedRootDir, contents => [
-      `import type { NuxtModule } from '@nuxt/schema'`,
-      contents.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
-      'export default module',
-      valueExports,
-    ].join('\n'))
+    await copyExample(valueExportsIsolatedRootDir, contents => `${contents}\n${valueExports}\n`)
     await prepareValueExportsConsumer(valueExportsIsolatedRootDir)
-    await writeFile(join(valueExportsIsolatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
-    await enableIsolatedDeclarations(valueExportsIsolatedRootDir)
+    await isolate(valueExportsIsolatedRootDir)
 
     await copyExample(nonErasableRootDir, contents => `import { name as packageName } from '../package.json'
 import { Level } from './levels.ts'
@@ -262,6 +272,7 @@ ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<str
 
     await copyExample(autoPrepareRootDir, contents => contents)
     await rm(join(autoPrepareRootDir, '.nuxt'), { recursive: true, force: true })
+    await isolate(autoPrepareRootDir)
 
     await copyExample(typeErrorRootDir, contents => contents)
     await rm(join(typeErrorRootDir, 'src/runtime/components'), { recursive: true, force: true })
@@ -277,13 +288,8 @@ ${contents.replace(`name: 'my-module'`, 'name: new Holder(`${packageName}-${<str
     await writeFile(join(semanticErrorRootDir, 'src/runtime/composables/useSize.ts'), `import { computed } from 'vue'\nimport type { Props } from '../components/Sized.vue'\n\nexport function useSize(props: Props) {\n  return computed(() => props.size)\n}\n`)
     await copyExample(vueErrorRootDir, minimalModule('vue-error'))
     await rm(join(vueErrorRootDir, 'src/runtime'), { recursive: true, force: true })
-    await copyExample(annotatedRootDir, contents => [
-      `import type { NuxtModule } from '@nuxt/schema'`,
-      contents.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
-      'export default module',
-    ].join('\n'))
-    await writeFile(join(annotatedRootDir, 'src/utils.ts'), 'export const myModuleUtils = (): void => {}\n')
-    await enableIsolatedDeclarations(annotatedRootDir)
+    await copyExample(annotatedRootDir, contents => contents)
+    await isolate(annotatedRootDir)
 
     // Prepare a root directory whose tsconfig maps every bare specifier into `src/`,
     // with a file that shadows a real package
@@ -442,6 +448,7 @@ export const content: unknown = config
     }))
 
     await copyExample(replaceRootDir, contents => contents)
+    await isolate(replaceRootDir)
     await writeFiles(replaceRootDir, {
       'build.config.ts': `import { defineBuildConfig } from 'unbuild'
 
@@ -597,6 +604,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await writeFile(portableNuxtTypes, `/// <reference types="fake-schema" />\n${await readFile(portableNuxtTypes, 'utf-8')}`)
 
     await copyExample(stylesheetsRootDir, contents => contents)
+    await isolate(stylesheetsRootDir)
     await writeFiles(join(stylesheetsRootDir, 'src/runtime'), {
       'styles/card.css': `@import "./base.css";\n\n.card {\n  user-select: none;\n  & .title { font-weight: bold; }\n  &:hover { color: rebeccapurple; }\n}\n`,
       'styles/base.css': `.base { margin: 0px 0px; }\n`,
