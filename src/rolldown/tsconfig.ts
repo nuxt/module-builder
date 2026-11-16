@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, statSync } from 'node:fs'
-import { createRequire } from 'node:module'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createFilesMatcher, createPathsMatcher, getTsconfig, parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
@@ -118,7 +117,7 @@ async function inheritedTsconfig(file: string, skip: (file: string) => boolean):
   const layer = (path: string, ancestors: string[]): InheritedTsconfig => {
     const raw = ts.readConfigFile(path, ts.sys.readFile).config as RawTsconfig | undefined
     const bases = [raw?.extends ?? []].flat()
-      .map(target => resolveExtends(target, dirname(path)))
+      .map(target => resolveExtends(ts, target, dirname(path)))
       .filter((target): target is string => target !== undefined && !ancestors.includes(target) && !skip(target))
       .map(target => layer(target, [...ancestors, path]))
     return {
@@ -131,28 +130,12 @@ async function inheritedTsconfig(file: string, skip: (file: string) => boolean):
 
 const RELATIVE_RE = /^\.\.?[\\/]/
 
-const isFile = (path: string) => existsSync(path) && statSync(path).isFile()
-
-function resolveExtends(target: string, from: string) {
-  const path = extendsPath(target, from)
-  return path && isFile(path) ? path : undefined
-}
-
-/** The tsconfig an `extends` entry names, resolved as TypeScript resolves it. A relative one need not exist. */
-function extendsPath(target: string, from: string) {
-  if (RELATIVE_RE.test(target) || isAbsolute(target)) {
-    const path = resolve(from, target)
-    return path.endsWith('.json') || isFile(path) ? path : `${path}.json`
-  }
-  const require = createRequire(join(from, 'tsconfig.json'))
-  for (const candidate of [target, `${target}.json`, `${target}/tsconfig.json`]) {
-    try {
-      return require.resolve(candidate)
-    }
-    catch {
-      continue
-    }
-  }
+/** The existing tsconfig that an `extends` entry in a tsconfig in `from` names, resolved by TypeScript. */
+function resolveExtends(ts: typeof import('typescript'), target: string, from: string) {
+  const file = join(from, 'tsconfig.json')
+  const source = ts.readJsonConfigFile(file, () => JSON.stringify({ extends: target, files: [], include: [] }))
+  ts.parseJsonSourceFileConfigFileContent(source, { ...ts.sys, readDirectory: () => [] }, from, undefined, file)
+  return source.extendedSourceFiles?.[0]
 }
 
 /** Path options resolved against `from`, the layer's directory; `${configDir}` and relative `types` are the leaf tsconfig's. */

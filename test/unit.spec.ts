@@ -1217,6 +1217,11 @@ describe('createTsconfigResolver', () => {
     expect(await rootTsconfig(cwd)).toEqual({ compilerOptions: { types: ['vitest/config', join(cwd, 'types/globals.d.ts')], strict: false }, exclude: [join(cwd, 'test')] })
     await write('tsconfig.json', { extends: './config/base.json', exclude: ['dist'] })
     expect((await rootTsconfig(cwd)).exclude).toEqual([join(cwd, 'dist')])
+    await mkdir(join(cwd, 'node_modules/shared-config'), { recursive: true })
+    await write('node_modules/shared-config/package.json', { name: 'shared-config', tsconfig: 'base.json' })
+    await write('node_modules/shared-config/base.json', { compilerOptions: { types: ['youtube'] } })
+    await write('tsconfig.json', { extends: 'shared-config', files: [] })
+    expect((await rootTsconfig(cwd)).compilerOptions).toEqual({ types: ['youtube'] })
     await rm(cwd, { recursive: true, force: true })
   })
 
