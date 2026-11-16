@@ -395,9 +395,10 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
   const extraFileExtensions = [{ extension: 'vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }]
   const host = { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} }
   const files = new Set(projects.flatMap(project => projectFiles(ts.getParsedCommandLineOfConfigFile(project.path, {}, host, undefined, undefined, extraFileExtensions), cwd)))
+  const sources = await Promise.all([...files].sort().map(file => readFile(file, 'utf8').catch(() => '')))
   const specifiers = new Map<string, string>()
-  for (const file of [...files].sort()) {
-    for (const { specifier } of moduleSpecifiers(await readFile(file, 'utf8'))) {
+  for (const source of sources) {
+    for (const { specifier } of moduleSpecifiers(source)) {
       const name = /^[#~@]\//.test(specifier) || specifier.startsWith('#') || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
       if (name && !specifiers.has(name) && findPackageDir(name, cwd)) {
         specifiers.set(name, specifier)
