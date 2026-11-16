@@ -5,5 +5,5 @@ export default defineConfig({
   format: 'esm',
   dts: true,
   publint: { level: 'error' },
-  attw: { level: 'error', ignoreRules: ['cjs-resolves-to-esm'] },
+  attw: { level: 'error', profile: 'strict', ignoreRules: ['cjs-resolves-to-esm'] },
 })
