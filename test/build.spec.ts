@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { availableParallelism } from 'node:os'
 import process from 'node:process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { cp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { beforeAll, describe, it, expect } from 'vitest'
-import { exec } from 'tinyexec'
+import { exec as spawn } from 'tinyexec'
 import { readPackageJSON } from 'pkg-types'
 import { dirname, join, relative, resolve } from 'pathe'
 import { findStaticImports } from 'mlly'
@@ -14,6 +15,30 @@ import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
 import { publishedPackage } from '../src/build/package.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
+import { builderImport, repoRoot, tsdownBin } from './utils.ts'
+
+let running = 0
+const waiting: Array<() => void> = []
+async function exec(...args: Parameters<typeof spawn>) {
+  if (running < availableParallelism()) {
+    running++
+  }
+  else {
+    await new Promise<void>(resolve => waiting.push(resolve))
+  }
+  try {
+    return await spawn(...args)
+  }
+  finally {
+    const next = waiting.shift()
+    if (next) {
+      next()
+    }
+    else {
+      running--
+    }
+  }
+}
 
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
 
@@ -56,7 +81,6 @@ export type { NuxtApp } from '#app'
 const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '../src'] }
 
 describe('module builder', () => {
-  const repoRoot = fileURLToPath(new URL('..', import.meta.url))
   const rootDir = fileURLToPath(new URL('../example', import.meta.url))
   const secondRootDir = rootDir.replace('example', '.temp-example-without-options')
   const thirdRootDir = rootDir.replace('example', '.temp-example-with-runtime-imports')
@@ -89,18 +113,17 @@ describe('module builder', () => {
   let routesBuild = ''
   let buildConfigBuild = ''
   const encodedRootDir = rootDir.replace('example', '.temp-example with spaces ü')
+  const sourceFlowRootDir = rootDir.replace('example', '.temp-example-source-flow')
   const distFlowRootDir = rootDir.replace('example', '.temp-example-dist-flow')
   const packDir = rootDir.replace('example', '.temp-packs')
   const secondDistDir = join(secondRootDir, 'dist')
   const thirdDistDir = join(thirdRootDir, 'dist')
   const fourthDistDir = join(fourthRootDir, 'dist')
-  const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
-  const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
 
   const flows = [
     {
       name: 'source exports',
-      rootDir,
+      rootDir: sourceFlowRootDir,
       pack: ['pnpm', 'pack', '--pack-destination', join(packDir, 'source-exports')],
       nodeTypeErrors: [expect.stringContaining(`src/runtime/plugins/plugin.ts(1,34): error TS2307: Cannot find module '#app'`)],
     },
@@ -677,6 +700,14 @@ export const defineOptions = (options: Options) => ({ options, helper })
     await cp(join(rootDir, 'package.json'), join(routesRootDir, 'package.json'))
     await rm(join(routesRootDir, 'playground/node_modules/my-module'), { force: true })
     await symlink(routesRootDir, join(routesRootDir, 'playground/node_modules/my-module'))
+
+    await rm(sourceFlowRootDir, { recursive: true, force: true })
+    await cp(rootDir, sourceFlowRootDir, { recursive: true })
+    for (const dir of ['dist', '.nuxt', 'playground/.nuxt', 'playground/.output']) {
+      await rm(join(sourceFlowRootDir, dir), { recursive: true, force: true })
+    }
+    await rm(join(sourceFlowRootDir, 'playground/node_modules/my-module'), { force: true })
+    await symlink(sourceFlowRootDir, join(sourceFlowRootDir, 'playground/node_modules/my-module'))
 
     await copyExample(distFlowRootDir, contents => contents)
     const { build: distFlowBuild, ...distFlowPkg } = JSON.parse(await readFile(join(distFlowRootDir, 'package.json'), 'utf-8'))
@@ -1428,8 +1459,6 @@ export const defineOptions = (options: Options) => ({ options, helper })
 
   describe('with plain `tsdown` and `builder()`', () => {
     const env = { ...process.env, NODE_ENV: '', TEST: '' }
-    const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
-    const builderImport = `import { builder } from ${JSON.stringify(pathToFileURL(join(repoRoot, 'src/tsdown/index.ts')).href)}`
     const ejectedExampleRootDir = rootDir.replace('example', '.temp-example-ejected')
 
     const hashDir = async (dir: string) => {
@@ -1539,10 +1568,10 @@ export const defineOptions = (options: Options) => ({ options, helper })
   })
 
   it('should refuse to build source exports for a pack by npm, including when a pnpm script runs it', async () => {
-    const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: rootDir, env: npmPackFromPnpmScript() } })
+    const { stdout, stderr, exitCode } = await exec('node', [...packProbeArgs, join(repoRoot, 'src/cli.ts'), 'build'], { nodeOptions: { cwd: sourceFlowRootDir, env: npmPackFromPnpmScript() } })
     expect(exitCode, `${packProbeContext()}\n${stdout}${stderr}`).not.toBe(0)
     expect(stdout + stderr).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
-    expect(existsSync(join(rootDir, 'dist/module.mjs'))).toBe(true)
+    expect(existsSync(join(sourceFlowRootDir, 'dist/module.mjs'))).toBe(true)
   })
 
   describe.each(flows)('$name flow', ({ name, rootDir, nodeTypeErrors }) => {
