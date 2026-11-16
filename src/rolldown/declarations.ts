@@ -69,7 +69,7 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
     sources: () => createProgram().getSourceFiles().filter(source => !source.isDeclarationFile).map(source => source.fileName),
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
-      program = createProgram()
+      const program = createProgram()
       const { isDeclarationEmitDiagnostic } = await classifier
       const declarations = new Map<string, string>()
       const errors: ts.Diagnostic[] = []
