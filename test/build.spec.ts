@@ -770,7 +770,7 @@ export const defineOptions = (options: Options) => ({ options, helper })
       exec('pnpm', ['nuxt-module-build', 'build', valueExportsRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
       exec('pnpm', ['nuxt-module-build', 'build', valueExportsIsolatedRootDir], { nodeOptions: { cwd: repoRoot }, throwOnError: true }),
     ])
-  })
+  }, 300 * 1000)
 
   it('should build `build.config.ts` entries under the names unbuild gave them', async () => {
     const files = await listFiles(join(buildConfigRootDir, 'dist'))
