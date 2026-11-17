@@ -246,7 +246,7 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
 /** The file that `specifier` maps to through the `imports` of the closest `package.json`, with the conditions of `import`. */
 function resolvePackageImport(specifier: string, parentDir: string) {
   const scope = findUp(parentDir, dir => existsSync(join(dir, 'package.json')) ? dir : undefined)
-  const { imports } = scope ? JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8')) as PackageJson : {}
+  const { imports } = scope ? JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8').replace(/^\uFEFF/, '')) as PackageJson : {}
   const key = isPlainObject(imports) ? importsKeyFor(Object.keys(imports), specifier) : undefined
   if (!scope || !key) {
     return

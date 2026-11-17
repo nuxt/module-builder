@@ -100,7 +100,7 @@ export function relativeSpecifier(from: string, to: string): string {
 
 /** The `package.json` in `dir`. */
 export async function readPackageJson(dir: string): Promise<PackageJson> {
-  return JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as PackageJson
+  return JSON.parse((await readFile(join(dir, 'package.json'), 'utf8')).replace(/^\uFEFF/, '')) as PackageJson
 }
 
 /**

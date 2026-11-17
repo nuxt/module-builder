@@ -14,7 +14,7 @@ import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
 import { moduleSpecifiers, rewriteSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
-import { logger, relativeSpecifier } from '../src/utils.ts'
+import { logger, readPackageJson, relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -1303,6 +1303,12 @@ describe('build plan', () => {
   it('should treat a dot-prefixed name as a path inside the directory', () => {
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')
+  })
+
+  it('should read a `package.json` that starts with a byte order mark', async () => {
+    const cwd = await tempDir()
+    await writeFile(join(cwd, 'package.json'), `\uFEFF${JSON.stringify({ name: 'bom' })}`)
+    expect(await readPackageJson(cwd)).toEqual({ name: 'bom' })
   })
 
   it('should not follow declaration files when deciding which JSX to compile', async () => {
