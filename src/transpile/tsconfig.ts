@@ -56,7 +56,7 @@ function isForeignBuildFile(file: string, dir: string) {
 }
 
 /** The package a bare specifier names, or `undefined` for an alias or a specifier with a protocol. */
-function packageName(specifier: string) {
+export function packageName(specifier: string): string | undefined {
   return specifier.startsWith('#') || /^[~@]\//.test(specifier) || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
 }
 

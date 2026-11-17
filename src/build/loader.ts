@@ -6,7 +6,8 @@ import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
-import { findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
+import { packageName } from '../transpile/tsconfig.ts'
+import { findPackageDir, findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { guide } from './guide.ts'
 import { importsKeyFor } from './package.ts'
@@ -234,6 +235,10 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     : (specifier.startsWith('#') && resolvePackageImport(specifier, parentDir)) || resolveFrom(resolve(parentDir, 'index.js'), specifier)
   if (resolved) {
     return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
+  }
+  const name = packageName(specifier)
+  if (name && findPackageDir(name, parentDir)) {
+    return
   }
   for (const candidate of matchPath?.(specifier) || []) {
     const file = probe(candidate)
