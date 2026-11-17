@@ -27,7 +27,7 @@ export async function checkDeprecatedPackageFields(cwd: string): Promise<void> {
 type PackageJSON = Awaited<ReturnType<typeof readPackageJSON>>
 
 const DECLARATION_RE = /(?:^|\/)(?:module|types)\.d\.ts$/
-const CJS_MODULE_RE = /module\.cjs$/
+const CJS_MODULE_RE = /(?:^|\/)module\.cjs$/
 
 export function checkLegacyDeclarationPaths(cwd: string, pkg: PackageJSON): boolean {
   if (!missingPaths(cwd, pkg).some(path => DECLARATION_RE.test(path))) {

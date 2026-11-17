@@ -8,10 +8,11 @@ import type { PackageJson } from 'pkg-types'
 import { glob, globSync } from 'tinyglobby'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
+import { DECLARATION_RE, probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
 import { DEFAULT_EXCLUDE } from '../rolldown/transpile-dir.ts'
 import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
+import { relativeSpecifier } from '../utils.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
 import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
@@ -90,8 +91,6 @@ export interface BuildPlan {
   generatedTypesHash: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
-  /** Whether {@link finishBuild} writes `types.d.mts`, rather than a bundled entry named `types`. */
-  writesTypes?: boolean
 }
 
 export interface PreparedBuild {
@@ -110,8 +109,6 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     const advice = path.startsWith('..') ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
     consola.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
   }
-  const selfPaths = selfReferencePaths(cwd, pkg, outDir)
-
   const config = await loadConfig()
   if (config.unsupported.length) {
     throw new Error(formatUnsupportedOptions(config.unsupported))
@@ -122,8 +119,9 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
   const resolvedSourcemap = sourcemap || config.sourcemap
   const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap: resolvedSourcemap })
   const entries = bundledEntries(cwd, config)
+  const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
 
-  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))
+  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module))
   const nuxtDir = findPackageDir('nuxt', cwd)
 
   return {
@@ -249,13 +247,15 @@ export interface FinishBuildOptions {
   outputs: string[]
   /** Versions recorded as `builder` in `module.json`, besides this package's. */
   builder: Record<string, string>
+  /** Keeps the output when the built module cannot be loaded, as a watcher goes on serving it. */
+  keepOutput?: boolean
 }
 
 // Counted per process, as a restarted watcher imports the same files again with a new plan.
 let metaImports = 0
 
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
-export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishBuildOptions): Promise<void> {
+export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
   const version = metaImports++ || undefined
@@ -265,15 +265,13 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishB
     pkg,
     builder: { [builderPkg.name]: builderPkg.version, ...builder },
     version,
-  }).catch((error) => {
-    consola.error(error)
-    consola.error('Cannot load module. Please check dist:', resolve(outDir, 'module.mjs'))
+  }).catch(async (error) => {
+    if (!keepOutput) {
+      await rm(outDir, { recursive: true, force: true })
+    }
+    throw new Error(`Cannot load \`${relative(cwd, resolve(outDir, 'module.mjs'))}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
-  const typesFile = join(outDir, 'types.d.mts')
-  plan.writesTypes ??= !existsSync(typesFile)
-  if (plan.writesTypes) {
-    await writeTypes(outDir)
-  }
+  await writeTypes(outDir)
   await callBuildHook(plan.config, 'rollup:done', plan.ctx)
   await rewriteRuntimeDeclarations(outDir, outputs)
 
@@ -307,7 +305,8 @@ function importedFrom(dir: string, keys: string[]): (key: string) => boolean {
 
 function valueImports(roots: string[]) {
   const transform = loadOxc()?.transformSync
-  const queue = roots.filter(file => SCRIPT_RE.test(file))
+  const isScript = (file: string) => SCRIPT_RE.test(file) && !DECLARATION_RE.test(file)
+  const queue = roots.filter(isScript)
   const found = new Set<string>()
   while (queue.length) {
     const file = queue.pop()!
@@ -321,7 +320,7 @@ function valueImports(roots: string[]) {
       : source
     for (const specifier of valueSpecifiers(code)) {
       const target = probeSource(resolve(dirname(file), specifier))
-      if (target && SCRIPT_RE.test(target)) {
+      if (target && isScript(target)) {
         queue.push(normalize(target))
       }
     }
@@ -334,20 +333,27 @@ function isDirectoryError(error: unknown) {
   return Array.isArray(errors) && errors.some(nested => nested.plugin === 'transpile-dir')
 }
 
-function relativeSpecifier(from: string, to: string) {
-  const path = relative(dirname(from), to)
-  return path.startsWith('.') ? path : `./${path}`
-}
+const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb']
 
 /**
- * A hash of the types Nuxt generates in `.nuxt/`, which augment what single-file
- * component declarations refer to without being visible to the declaration cache.
+ * A hash of the types Nuxt generates in `.nuxt/` and of the nearest lockfile, which change
+ * what single-file component declarations refer to without being visible to the declaration cache.
  */
-async function hashGeneratedTypes(cwd: string) {
+export async function hashGeneratedTypes(cwd: string): Promise<string> {
   const files = await glob(['tsconfig.json', '**/*.d.ts'], { cwd: join(cwd, '.nuxt'), absolute: true, onlyFiles: true })
+  const lockfile = nearestLockfile(cwd)
   const hash = createHash('sha256')
-  for (const file of files.sort()) {
+  for (const file of [...files.sort(), ...lockfile ? [lockfile] : []]) {
     hash.update(relative(cwd, file)).update(await readFile(file))
   }
   return hash.digest('hex').slice(0, 12)
+}
+
+function nearestLockfile(cwd: string) {
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    const file = LOCKFILES.map(name => join(dir, name)).find(file => existsSync(file))
+    if (file || dirname(dir) === dir) {
+      return file
+    }
+  }
 }

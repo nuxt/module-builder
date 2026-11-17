@@ -13,7 +13,7 @@ navigation:
 
 To build a module, you need:
 
-- Node `^22.18.0 || >=24.0.0`.
+- Node `^22.18.0 || ^24.11.0 || >=26.0.0`.
 - `tsdown` and `typescript` (`^5.9.3 || ^6.0.0`), which are peer dependencies of `@nuxt/module-builder`.
 - `nuxt`, which provides the `@nuxt/cli` that `nuxt-module-build prepare` runs.
 

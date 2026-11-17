@@ -46,13 +46,21 @@ export interface Specifier {
   end: number
 }
 
+const DYNAMIC_IMPORT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:(['"])([^'"\n]+)\1|`([^`$]+)`)\s*(?:,[\s\S]*)?$/
+
+/** The specifier of an `import()` whose first argument is a string literal. */
+function dynamicImportSpecifier(expression: string) {
+  const match = expression.match(DYNAMIC_IMPORT_RE)
+  return match ? match[2] ?? match[3] : undefined
+}
+
 const TYPE_STAR_EXPORT_RE = /\bexport\s+type\s*\*(?:\s*as\s+[\w$]+)?\s*from\s*(['"])([^'"\n]+)\1/g
 
 /** Every string-literal module specifier in `code`: static imports, re-exports (type-only ones included) and `import()` calls. */
 export function moduleSpecifiers(code: string): Specifier[] {
   const found = new Map<number, Specifier>()
   const locate = (statement: { code: string, start: number }, specifier: string) => {
-    const index = Math.max(statement.code.indexOf(`'${specifier}'`), statement.code.indexOf(`"${specifier}"`))
+    const index = Math.max(...['\'', '"', '`'].map(quote => statement.code.indexOf(`${quote}${specifier}${quote}`)))
     if (index !== -1) {
       const start = statement.start + index
       found.set(start, { specifier, start, end: start + specifier.length + 2 })
@@ -70,9 +78,9 @@ export function moduleSpecifiers(code: string): Specifier[] {
     locate({ code: match[0], start: match.index }, match[2]!)
   }
   for (const statement of findDynamicImports(code)) {
-    const literal = statement.expression.match(/^\s*(['"])([^'"]+)\1\s*$/)
-    if (literal) {
-      locate(statement, literal[2]!)
+    const specifier = dynamicImportSpecifier(statement.expression)
+    if (specifier) {
+      locate(statement, specifier)
     }
   }
   return [...found.values()].sort((a, b) => a.start - b.start)
@@ -104,9 +112,9 @@ export function valueSpecifiers(code: string): Set<string> {
     }
   }
   for (const statement of findDynamicImports(code)) {
-    const literal = statement.expression.match(/^\s*(['"])(\.\.?\/[^'"]*)\1\s*$/)
-    if (literal) {
-      values.add(literal[2]!)
+    const specifier = dynamicImportSpecifier(statement.expression)
+    if (specifier && RELATIVE_RE.test(specifier)) {
+      values.add(specifier)
     }
   }
   return values

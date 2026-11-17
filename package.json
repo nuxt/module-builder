@@ -43,7 +43,7 @@
     "prepack": "pnpm build",
     "test": "pnpm vitest",
     "test:pack": "pnpm -C example pack --out ../.temp-pack/example.tgz && attw .temp-pack/example.tgz && publint .temp-pack/example.tgz",
-    "test:engines": "pnpm exec installed-check -d -i tsdown --no-workspaces --ignore @nuxt/cli",
+    "test:engines": "pnpm exec installed-check -d --no-workspaces --ignore @nuxt/cli",
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
@@ -108,6 +108,6 @@
     "vue-tsc": "^3.3.14"
   },
   "engines": {
-    "node": "^22.18.0 || >=24.0.0"
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   }
 }

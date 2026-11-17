@@ -888,8 +888,8 @@ describe('a module without a runtime directory', () => {
     `)
   })
 
-  it('should refuse an `outDir` that contains the module root', () => {
-    expect(expectFailed('minimal:outDir')).toContain(`\`--outDir ..\` resolves to \`${resolve(dirs.minimal!, '..')}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  it('should refuse an `outDir` outside the module root', () => {
+    expect(expectFailed('minimal:outDir')).toContain(`\`--outDir ..\` resolves to \`${resolve(dirs.minimal!, '..')}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     expect(exists(dirs.minimal!, 'package.json')).toBe(true)
   })
 

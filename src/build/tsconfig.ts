@@ -1,14 +1,15 @@
 import type { TsConfigResult } from 'get-tsconfig'
-import { relative, resolve } from 'pathe'
+import { join, relative, resolve } from 'pathe'
 import type { PackageJson } from 'pkg-types'
 
 import { publishedPackage } from './package.ts'
 
 /**
  * `paths` pointing the package's own name and `exports` subpaths at its sources, so
- * self-referencing imports type-check before `dist` exists.
+ * self-referencing imports type-check before `dist` exists. A subpath that points at a
+ * bundled entry of `entries`, keyed by output name, maps to that entry's input.
  */
-export function selfReferencePaths(cwd: string, pkg: PackageJson, outDir: string): Record<string, string[]> {
+export function selfReferencePaths(cwd: string, pkg: PackageJson, outDir: string, entries: Record<string, string> = {}): Record<string, string[]> {
   if (!pkg.name) {
     return {}
   }
@@ -24,7 +25,9 @@ export function selfReferencePaths(cwd: string, pkg: PackageJson, outDir: string
     }
     const distPath = relative(outDir, resolve(cwd, file))
     if (!distPath.startsWith('..')) {
-      paths[`${pkg.name}/${subpath.slice(2)}`] = [resolve(cwd, 'src', distPath.replace(/(?:\.d)?\.[cm]?[jt]s$/, ''))]
+      const name = distPath.replace(/(?:\.d)?\.[cm]?[jt]s$/, '')
+      const input = Object.hasOwn(entries, name) ? entries[name]!.replace(/\.[cm]?[jt]sx?$/, '') : join('src', name)
+      paths[`${pkg.name}/${subpath.slice(2)}`] = [resolve(cwd, input)]
     }
   }
   return paths

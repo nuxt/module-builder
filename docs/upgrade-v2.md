@@ -9,7 +9,7 @@ Most modules upgrade by running the build and following its output. Every messag
 
 ## Node engines
 
-v2 requires Node `^22.18.0 || >=24.0.0`. Use Node 22.18+ or 24+ locally and in CI:
+v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Use Node 22.18+, 24.11+, or 26+ locally and in CI:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -611,7 +611,7 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 ## Output directory
 
-A one-off build empties `--outDir` (`dist` by default) before it writes to it. `tsdown --watch` removes the files in it that the build doesn't emit any more. The directory must therefore be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
+A one-off build empties `--outDir` (`dist` by default) before it writes to it. `tsdown --watch` removes the files in it that the build doesn't emit any more. The directory must therefore be inside your module. An `--outDir` outside the module, such as `../dist`, or the module root itself, fails the build.
 
 ## Module tsconfig
 
@@ -872,7 +872,7 @@ pnpm remove unbuild
 
 Follow these steps in order to upgrade a module. Each step is mechanical until the build runs. Where a step says `pnpm`, use your module's own package manager.
 
-1. Use Node 22.18+ or 24+ locally and in CI.
+1. Use Node 22.18+, 24.11+, or 26+ locally and in CI.
 2. Install v2 and tsdown, before step 3:
    - Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`.
    - Run `pnpm remove unbuild`. Also remove `mkdist` and `jiti`, if they only served the builder.

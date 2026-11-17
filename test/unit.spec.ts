@@ -957,10 +957,9 @@ describe('size report', () => {
 describe('resolveOutDir', () => {
   it('should resolve an output directory inside the module and refuse one containing it', () => {
     expect(resolveOutDir('/repo/mod', 'dist')).toBe('/repo/mod/dist')
-    expect(resolveOutDir('/repo/mod', '../sibling-dist')).toBe('/repo/sibling-dist')
     expect(resolveOutDir('/repo/mod', '/repo/mod/.stub')).toBe('/repo/mod/.stub')
     for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod']) {
-      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     }
   })
 })

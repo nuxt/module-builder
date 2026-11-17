@@ -23,7 +23,7 @@ Create a module from the [module starter](https://github.com/nuxt/starter/tree/m
 npm create nuxt -- -t module my-module
 ```
 
-Building a module requires Node `^22.18.0 || >=24.0.0`, with `tsdown` and `typescript` installed alongside `@nuxt/module-builder`. Apps that install a built module need Nuxt 3 or later.
+Building a module requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`, with `tsdown` and `typescript` installed alongside `@nuxt/module-builder`. Apps that install a built module need Nuxt 3 or later.
 
 ## Documentation
 
@@ -43,7 +43,6 @@ For writing the module itself, read the [Nuxt Module Author Guide](https://nuxt.
 ## 💻 Development
 
 - Clone repository
-- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
 - Install dependencies using `pnpm install`
 - Try building [example module](./example) using `pnpm example:build`
 

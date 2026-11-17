@@ -73,7 +73,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
   const entryPath = resolve(cwd, entries.module)
   const rootConfig = await rootTsconfig(cwd)
   const ambient = await ambientDeclarations(cwd, runtimeDirs, [...rootConfig.exclude ?? [], outDir])
-  const selfPaths = selfReferencePaths(cwd, pkg, outDir)
+  const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
   const declarationsDir = join(sourceTypesDir(cwd), 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
   const ownPaths = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : {}

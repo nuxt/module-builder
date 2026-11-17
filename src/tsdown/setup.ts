@@ -18,6 +18,7 @@ import { externalDependencyDeclarations } from './externals.ts'
 import { replacePlugin } from './replace.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { runtimeExternals } from './runtime-externals.ts'
+import { realpath } from '../utils.ts'
 import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
@@ -76,7 +77,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     ].join('\n'))
   }
 
-  const cwd = resolve(config.cwd ?? process.cwd())
+  const cwd = realpath(config.cwd ?? process.cwd())
   const pkg = await readPackageJSON(cwd)
   const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
   if (packageError) {
@@ -253,12 +254,10 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         }
       }
       const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
-      if (keptOutput) {
-        plan.writesTypes ??= !Object.hasOwn(bundle, 'types.d.mts')
-      }
       await finishBuild(plan, {
         outputs: outputs.flatMap(map => [...map.values()]),
         builder: { tsdown: await readPackageJSON('tsdown', { from: import.meta.url }).then(r => r.version || 'unknown').catch(() => 'unknown') },
+        keepOutput: watch,
       })
     },
   }

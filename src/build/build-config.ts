@@ -4,6 +4,7 @@ import { isAbsolute, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import type { PackageJson } from 'pkg-types'
 
+import { isInside } from '../utils.ts'
 import type { BuildContext, BuildHook } from './define.ts'
 import { guide } from './guide.ts'
 import type { GuideSection } from './guide.ts'
@@ -82,7 +83,7 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: Tran
     ignoredHooks: [],
     unsupported: [],
   }
-  const replace: ReplaceOptions = { values: {}, preventAssignment: true }
+  const replace: ReplaceOptions = { values: {} }
   let replaceDisabled = false
   const runtime = { srcDir: resolve(cwd, 'src/runtime'), outDir: resolve(outDir, 'runtime') }
 
@@ -212,6 +213,9 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: Tran
       }
 
       const name = typeof normalised.name === 'string' ? normalised.name : entryName(input, cwd)
+      if (name === 'types') {
+        throw new Error(`\`${source}\` has a bundled entry named \`types\`, whose declarations would replace the generated \`types.d.mts\`. Give \`${input}\` another \`name\`.`)
+      }
       const file = probe(resolve(cwd, input)) ?? resolve(cwd, `${input}.ts`)
       result.entries[name] = `./${relative(cwd, file)}`
     }
@@ -262,7 +266,7 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: Tran
           }
         }
         else if (key === 'preventAssignment' || key === 'objectGuards') {
-          replace[key] = value === true
+          replace[key] ??= value === true
         }
       }
     }
@@ -284,7 +288,7 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: Tran
   }
 
   if (!replaceDisabled && Object.keys(replace.values).length) {
-    result.replace = replace
+    result.replace = { ...replace, preventAssignment: replace.preventAssignment ?? true }
   }
 
   return result
@@ -310,11 +314,11 @@ export interface LoadedBuildConfig extends TranslatedBuildConfig {
 
 const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
 
-/** Resolves `outDir` against `cwd`, refusing a directory the build would empty the module root with. */
+/** Resolves `outDir` against `cwd`, refusing a directory outside the module, which the build would empty. */
 export function resolveOutDir(cwd: string, outDir: string, label: string = `--outDir ${outDir}`): string {
   const resolved = resolve(cwd, outDir)
-  if (!relative(resolved, cwd).startsWith('..')) {
-    throw new Error(`\`${label}\` resolves to \`${resolved}\`, which contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  if (resolved === cwd || !isInside(cwd, resolved)) {
+    throw new Error(`\`${label}\` resolves to \`${resolved}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
   }
   return resolved
 }

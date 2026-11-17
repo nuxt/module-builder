@@ -43,8 +43,8 @@ export interface BuildConfig {
 
 /**
  * Type helper for a legacy `build.config.ts`, which `nuxt-module-build` still reads.
- * Supported options are `entries`, `externals`, `replace`, `rollup.replace` and the
- * `build:before`, `rollup:done` and `build:done` hooks.
+ * Supported options are `entries`, `externals`, `replace`, `rollup.replace`, `sourcemap` and
+ * the `build:before`, `rollup:done` and `build:done` hooks.
  *
  * @deprecated `build.config.ts` will stop being read in a future major. Move `entries`, `externals`
  * and `replace` into `builder()` from `@nuxt/module-builder/tsdown`, in `tsdown.config.ts`, and

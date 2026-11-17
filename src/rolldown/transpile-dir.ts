@@ -6,7 +6,8 @@ import type { Rolldown } from 'tsdown'
 
 import type { Transform as VueTransform } from 'vue-sfc-transformer/core'
 
-import { createDeclarationProgram, DeclarationError, declarationError, relativeSpecifier } from './declarations.ts'
+import { relativeSpecifier } from '../utils.ts'
+import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
 import type { DeclarationProgram } from './declarations.ts'
 import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, scriptExtension, valueSpecifiers } from './resolve.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'

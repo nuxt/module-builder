@@ -1,6 +1,5 @@
-import { resolve } from 'pathe'
-
 import { guide } from '../build/guide.ts'
+import { realpath } from '../utils.ts'
 import { findTsdownConfig, loadBuilderConfig } from './config-file.ts'
 import type { BuilderConfig } from './config-file.ts'
 
@@ -20,7 +19,7 @@ export const sharedArgs = {
   },
 } as const
 
-export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }): string => resolve(args.cwd || args.rootDir || '.')
+export const resolveCwdArg = (args: { cwd?: string, rootDir?: string }): string => realpath(args.cwd || args.rootDir || '.')
 
 export function assertNoStubArg(command: 'build' | 'prepare', args: Record<string, unknown>): void {
   if (args.stub) {

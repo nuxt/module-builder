@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { dirname, isAbsolute, relative, resolve } from 'pathe'
+import { dirname, relative, resolve } from 'pathe'
 import { resolvePathSync } from 'mlly'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
 import type { Transform } from '../rolldown/transpile-dir.ts'
+import { isInside, relativeSpecifier } from '../utils.ts'
 import { guide } from './guide.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
@@ -147,7 +148,7 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
         issue(location, `\`${specifier}\` is ${resolution.file.endsWith('.vue') ? 'a single-file component' : 'JSX'}, which Node cannot load (move the value the module needs into a \`.ts\` file, or use \`import type\`)`)
         continue
       }
-      const suggestion = relativeSpecifier(dirname(file), resolution.file)
+      const suggestion = relativeSpecifier(file, resolution.file)
       if (resolution.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
         issue(location, `\`${specifier}\` (use \`${suggestion}\`)`)
       }
@@ -162,7 +163,7 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
     }
     for (const { specifier, typeOnly, json: _, resolution, ...location } of analysis.imports) {
       if (!typeOnly && resolution?.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
-        found.push({ file: relative(cwd, file), ...location, message: `\`${specifier}\` (use \`${relativeSpecifier(dirname(file), resolution.file)}\`)` })
+        found.push({ file: relative(cwd, file), ...location, message: `\`${specifier}\` (use \`${relativeSpecifier(file, resolution.file)}\`)` })
       }
     }
   })
@@ -238,16 +239,6 @@ function resolvesAsPackage(specifier: string, parentDir: string) {
       return undefined
     }
   }
-}
-
-function relativeSpecifier(from: string, to: string) {
-  const path = relative(from, to)
-  return path.startsWith('.') ? path : `./${path}`
-}
-
-function isInside(dir: string, path: string) {
-  const subpath = relative(dir, path)
-  return !subpath.startsWith('..') && !isAbsolute(subpath)
 }
 
 /**

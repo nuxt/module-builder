@@ -1,5 +1,5 @@
 import type { TsConfigResult } from 'get-tsconfig'
-import { dirname, relative } from 'pathe'
+import { relative } from 'pathe'
 import type ts from 'typescript'
 
 import { declarationPaths, projectFiles, tsconfigPaths, writeAmbientModules, writeServerRoutesStub } from './tsconfig.ts'
@@ -165,10 +165,4 @@ export function declarationError(diagnostics: string[]): DeclarationError {
         ]
       : [],
   ].join('\n'), diagnostics)
-}
-
-/** The relative specifier from the directory of `from` to `to`. */
-export function relativeSpecifier(from: string, to: string): string {
-  const path = relative(dirname(from), to)
-  return path.startsWith('.') ? path : `./${path}`
 }
