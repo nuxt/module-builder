@@ -58,6 +58,10 @@ describe('translateBuildConfig', () => {
       { replace: { __A__: '"overridden"', __C__: '"c"' } },
     ).replace).toEqual({ values: { __A__: '"a"', __B__: '"b"', __C__: '"c"' }, delimiters: ['', ''], preventAssignment: true })
     expect(translate({ replace: { __A__: '"a"' }, rollup: { replace: false } }).replace).toBeUndefined()
+    expect(translate(
+      { rollup: { replace: { values: { A: 'a' }, preventAssignment: false, objectGuards: true } } },
+      { rollup: { replace: { preventAssignment: true, objectGuards: false } } },
+    ).replace).toEqual({ values: { A: 'a' }, preventAssignment: false, objectGuards: true })
   })
 
   it('should accept options without an effect on the output', () => {

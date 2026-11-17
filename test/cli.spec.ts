@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
@@ -175,6 +175,10 @@ export default (): unknown[] => [options, app, root, useNuxtApp, helper(), lru, 
     },
   })
 
+  dirs.runtimeLink = join(repoRoot, '.temp-cli/runtime-link')
+  await rm(dirs.runtimeLink, { force: true })
+  await symlink(dirs.runtime, dirs.runtimeLink)
+
   dirs.isolated = await fixture('.temp-cli/isolated', {
     from,
     module: source => annotate(`${source}\n${VALUE_EXPORTS}`),
@@ -319,6 +323,11 @@ export type { Kit } from './kit'
       'src/helpers.ts': `export const helper = (): string => 'helper'\n`,
       'src/kit/index.ts': `export const kit = (): string => 'kit'\nexport type Kit = ReturnType<typeof kit>\n`,
     },
+  })
+
+  dirs.unloadableDist = await fixture('.temp-cli/unloadable-dist', {
+    from,
+    module: source => `${source}\nif (new URL(import.meta.url).pathname.endsWith('.mjs')) {\n  throw new Error('fails once built')\n}\n`,
   })
 
   dirs.isolatedError = await fixture('.temp-cli/isolated-error', { from, files: { 'tsconfig.json': ISOLATED['tsconfig.json'] } })
@@ -566,7 +575,7 @@ export type { Kit } from './kit'
   const pack = (dir: string, command: string) => mkdir(join(dir, '.pack')).then(() => run(command, ['pack', '--pack-destination', join(dir, '.pack')], { cwd: dir }))
 
   await Promise.all([
-    step('runtime', cli(['build', dirs.runtime])),
+    step('runtime', cli(['build', dirs.runtimeLink])),
     step('isolated', cli(['build', dirs.isolated])).then(() => step('isolated:consumer', consumerCheck(dirs.isolated))),
     step('types', cli(['build', dirs.types])).then(() => step('types:consumer', consumerCheck(dirs.types))),
     step('minimal', cli(['build', dirs.minimal])),
@@ -580,6 +589,7 @@ export type { Kit } from './kit'
     ])),
     step('unloadable', cli(['build', dirs.unloadable])),
     step('unloadable:prepare', cli(['prepare', dirs.unloadable])),
+    step('unloadableDist', cli(['build', dirs.unloadableDist])),
     step('isolatedError', cli(['build', dirs.isolatedError])),
     step('typeError', cli(['build', dirs.typeError])),
     step('vueError', cli(['build', dirs.vueError])),
@@ -655,7 +665,7 @@ const expectFailed = (name: string) => {
   return output
 }
 
-describe('a module that imports runtime code, under a path with spaces and non-ASCII characters', () => {
+describe('a module that imports runtime code, built through a symlink, under a path with spaces and non-ASCII characters', () => {
   const dist = () => join(dirs.runtime!, 'dist')
 
   it('should generate module metadata', async () => {
@@ -672,6 +682,8 @@ describe('a module that imports runtime code, under a path with spaces and non-A
     const moduleDts = await read(dist(), 'module.d.mts')
     expect(findStaticImports(moduleDts).find(i => i.specifier.includes('plugins'))!.code.trim()).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
     expect(findStaticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
+    expect(moduleDts).toContain('from "nuxt/app"')
+    expect(moduleDts).not.toContain('#app')
   })
 
   it('should point imports of a runtime JSX file at its `.jsx` output', async () => {
@@ -1114,6 +1126,11 @@ describe('a module whose code Node cannot load', () => {
       expect(output, name).not.toContain(`:${line + 3}:`)
     }
     expect(exists(dirs.unloadable!, 'dist')).toBe(false)
+  })
+
+  it('should fail and remove the output when the built module cannot be loaded', () => {
+    expect(expectFailed('unloadableDist')).toContain('Cannot load `dist/module.mjs` to write `module.json`: fails once built')
+    expect(exists(dirs.unloadableDist!, 'dist')).toBe(false)
   })
 })
 

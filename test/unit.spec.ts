@@ -1,15 +1,20 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
+import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
+import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
+import { resolveCwdArg } from '../src/commands/_shared.ts'
+import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
+import { relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -441,6 +446,7 @@ describe('deprecation checks', () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`\`module\\.cjs\`.*Replace it with \`\\./dist/module\\.mjs\`.* ${guide('modulecjs')}$`)))
     warn.mockClear()
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.mjs' })).toBe(false)
+    expect(checkLegacyCJSPaths(cwd, { main: './dist/submodule.cjs' })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
@@ -696,6 +702,15 @@ describe('selfReferencePaths', () => {
       'my-module/runtime/*': ['/mod/src/runtime/*'],
     })
   })
+
+  it('should map a subpath to the input of the entry with that name', () => {
+    const pkg = { name: 'my-module', exports: { './vite': './dist/vite.mjs', './utils': './dist/utils.mjs' } }
+    expect(selfReferencePaths('/mod', pkg, '/mod/dist', { module: './src/module.ts', vite: './src/lib/vite.ts' })).toEqual({
+      'my-module': ['/mod/src/module'],
+      'my-module/vite': ['/mod/src/lib/vite'],
+      'my-module/utils': ['/mod/src/utils'],
+    })
+  })
 })
 
 describe('importModule', () => {
@@ -794,8 +809,14 @@ describe('builder options', () => {
     expect(resolveModuleOptions(cwd, {}, outDir, { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } }).replace).toEqual({ values: { __B__: '"b"' }, delimiters: ['', ''], preventAssignment: true })
   })
 
-  it('should collect options it does not accept', () => {
+  it('should refuse options it does not accept', () => {
     expect(() => resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never)).toThrow(`\`builder()\` does not support these options:\n  - outDir\n  - entries[0].ext\n${guide('tsdown-config')}`)
+  })
+
+  it('should refuse a bundled entry named `types`', () => {
+    for (const entries of [[{ input: './src/utils', name: 'types' }], ['./src/types']]) {
+      expect(() => resolveModuleOptions(cwd, {}, outDir, { entries })).toThrow('named `types`, whose declarations would replace the generated `types.d.mts`')
+    }
   })
 
   it('should refuse `hooks` and point at tsdown\'s own', () => {
@@ -955,7 +976,8 @@ describe('resolveOutDir', () => {
   it('should resolve an output directory inside the module and refuse one containing it', () => {
     expect(resolveOutDir('/repo/mod', 'dist')).toBe('/repo/mod/dist')
     expect(resolveOutDir('/repo/mod', '/repo/mod/.stub')).toBe('/repo/mod/.stub')
-    for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod']) {
+    expect(resolveOutDir('/repo/mod', '..dist')).toBe('/repo/mod/..dist')
+    for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod', '../sibling', '/elsewhere/dist']) {
       expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     }
   })
@@ -1141,5 +1163,65 @@ describe('rewriteRuntimeDeclarations', () => {
       export type Kept = import('./missing')"
     `)
     await rm(dist, { recursive: true, force: true })
+  })
+})
+
+describe('build plan', () => {
+  const tempDir = async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-plan-'))
+    onTestFinished(() => rm(dir, { recursive: true, force: true }))
+    return dir
+  }
+
+  it('should resolve a module root reached through a symlink to its real path', async () => {
+    const dir = await tempDir()
+    await mkdir(join(dir, 'real'))
+    await symlink(join(dir, 'real'), join(dir, 'link'))
+    expect(resolveCwdArg({ rootDir: join(dir, 'link') })).toBe(resolveCwdArg({ rootDir: join(dir, 'real') }))
+    expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(dir, 'missing'))
+  })
+
+  it('should change the declaration cache key with the nearest lockfile', async () => {
+    const dir = await tempDir()
+    await mkdir(join(dir, 'module/.nuxt'), { recursive: true })
+    await writeFile(join(dir, 'module/.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+    const before = await hashGeneratedTypes(join(dir, 'module'))
+    expect(await hashGeneratedTypes(join(dir, 'module'))).toBe(before)
+    await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\npackages: {}\n')
+    expect(await hashGeneratedTypes(join(dir, 'module'))).not.toBe(before)
+  })
+
+  it('should refuse a directory entry that emits `types.mjs` at the root of the output', async () => {
+    const plan = { cwd: '/mod', outDir: '/mod/dist' } as BuildPlan
+    await expect(finishBuild(plan, { outputs: ['types.mjs', 'types.d.mts'], builder: {} })).rejects.toThrow('emits `types.mjs` at the root of `dist`, whose declarations would replace the generated `types.d.mts`')
+  })
+
+  it('should find literal dynamic imports with comments, template literals and options', () => {
+    const code = [
+      `import(/* @vite-ignore */ './a')`,
+      'import(`./b`)',
+      `import('./c', { with: { type: 'json' } })`,
+      'import(`./${name}`)',
+    ].join('\n')
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c'])
+  })
+
+  it('should treat a dot-prefixed name as a path inside the directory', () => {
+    expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
+    expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')
+  })
+
+  it('should not follow declaration files when deciding which JSX to compile', async () => {
+    const cwd = await tempDir()
+    await mkdir(join(cwd, 'src/runtime/server'), { recursive: true })
+    await writeFile(join(cwd, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(cwd, 'src/runtime/server/types.d.ts'), `export { default } from '../Button'\n`)
+    await writeFile(join(cwd, 'src/runtime/server/handler.ts'), `export default 'handler'\n`)
+    await writeFile(join(cwd, 'src/runtime/Button.tsx'), `export default () => <button />\n`)
+    const plan = { cwd, entries: { module: './src/module.ts' }, directories: [{ srcDir: join(cwd, 'src/runtime'), outDir: join(cwd, 'dist/runtime'), ext: 'js' }] } as unknown as BuildPlan
+    const { compiledJsx } = analyseSources(plan)
+    expect([...compiledJsx].sort()).toEqual([join(cwd, 'src/module.ts'), join(cwd, 'src/runtime/server/handler.ts')])
   })
 })
