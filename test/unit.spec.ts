@@ -1290,6 +1290,11 @@ describe('build plan', () => {
     expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
   })
 
+  it('should find the imports of a script block with `>` in a quoted attribute', () => {
+    const sfc = `<script setup lang="ts" generic="T extends Array<string>">import { x } from './x'\n</script>\n`
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./x'`, `'./x.js'`))
+  })
+
   it('should treat a dot-prefixed name as a path inside the directory', () => {
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')
