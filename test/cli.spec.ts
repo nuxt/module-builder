@@ -1253,7 +1253,7 @@ describe('tsdown configs', () => {
 
   it('should fail on a tsdown config without `builder()` and show how to add it', () => {
     for (const name of ['withoutPlugin', 'withoutPlugin:prepare']) {
-      const output = withoutGuide(expectFailed(name))
+      const output = name.endsWith(':prepare') ? withoutGuide(expectFailed(name)) : expectFailed(name)
       expect(output, name).toContain('[NUXT_MB_C0005] `tsdown.config.ts`')
       expect(output, name).toContain([
         '├▶ fix: Add the plugin:',

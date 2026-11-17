@@ -39,7 +39,7 @@ The package has three entry points:
 | `src/transpile/` | `transpileDir()`, the internal rolldown plugin that transpiles a directory file by file. It transforms scripts with oxc and `.vue` files with `vue.ts`, compiles stylesheets with `stylesheets.ts`, emits declarations with `declarations.ts`, rewrites import specifiers with `specifiers.ts`, and resolves the tsconfig of each file with `tsconfig.ts`. It imports nothing outside the directory but `src/utils.ts`, so it can be extracted later. |
 | `src/legacy/` | Compatibility with v1 and unbuild (see [Legacy code](#legacy-code)). |
 | `src/diagnostics.ts` | The codes of every error and warning the builder reports (see [Diagnostics](#diagnostics)). |
-| `src/utils.ts` | Path, file and regex helpers shared across directories, and `logger`, through which every build message goes. |
+| `src/utils.ts` | Path, file and regex helpers shared across directories, and `logger`, which prints diagnostics outside a tsdown build. |
 
 ### `tsdown` with `builder()`
 
@@ -118,8 +118,10 @@ Errors and warnings that a module author can act on are [nostics](https://www.np
 
 There are two catalogs:
 
-- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so the `fix` and docs lines are added to the stack after its first line. `nuxt-module-build` prints a thrown diagnostic with `logger` instead.
-- `warnings` for diagnostics that are printed when created, with `logger.warn`, or with `logger.info` or `logger.error` when the call passes `{ method }`.
+- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so the `fix` and docs lines are added to the stack after its first line. `nuxt-module-build` prints a thrown diagnostic without its stack instead.
+- `warnings` for diagnostics that are printed when created, as warnings, or as info or errors when the call passes `{ method }`.
+
+During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`), so the build's `logLevel`, `failOnWarn` and `suppressWarnings` apply to them. `setupBuilder` hands it tsdown's global logger, then the logger of the resolved config. Outside a build, as in `nuxt-module-build prepare`, they are printed with `logger` from `src/utils.ts`. tsdown is a peer dependency, so `src/diagnostics.ts` only imports its types.
 
 To add one, add an entry to `errorCodes` or `warningCodes` with the next free number in its group:
 

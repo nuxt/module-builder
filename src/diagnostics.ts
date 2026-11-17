@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { hyperlink, link as linkPath } from 'clickable-path'
 import { defineDiagnostics, Diagnostic } from 'nostics'
 import type { DiagnosticReporter, Diagnostics } from 'nostics'
+import type { Logger } from 'tsdown'
 
 import pkg from '../package.json' with { type: 'json' }
 import type { ModuleCodeIssue } from './build/loader.ts'
@@ -353,10 +354,23 @@ const withDetailsInStack: DiagnosticReporter = (diagnostic) => {
   }
 }
 
-/** Prints a diagnostic with `logger`, as a warning unless `method` says otherwise. */
+type BuildLogger = Pick<Logger, 'info' | 'warn' | 'error'>
+
+let buildLogger: BuildLogger | undefined
+
+/**
+ * Prints diagnostics with the logger of a tsdown build from now on, so its `logLevel`,
+ * `failOnWarn` and `suppressWarnings` apply to them.
+ */
+export function useBuildLogger(logger: BuildLogger): void {
+  buildLogger = logger
+}
+
+/** Prints a diagnostic with the build's logger, or else `logger`, as a warning unless `method` says otherwise. */
 const report: DiagnosticReporter<{ method?: 'info' | 'warn' | 'error' }> = (diagnostic, options) => {
   const method = options?.method ?? 'warn'
-  logger[method](formatDiagnostic(diagnostic, terminalStyle(method === 'info' ? process.stdout : process.stderr)))
+  const target = buildLogger ?? logger
+  target[method](formatDiagnostic(diagnostic, terminalStyle(method === 'info' ? process.stdout : process.stderr)))
 }
 
 /**

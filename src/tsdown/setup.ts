@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { relative, resolve } from 'pathe'
+import { globalLogger } from 'tsdown'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
@@ -11,7 +12,7 @@ import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { errors, formatDiagnostic, warnings } from '../diagnostics.ts'
+import { errors, formatDiagnostic, useBuildLogger, warnings } from '../diagnostics.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
@@ -65,6 +66,7 @@ const FORBIDDEN: Array<[option: string, isSet: (config: UserConfig) => boolean, 
  * adds the plugins and hooks that build the module.
  */
 export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { loadConfig }: SetupOptions): Promise<BuilderSession> {
+  useBuildLogger(globalLogger)
   const forbidden = FORBIDDEN.filter(([, isSet]) => isSet(config))
   if (forbidden.length) {
     throw errors.NUXT_MB_C0001({ options: forbidden.map(([option, , reason]) => ({ option, reason })) })
@@ -190,6 +192,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     started: false,
     watchDirs: [...new Set(plan.runtimeDirs.map(dir => existingAncestor(dir, cwd)))],
     checkResolved(resolved) {
+      useBuildLogger(resolved.logger)
       watch = !!resolved.watch
       resolvedConfig = resolved
       const changed = [

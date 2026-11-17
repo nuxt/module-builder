@@ -103,6 +103,11 @@ export default {
     files: { 'src/ext/value.ts': `export const ext: string = 'ext'\n` },
   })
 
+  dirs.warnings = await fixture('.temp-builder/warnings', {
+    config: `export default {\n  plugins: [builder()],\n  inputOptions: { onLog: (level, log, handler) => log.pluginCode === 'TYPE_ERRORS' || handler(level, log) },\n}\n`,
+    pkg: pkg => ({ ...pkg, types: './dist/nope.d.ts' }),
+  })
+
   for (const [name, exports] of Object.entries({ source: './src/module.ts', files: './lib/module.mjs' })) {
     dirs[`unpublishable-${name}`] = await fixture(`.temp-builder/unpublishable-${name}`, { config: PLUGIN, pkg: pkg => ({ ...pkg, exports: { '.': exports } }) })
   }
@@ -179,6 +184,9 @@ export default {
   await Promise.all([
     step('compose', tsdown(dirs.compose)),
     step('packageImports', tsdown(dirs.packageImports)),
+    step('warnings', tsdown(dirs.warnings))
+      .then(() => step('warnings:silent', tsdown(dirs.warnings!, ['--logLevel', 'error'])))
+      .then(() => step('warnings:fail', tsdown(dirs.warnings!, ['--fail-on-warn']))),
     ...['source', 'files'].flatMap(name => [
       step(`unpublishable-${name}:tsdown`, tsdown(dirs[`unpublishable-${name}`]!)),
       step(`unpublishable-${name}:cli`, cli(['build', dirs[`unpublishable-${name}`]!])),
@@ -239,6 +247,12 @@ describe('builder', () => {
       }
       expect(exists(dirs[`unpublishable-${name}`]!, 'dist')).toBe(false)
     }
+  })
+
+  it('should print its warnings with tsdown\'s logger, so `logLevel` and `failOnWarn` apply to them', () => {
+    expect(expectBuilt('warnings')).toContain('WARN  [NUXT_MB_C0201] `types` in `package.json` points at `./dist/nope.d.ts`')
+    expect(expectBuilt('warnings:silent')).not.toContain('NUXT_MB_C0201')
+    expect(expectFailed('warnings:fail')).toContain('ERROR  [NUXT_MB_C0201]')
   })
 
   it('should be published at `@nuxt/module-builder/tsdown`, not at the package root', () => {
@@ -304,7 +318,7 @@ describe('with a root tsconfig that only lists references', () => {
     const ownsField = async (dir: string) => (await read(dir, 'dist/module.mjs')).includes('\tvalue;')
     const output = expectBuilt('moduleProject')
     expect(output).toContain('tsconfig: tsconfig.module.json')
-    expect(output).toContain('[NUXT_MB_B0205]')
+    expect(output).toContain('ℹ [NUXT_MB_B0205]')
     expect(output.match(/fix: Set `isolatedDeclarations: true` in (`[^`]+`)/)?.[1]).toBe('`tsconfig.module.json`')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
