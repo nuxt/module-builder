@@ -228,8 +228,9 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
   try {
-    if (outputs.includes('types.mjs')) {
-      throw new Error(`A directory entry emits \`types.mjs\` at the root of \`${relative(cwd, outDir)}\`, whose declarations would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
+    const types = outputs.find(file => file === 'types.mjs' || file === 'types.d.mts')
+    if (types) {
+      throw new Error(`A directory entry emits \`${types}\` at the root of \`${relative(cwd, outDir)}\`, which would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
     }
     const moduleFile = resolve(outDir, 'module.mjs')
     const meta = await importModule(moduleFile, { cwd, version: metaImports++ || undefined })

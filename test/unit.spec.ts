@@ -1192,9 +1192,24 @@ describe('build plan', () => {
     expect(await hashGeneratedTypes(join(dir, 'module'))).not.toBe(before)
   })
 
-  it('should refuse a directory entry that emits `types.mjs` at the root of the output', async () => {
-    const plan = { cwd: '/mod', outDir: '/mod/dist' } as BuildPlan
-    await expect(finishBuild(plan, { outputs: ['types.mjs', 'types.d.mts'], builder: {} })).rejects.toThrow('emits `types.mjs` at the root of `dist`, whose declarations would replace the generated `types.d.mts`')
+  it('should refuse a directory entry that emits `types.mjs` or `types.d.mts` at the root of the output', async () => {
+    const cwd = await tempDir()
+    const plan = { cwd, outDir: join(cwd, 'dist') } as BuildPlan
+    for (const types of ['types.mjs', 'types.d.mts']) {
+      await expect(finishBuild(plan, { outputs: ['runtime/a.js', types], builder: {}, keepOutput: true })).rejects.toThrow(`emits \`${types}\` at the root of \`dist\`, which would replace the generated \`types.d.mts\``)
+    }
+  })
+
+  it('should keep the output when a step after the bundle fails in watch mode', async () => {
+    const cwd = await tempDir()
+    const outDir = join(cwd, 'dist')
+    await mkdir(outDir)
+    await writeFile(join(outDir, 'module.mjs'), `throw new Error('fails once built')\n`)
+    const plan = { cwd, outDir, pkg: {} } as BuildPlan
+    await expect(finishBuild(plan, { outputs: [], builder: {}, keepOutput: true })).rejects.toThrow('fails once built')
+    expect(await readFile(join(outDir, 'module.mjs'), 'utf8')).toContain('fails once built')
+    await expect(finishBuild(plan, { outputs: [], builder: {} })).rejects.toThrow('fails once built')
+    expect(await readdir(cwd)).toEqual([])
   })
 
   it('should find literal dynamic imports with comments, template literals and options', () => {
