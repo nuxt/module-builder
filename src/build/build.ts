@@ -15,14 +15,12 @@ import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePat
 import { relativeSpecifier } from '../utils.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
-import type { DirectoryEntry, LoadedBuildConfig } from './build-config.ts'
-import type { BuildContext } from './define.ts'
 import { checkDeprecatedPackageFields } from './deprecations.ts'
-import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
 import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
 import { writeModuleMeta } from './meta.ts'
+import { bundledEntries, NUXT_EXTERNALS } from './options.ts'
+import type { DirectoryEntry, ModuleConfig } from './options.ts'
 import { importsKeyFor, publishedPackage, unpublishableImportsError } from './package.ts'
 import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
 import { writeTypes } from './types.ts'
@@ -56,8 +54,7 @@ export interface ResolveBuildOptions {
   /** Absolute path of the output directory, already checked with `resolveOutDir`. */
   outDir: string
   sourcemap: boolean
-  /** Loads the translated build config once the module's tsconfig has been read. */
-  loadConfig: () => Promise<LoadedBuildConfig>
+  config: ModuleConfig
 }
 
 /** Everything a build needs to know about the module, resolved before anything is written. */
@@ -65,14 +62,13 @@ export interface BuildPlan {
   cwd: string
   pkg: PackageJson
   outDir: string
-  config: LoadedBuildConfig
+  config: ModuleConfig
   /** `src/runtime` and every other directory transpiled file by file. */
   directories: DirectoryEntry[]
   /** Bundled entries keyed by output name, as paths relative to `cwd`. */
   entries: { module: string, [name: string]: string }
   runtimeDirs: string[]
   sourcemap: boolean
-  ctx: BuildContext
   neverBundle: (string | RegExp)[]
   moduleTsconfig: TsConfigResult | undefined
   /** The nearest tsconfig, which may delegate files to `references`. */
@@ -101,7 +97,7 @@ export interface PreparedBuild {
   startedAt: number
 }
 
-export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: ResolveBuildOptions): Promise<BuildPlan> {
+export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: ResolveBuildOptions): Promise<BuildPlan> {
   const runtimeSrcDir = resolve(cwd, 'src/runtime')
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {
@@ -109,15 +105,9 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     const advice = path.startsWith('..') ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
     consola.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
   }
-  const config = await loadConfig()
-  if (config.unsupported.length) {
-    throw new Error(formatUnsupportedOptions(config.unsupported))
-  }
-  warnDeprecatedBuildConfig(config)
 
   const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
-  const resolvedSourcemap = sourcemap || config.sourcemap
-  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap: resolvedSourcemap })
+  const resolvedSourcemap = sourcemap || !!config.sourcemap
   const entries = bundledEntries(cwd, config)
   const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
 
@@ -133,7 +123,6 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     entries,
     runtimeDirs: directories.map(directory => directory.srcDir),
     sourcemap: resolvedSourcemap,
-    ctx,
     neverBundle: [...NUXT_EXTERNALS, ...config.neverBundle],
     moduleTsconfig,
     rootTsconfig: tsconfigs.root,
@@ -155,7 +144,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
  */
 export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { keepOutput?: boolean } = {}): Promise<PreparedBuild> {
   const { cwd, outDir, entries, runtimeDirs } = plan
-  await callBuildHook(plan.config, 'build:before', plan.ctx)
+  await plan.config.callHook?.('build:before', plan)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
   if (!keepOutput) {
     await rm(outDir, { recursive: true, force: true })
@@ -272,7 +261,7 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
     throw new Error(`Cannot load \`${relative(cwd, resolve(outDir, 'module.mjs'))}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
   await writeTypes(outDir)
-  await callBuildHook(plan.config, 'rollup:done', plan.ctx)
+  await plan.config.callHook?.('rollup:done', plan)
   await rewriteRuntimeDeclarations(outDir, outputs)
 
   if (shouldNudge(plan.isolatedDeclarations)) {
@@ -286,7 +275,7 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
   if (importsError) {
     throw new Error(importsError)
   }
-  await callBuildHook(plan.config, 'build:done', plan.ctx)
+  await plan.config.callHook?.('build:done', plan)
 }
 
 const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/

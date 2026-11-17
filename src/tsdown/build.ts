@@ -3,6 +3,7 @@ import type { TsdownPlugin } from 'tsdown'
 
 import { findTsdownConfig, hasBuilder, missingBuilderError } from '../commands/config-file.ts'
 import { assertLoadableModuleCode } from '../build/loader.ts'
+import { loadLegacyModuleConfig } from '../legacy/build-config.ts'
 import { createBuilder } from './plugin.ts'
 
 export interface BuildOptions {
@@ -24,7 +25,7 @@ export async function build(cwd: string, options: BuildOptions): Promise<void> {
     config: file ?? false,
     ...options.outDir !== undefined && { outDir: options.outDir },
     ...options.sourcemap !== undefined && { sourcemap: options.sourcemap },
-    plugins: file ? [requireBuilder(file)] : [createBuilder({}, { legacy: true })],
+    plugins: file ? [requireBuilder(file)] : [createBuilder({}, { loadConfig: loadLegacyModuleConfig })],
   })
 }
 

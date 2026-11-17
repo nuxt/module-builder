@@ -8,12 +8,13 @@ import { resolvePathSync } from 'mlly'
 import { dirname, join, relative, resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
 import { glob } from 'tinyglobby'
-import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
-import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
+import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
+import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/tsconfig.ts'
 import { writeSourceTypes } from '../build/types.ts'
+import { loadBuildConfig } from '../legacy/build-config.ts'
 import { probe } from '../rolldown/resolve.ts'
 import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../rolldown/tsconfig.ts'
 import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -21,15 +22,12 @@ import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './
 const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/
 const PATH_OPTIONS = new Set(['paths', 'baseUrl', 'rootDir', 'rootDirs', 'outDir', 'outFile', 'declarationDir', 'typeRoots', 'tsBuildInfoFile'])
 
-async function loadPrepareConfig(cwd: string): Promise<{ config: TranslatedBuildConfig, outDir: string }> {
+async function loadPrepareConfig(cwd: string): Promise<{ config: ModuleConfig, outDir: string }> {
   const pkg = await readPackageJSON(cwd)
   const moduleConfig = await loadModuleConfig(cwd)
   const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
-  if (!moduleConfig) {
-    return { config: await loadBuildConfig(cwd, pkg, outDir), outDir }
-  }
-  assertNoLegacyBuildConfig(cwd, pkg)
-  return { config: resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options), outDir }
+  const config = moduleConfig ? resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options) : await loadBuildConfig(cwd, pkg, outDir)
+  return { config, outDir }
 }
 
 /**
@@ -58,7 +56,7 @@ async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: 
   return { globals, augmentations }
 }
 
-export async function prepareModule(cwd: string, buildConfig?: { config: TranslatedBuildConfig, outDir: string }): Promise<{ result: unknown }> {
+export async function prepareModule(cwd: string, buildConfig?: { config: ModuleConfig, outDir: string }): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
   const { config, outDir } = buildConfig ?? await loadPrepareConfig(cwd)

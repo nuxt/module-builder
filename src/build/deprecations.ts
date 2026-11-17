@@ -3,6 +3,7 @@ import { relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, isLegacyPath } from '../legacy/package-paths.ts'
 import { guide } from './guide.ts'
 import { collectStrings, publishedPackage } from './package.ts'
 
@@ -25,25 +26,6 @@ export async function checkDeprecatedPackageFields(cwd: string): Promise<void> {
 }
 
 type PackageJSON = Awaited<ReturnType<typeof readPackageJSON>>
-
-const DECLARATION_RE = /(?:^|\/)(?:module|types)\.d\.ts$/
-const CJS_MODULE_RE = /(?:^|\/)module\.cjs$/
-
-export function checkLegacyDeclarationPaths(cwd: string, pkg: PackageJSON): boolean {
-  if (!missingPaths(cwd, pkg).some(path => DECLARATION_RE.test(path))) {
-    return false
-  }
-  consola.warn(`\`@nuxt/module-builder\` no longer generates \`.d.ts\` declarations for the module entry. Replace \`.d.ts\` with \`.d.mts\` in these \`package.json\` paths: ${list(missingPaths(cwd, pkg).filter(path => DECLARATION_RE.test(path)))}. ${guide('declaration-paths')}`)
-  return true
-}
-
-export function checkLegacyCJSPaths(cwd: string, pkg: PackageJSON): boolean {
-  if (!missingPaths(cwd, pkg).some(path => CJS_MODULE_RE.test(path))) {
-    return false
-  }
-  consola.warn(`\`@nuxt/module-builder\` no longer generates \`module.cjs\`, which Nuxt 3 and later do not need. Replace it with \`./dist/module.mjs\` in \`package.json\`. ${guide('modulecjs')}`)
-  return true
-}
 
 export function checkStaleTypesField(cwd: string, pkg: PackageJSON): boolean {
   if (!pkg.types || resolvesForTypeScript(cwd, pkg.types)) {
@@ -72,7 +54,7 @@ export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJSON): bool
 /** Warn about paths in `package.json` that the build did not produce, other than those the checks above explain. */
 export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
   const paths = [...new Set(missingPaths(cwd, pkg))]
-    .filter(path => !path.includes('*') && !DECLARATION_RE.test(path) && !CJS_MODULE_RE.test(path) && path !== pkg.types && !node10Replacement(cwd, path))
+    .filter(path => !path.includes('*') && !isLegacyPath(path) && path !== pkg.types && !node10Replacement(cwd, path))
   if (!paths.length) {
     return false
   }
@@ -80,7 +62,7 @@ export function checkMissingPaths(cwd: string, pkg: PackageJSON): boolean {
   return true
 }
 
-function list(paths: string[]) {
+export function list(paths: string[]): string {
   return [...new Set(paths)].map(path => `\`${path}\``).join(', ')
 }
 
@@ -109,7 +91,7 @@ function typesVersionsPaths(pkg: PackageJSON) {
   return collectStrings(pkg.typesVersions).filter(path => !path.includes('*'))
 }
 
-function missingPaths(cwd: string, pkg: PackageJSON): string[] {
+export function missingPaths(cwd: string, pkg: PackageJSON): string[] {
   const typesVersions = new Set(typesVersionsPaths(pkg))
   return referencedPaths(pkg).filter(path => !path.startsWith('/') && !(typesVersions.has(path) ? resolvesForTypeScript(cwd, path) : existsSync(resolve(cwd, path))))
 }

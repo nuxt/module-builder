@@ -3,14 +3,15 @@ import { rm } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
+import type { PackageJson } from 'pkg-types'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
 import type { BuildPlan } from '../build/build.ts'
-import { assertNoLegacyBuildConfig, loadBuildConfig, resolveModuleOptions, resolveOutDir } from '../build/build-config.ts'
-import type { BuilderOptions } from '../build/build-config.ts'
 import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
+import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
+import type { BuilderOptions, ModuleConfig } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
@@ -22,8 +23,8 @@ import { realpath } from '../utils.ts'
 import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
-  /** Read `build.config.*` and `package.json`'s `build` or `unbuild` field. */
-  legacy: boolean
+  /** Loads the module's options from elsewhere than `builder()`. */
+  loadConfig?: (cwd: string, pkg: PackageJson, outDir: string) => Promise<ModuleConfig>
 }
 
 export interface BuilderSession {
@@ -67,7 +68,7 @@ const FORBIDDEN: Array<[option: string, isSet: (config: UserConfig) => boolean, 
  * Resolves the module build for `config`, fills in the tsdown options it depends on and
  * adds the plugins and hooks that build the module.
  */
-export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { legacy }: SetupOptions): Promise<BuilderSession> {
+export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { loadConfig }: SetupOptions): Promise<BuilderSession> {
   const forbidden = FORBIDDEN.filter(([, isSet]) => isSet(config))
   if (forbidden.length) {
     throw new Error([
@@ -85,17 +86,14 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }
   const outDirOption = config.outDir ?? 'dist'
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
-  if (!legacy) {
-    assertNoLegacyBuildConfig(cwd, pkg)
-  }
-  const buildConfig = legacy ? await loadBuildConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
+  const buildConfig = loadConfig ? await loadConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
     consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
     await prepareModule(cwd, { config: buildConfig, outDir })
   }
 
-  const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, loadConfig: async () => buildConfig })
+  const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })
   const directoryPlugins = plan.directories.map(directory => transpileDir({
     cwd,
     srcDir: directory.srcDir,

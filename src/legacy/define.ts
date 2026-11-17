@@ -1,3 +1,7 @@
+/**
+ * `defineBuildConfig` and the types of a v1 module's `build.config.ts`, which
+ * `@nuxt/module-builder` still exports for modules that have not moved to `builder()`.
+ */
 import type { PackageJson } from 'pkg-types'
 
 export interface BuildEntry {

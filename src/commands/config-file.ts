@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'pathe'
 
-import { BUILDER_OPTIONS } from '../build/build-config.ts'
-import type { BuilderOptions } from '../build/build-config.ts'
+import { BUILDER_OPTIONS } from '../build/options.ts'
+import type { BuilderOptions } from '../build/options.ts'
 import { guide } from '../build/guide.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 

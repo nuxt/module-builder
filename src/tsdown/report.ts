@@ -1,7 +1,7 @@
 import { relative } from 'pathe'
 import type { Rolldown, UserConfig } from 'tsdown'
 
-import type { DirectoryEntry } from '../build/build-config.ts'
+import type { DirectoryEntry } from '../build/options.ts'
 
 const DECLARATION_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
 

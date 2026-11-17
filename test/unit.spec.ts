@@ -9,7 +9,7 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { resolveModuleOptions, resolveOutDir } from '../src/build/build-config.ts'
+import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -20,7 +20,8 @@ import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
 import { transformCss } from '../src/rolldown/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { importsKeyFor, publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
@@ -794,11 +795,10 @@ describe('builder options', () => {
     expect(config.neverBundle.map(String)).toEqual(['/^fake-pkg(?:\\/|$)/', '/^my-module(?:$|\\/(?!runtime\\/))/'])
     expect(config.replace).toEqual({ values: { __A__: '"a"' }, preventAssignment: true })
     expect(resolveModuleOptions(cwd, {}, outDir, { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } }).replace).toEqual({ values: { __B__: '"b"' }, delimiters: ['', ''], preventAssignment: true })
-    expect(config.unsupported).toEqual([])
   })
 
   it('should collect options it does not accept', () => {
-    expect(resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never).unsupported).toEqual(['builder(): entries[0].ext', 'builder(): outDir'])
+    expect(() => resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never)).toThrow(`\`builder()\` does not support these options:\n  - outDir\n  - entries[0].ext\n${guide('tsdown-config')}`)
   })
 
   it('should refuse `hooks` and point at tsdown\'s own', () => {

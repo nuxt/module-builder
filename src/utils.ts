@@ -13,6 +13,14 @@ export function isInside(dir: string, path: string): boolean {
   return subpath !== '..' && !subpath.startsWith('../') && !isAbsolute(subpath)
 }
 
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof RegExp)
+}
+
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 export const RELATIVE_RE: RegExp = /^\.\.?(?:\/|$)/
 
 /** The relative specifier from the directory of `from` to `to`. */
