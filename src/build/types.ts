@@ -3,7 +3,7 @@ import { dirname, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
 import { parseModule } from '../transpile/specifiers.ts'
-import { getOrCreate, probe, writeIfChanged } from '../utils.ts'
+import { probe, writeIfChanged } from '../utils.ts'
 
 interface ExportedName {
   name: string
@@ -91,6 +91,7 @@ export async function writeTypes(distDir: string, source?: { exports: Set<string
     }
   }
 
+  const namedReExports = namedExports(moduleReExports)
   const dtsContents = `
   ${schemaImports.length ? `import type { ${schemaImports.join(', ')} } from '@nuxt/schema'` : ''}
 
@@ -100,7 +101,7 @@ ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${source ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
-${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexport { ${names.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + n).join(', ')} } from '${specifier}'`).join('\n')}
+${namedReExports.length ? `\nexport { ${namedReExports.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + n).join(', ')} } from './module.mjs'` : ''}
 ${moduleReExports.filter(e => e.star).map(e => `\nexport ${e.star!.typeOnly ? 'type ' : ''}*${e.names[0] ? ` as ${e.names[0].name}` : ''} from '${e.specifier}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
@@ -183,16 +184,8 @@ function bindingNames(ts: typeof import('typescript'), name: ts.BindingName): st
   return name.elements.flatMap(element => ts.isBindingElement(element) ? bindingNames(ts, element.name) : [])
 }
 
-function groupNamedReExports(exports: ModuleExport[]) {
-  const groups = new Map<string, Set<string>>()
-  for (const e of exports) {
-    if (!e.star) {
-      const names = getOrCreate(groups, e.specifier || './module.mjs', () => new Set<string>())
-      e.names.forEach(({ name }) => names.add(name))
-    }
-  }
-  return new Map([...groups].map(([specifier, names]) => [
-    specifier,
-    [...names].sort((a, b) => a === 'default' ? 1 : b === 'default' ? -1 : a.localeCompare(b)),
-  ]))
+/** The names that `exports` declare or re-export by name, sorted with `default` last. */
+function namedExports(exports: ModuleExport[]) {
+  const names = new Set(exports.flatMap(e => e.star ? [] : e.names.map(({ name }) => name)))
+  return [...names].sort((a, b) => a === 'default' ? 1 : b === 'default' ? -1 : a.localeCompare(b))
 }

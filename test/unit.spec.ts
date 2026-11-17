@@ -621,13 +621,14 @@ describe('writeTypes', () => {
       'export declare const { c, d: [e] }: { c: 1, d: [2] }',
       `export * as ns from './ns.mjs'`,
       `export type * from './types.mjs'`,
-      'export interface ModuleOptions {}',
+      `export type { Options as ModuleOptions } from './options.mjs'`,
+      `export { t as shared } from './chunk.mjs'`,
       'declare const _default: unknown',
       'export { _default as default }',
     ].join('\n'))
     await writeTypes(dir)
     expect((await readFile(join(dir, 'types.d.mts'), 'utf-8')).split('\n').filter(line => line.startsWith('export'))).toEqual([
-      `export { a, b, Base, c, e, Helpers, type ModuleOptions, default } from './module.mjs'`,
+      `export { a, b, Base, c, e, Helpers, type ModuleOptions, shared, default } from './module.mjs'`,
       `export * as ns from './ns.mjs'`,
       `export type * from './types.mjs'`,
     ])
