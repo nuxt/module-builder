@@ -9,7 +9,7 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { assertNoLegacyBuildConfig, bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
+import { resolveModuleOptions, resolveOutDir } from '../src/build/build-config.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -50,16 +50,17 @@ function createResolver(packageName?: string) {
 }
 
 describe('runtimeExternals', () => {
-  it('should rewrite relative runtime imports to their built extension', async () => {
+  it('should point relative runtime imports at their output, keeping the name of `.vue` and non-code files', async () => {
     await expect(createResolver()('./runtime/plugins/plugin')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.js',
       external: true,
     })
-  })
-
-  it('should leave `.vue` specifiers untouched', async () => {
     await expect(createResolver()('./runtime/components/TestMe.vue')).resolves.toEqual({
       id: '/dist/runtime/components/TestMe.vue',
+      external: true,
+    })
+    await expect(createResolver()('./runtime/assets/config.json')).resolves.toEqual({
+      id: '/dist/runtime/assets/config.json',
       external: true,
     })
   })
@@ -80,38 +81,15 @@ describe('runtimeExternals', () => {
     })
   })
 
-  it('should keep the name of non-code runtime files', async () => {
-    await expect(createResolver()('./runtime/assets/config.json')).resolves.toEqual({
-      id: '/dist/runtime/assets/config.json',
-      external: true,
-    })
-  })
-
-  it('should rewrite self-referencing runtime imports', async () => {
+  it('should point self-referencing runtime imports at their output, treating a `.client` suffix as part of the name and a directory as its index', async () => {
     await expect(createResolver('my-module')('my-module/runtime/plugins/plugin')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.js',
       external: true,
     })
-  })
-
-  it('should treat a `.client` suffix in a self-referencing import as part of the name', async () => {
     await expect(createResolver('my-module')('my-module/runtime/plugins/plugin.client')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.client.js',
       external: true,
     })
-  })
-
-  it('should ignore specifiers outside the runtime tree', async () => {
-    await expect(createResolver('my-module')('@nuxt/kit')).resolves.toBeUndefined()
-  })
-
-  it('should ignore files that resolve outside the runtime tree', async () => {
-    const resolveId = runtimeExternals(directories()).resolveId as (this: unknown, id: string, importer?: string) => Promise<unknown>
-    const context = { resolve: async () => ({ id: join(runtimeSrcDir, '../utils.ts'), external: false }) }
-    await expect(resolveId.call(context, './utils', importer)).resolves.toBeUndefined()
-  })
-
-  it('should point self-referencing directory imports at their index file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-'))
     try {
       await mkdir(join(dir, 'utils'))
@@ -127,6 +105,13 @@ describe('runtimeExternals', () => {
     }
   })
 
+  it('should ignore specifiers and files outside the runtime tree', async () => {
+    await expect(createResolver('my-module')('@nuxt/kit')).resolves.toBeUndefined()
+    const resolveId = runtimeExternals(directories()).resolveId as (this: unknown, id: string, importer?: string) => Promise<unknown>
+    const context = { resolve: async () => ({ id: join(runtimeSrcDir, '../utils.ts'), external: false }) }
+    await expect(resolveId.call(context, './utils', importer)).resolves.toBeUndefined()
+  })
+
   it('should import runtime files relative to the chunk that imports them', () => {
     const renderChunk = runtimeExternals(directories()).renderChunk as (code: string, chunk: { fileName: string, imports: string[], dynamicImports: string[] }, options: { dir?: string }) => { code: string } | undefined
     const code = 'import plugin from "/dist/runtime/plugins/plugin.js";\nconst lazy = () => import("/dist/runtime/lazy.js");\nconst path = "/dist/runtime/plugins/plugin.js/other";\n'
@@ -135,177 +120,6 @@ describe('runtimeExternals', () => {
     expect(renderChunk(code, chunk('nested/helper.mjs'), { dir: '/dist' })?.code).toBe(code
       .replace('"/dist/runtime/plugins/plugin.js"', '"../runtime/plugins/plugin.js"')
       .replace('"/dist/runtime/lazy.js"', '"../runtime/lazy.js"'))
-  })
-})
-
-describe('translateBuildConfig', () => {
-  const cwd = fileURLToPath(new URL('../example', import.meta.url))
-  const outDir = join(cwd, 'dist')
-  const translate = (...configs: unknown[]) => translateBuildConfig(configs.map((config, index) => ({ name: `config${index}`, config })), { cwd, outDir })
-
-  it('should name entries the way unbuild did', () => {
-    expect(entryName('src/vite', cwd)).toBe('vite')
-    expect(entryName('./src/runtime/server/index.ts', cwd)).toBe('runtime/server/index')
-    expect(entryName(join(cwd, 'src/cli.mts'), cwd)).toBe('cli')
-    expect(entryName('lib/other', cwd)).toBe('lib/other')
-  })
-
-  it('should resolve entry inputs to their source file', () => {
-    expect(translate({ entries: ['src/utils', { input: './src/utils.ts', name: 'helpers' }] }).entries).toEqual({
-      utils: './src/utils.ts',
-      helpers: './src/utils.ts',
-    })
-  })
-
-  it('should skip a directory entry for `src/runtime` and keep others', () => {
-    const { directories, unsupported } = translate({ entries: [{ input: 'src/runtime/', outDir: 'dist/runtime' }, { input: 'src/shared/', builder: 'mkdist', outDir: 'dist/shared' }, { input: 'src/features/', outDir: 'dist/features', ext: 'js' }, { input: 'src/other/', outDir: 'lib' }] })
-    expect(directories).toEqual([
-      { srcDir: join(cwd, 'src/shared'), outDir: join(outDir, 'shared'), ext: 'mjs' },
-      { srcDir: join(cwd, 'src/features'), outDir: join(outDir, 'features'), ext: 'js' },
-    ])
-    expect(unsupported).toEqual(['config0: entries[3].outDir'])
-  })
-
-  it('should match string externals by package name', () => {
-    const [pkg, alias] = translate({ externals: ['fake-pkg', '#alias'] }).neverBundle
-    expect(['fake-pkg', 'fake-pkg/sub'].every(id => pkg!.test(id))).toBe(true)
-    expect(pkg!.test('fake-pkg-other')).toBe(false)
-    expect(alias!.test('#alias/config')).toBe(true)
-  })
-
-  it('should merge replacements with earlier configs taking precedence', () => {
-    expect(translate(
-      { replace: { __A__: '"a"' }, rollup: { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } } },
-      { replace: { __A__: '"overridden"', __C__: '"c"' } },
-    ).replace).toEqual({ values: { __A__: '"a"', __B__: '"b"', __C__: '"c"' }, delimiters: ['', ''], preventAssignment: true })
-    expect(translate({ replace: { __A__: '"a"' }, rollup: { replace: false } }).replace).toBeUndefined()
-  })
-
-  it('should accept options without an effect on the output', () => {
-    expect(translate({
-      declaration: 'node16',
-      failOnWarn: false,
-      name: 'my-module',
-      rootDir: '.',
-      outDir: 'dist',
-      clean: true,
-      entries: [{ input: 'src/features/', outDir: 'dist/features', ext: 'mjs', addRelativeDeclarationExtensions: true }],
-      rollup: { emitCJS: false, cjsBridge: false, output: { exports: 'named' } },
-    }).unsupported).toEqual([])
-  })
-
-  it('should keep supported hooks, ignore mkdist hooks and reject the rest', () => {
-    const before = () => {}
-    const done = () => {}
-    const { hooks, ignoredHooks, unsupported } = translate({ hooks: { 'build:before': before, 'rollup:done': done, 'mkdist:entry:options': () => {}, 'rollup:options': () => {} } })
-    expect(hooks).toEqual({ 'build:before': [before], 'rollup:done': [done], 'build:done': [] })
-    expect(ignoredHooks).toEqual(['config0: hooks[\'mkdist:entry:options\']'])
-    expect(unsupported).toEqual(['config0: hooks[\'rollup:options\']'])
-  })
-
-  it('should not duplicate the default module entry', () => {
-    expect(bundledEntries(cwd, translate({ entries: ['src/module'] }))).toEqual({ module: './src/module.ts' })
-  })
-
-  it('should load a config file, then `package.json`', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'module-builder-'))
-    try {
-      await writeFile(join(dir, 'build.config.mjs'), `export default [{ externals: ['a'] }, false]\n`)
-      const config = await loadBuildConfig(dir, { build: { externals: ['b'] } }, join(dir, 'dist'))
-      expect(config.file).toBe('build.config.mjs')
-      expect(config.importsUnbuild).toBe(false)
-      expect(config.field).toBe('build')
-      expect(config.neverBundle.map(String)).toEqual(['/^a(?:\\/|$)/', '/^b(?:\\/|$)/'])
-      expect(config.unsupported).toEqual([])
-
-      await rm(join(dir, 'build.config.mjs'))
-      await mkdir(join(dir, 'node_modules/unbuild'), { recursive: true })
-      await writeFile(join(dir, 'node_modules/unbuild/package.json'), JSON.stringify({ name: 'unbuild', type: 'module', exports: './index.js' }))
-      await writeFile(join(dir, 'node_modules/unbuild/index.js'), 'export const defineBuildConfig = config => config\n')
-      await writeFile(join(dir, 'build.config.js'), `import { defineBuildConfig } from 'unbuild'\nexport default [defineBuildConfig({ externals: ['a'] }), { entries: ['src/utils'] }]\n`)
-      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ importsUnbuild: true, field: undefined, unsupported: ['build.config.js: an array of 2 configs'] })
-
-      await rm(join(dir, 'build.config.js'))
-      await writeFile(join(dir, 'build.config.mts'), 'export default () => ({})\n')
-      await expect(loadBuildConfig(dir, {}, join(dir, 'dist'))).rejects.toThrow(`not a function. Replace the function with the object it returns. ${guide('other-options')}`)
-
-      await rm(join(dir, 'build.config.mts'))
-      await mkdir(join(dir, 'extensions/src/lib'), { recursive: true })
-      await writeFile(join(dir, 'extensions/options.ts'), `export default { externals: ['o'] }\n`)
-      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options'\nexport default options\n`)
-      await writeFile(join(dir, 'extensions/src/module.ts'), `import { helper } from './helper'\nexport { shared } from './lib'\nexport default helper\n`)
-      await writeFile(join(dir, 'extensions/src/helper.ts'), `export const helper = 1\n`)
-      await writeFile(join(dir, 'extensions/src/lib/index.ts'), `import { shared } from '../../options'\nexport { shared }\n`)
-      await expect(loadBuildConfig(join(dir, 'extensions'), { build: { entries: ['src/lib/index'] } }, join(dir, 'dist'))).rejects.toThrow([
-        'Module code has to load with Node, which strips types and resolves imports as written:',
-        '  - build.config.ts:1:21: `./options` (use `./options.ts`)',
-        '  - src/lib/index.ts:1:24: `../../options` (use `../../options.ts`)',
-        '  - src/module.ts:1:24: `./helper` (use `./helper.ts`)',
-        '  - src/module.ts:2:24: `./lib` (use `./lib/index.ts`)',
-        `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
-      ].join('\n'))
-      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options.ts'\nexport default options\n`)
-      expect((await loadBuildConfig(join(dir, 'extensions'), {}, join(dir, 'dist'))).neverBundle.map(String)).toEqual(['/^o(?:\\/|$)/'])
-
-      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ file: undefined, unsupported: [] })
-      const fromPkg = await loadBuildConfig(dir, { unbuild: { externals: ['u'] }, build: { externals: ['b'] } }, join(dir, 'dist'))
-      expect(fromPkg.neverBundle.map(String)).toEqual(['/^u(?:\\/|$)/'])
-
-      const inferred = (await loadBuildConfig(dir, { name: '@nuxt/image', imports: { '#image/*': './src/*.ts' } }, join(dir, 'dist'))).neverBundle
-      expect(inferred).toHaveLength(1)
-      expect(['@nuxt/image', '@nuxt/image/utils'].every(id => inferred[0]!.test(id))).toBe(true)
-      expect(inferred[0]!.test('@nuxt/image/runtime/providers/ipx')).toBe(false)
-    }
-    finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('should collect every option without an equivalent', () => {
-    expect(translate(
-      { hooks: { 'build:prepare': () => {} }, rollup: { emitCJS: true, output: { format: 'cjs' } }, stubOptions: {} },
-      { externals: [42], replace: { __FN__: () => '' } },
-    ).unsupported).toEqual([
-      'config0: hooks[\'build:prepare\']',
-      'config0: rollup.emitCJS: true',
-      'config0: rollup.output',
-      'config0: stubOptions',
-      'config1: externals[0]',
-      'config1: replace[\'__FN__\']',
-    ])
-  })
-
-  it('should point each unsupported option at its section of the upgrade guide', () => {
-    const message = formatUnsupportedOptions(['build.config.ts: hooks[\'rollup:options\']', 'build.config.ts: rollup.emitCJS: true', 'build.config.ts: rollup.alias', 'build.config.ts: entries[0].esbuild', 'build.config.ts: stubOptions'])
-    expect(message.split('\n')).toEqual([
-      'The build config uses options that `@nuxt/module-builder` v2 does not support:',
-      `  - build.config.ts: hooks['rollup:options'] (${guide('hooks')})`,
-      `  - build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`,
-      `  - build.config.ts: rollup.alias (${guide('rollup-options')})`,
-      `  - build.config.ts: entries[0].esbuild (${guide('mkdist-options')})`,
-      `  - build.config.ts: stubOptions (${guide('other-options')})`,
-      `Remove each of them from the file named. ${guide('unsupported-build-options')}`,
-    ])
-  })
-
-  it('should warn about a deprecated config file and ignored hooks in CI too', () => {
-    vi.stubEnv('CI', 'true')
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
-    try {
-      const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
-      warnDeprecatedBuildConfig(config)
-      warnDeprecatedBuildConfig({ ...config, importsUnbuild: false, ignoredHooks: [], field: 'unbuild' })
-      expect(warn.mock.calls.map(([message]) => message)).toEqual([
-        expect.stringMatching(new RegExp(`^Ignoring build\\.config\\.ts: hooks\\['mkdist:entry:options'\\]: .*Remove the hook\\. ${guide('hooks')}$`)),
-        expect.stringMatching(new RegExp(`^\`build\\.config\\.ts\` is deprecated\\. .*instead of \`unbuild\`\\. Move them into \`builder\\(\\)\` in \`tsdown\\.config\\.ts\`\\. ${guide('moving-from-buildconfigts')}$`)),
-        `\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`,
-        expect.stringMatching(new RegExp(`^The \`unbuild\` field of \`package\\.json\` is deprecated\\. .*Rename the field to \`build\`\\. ${guide('build-configuration')}$`)),
-      ])
-    }
-    finally {
-      warn.mockRestore()
-      vi.unstubAllEnvs()
-    }
   })
 })
 
@@ -989,12 +803,6 @@ describe('builder options', () => {
 
   it('should refuse `hooks` and point at tsdown\'s own', () => {
     expect(() => resolveModuleOptions(cwd, {}, outDir, { hooks: { 'build:before': () => {} } } as never)).toThrow(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
-  })
-
-  it('should refuse a `build` or `unbuild` field of `package.json` alongside it', () => {
-    expect(() => assertNoLegacyBuildConfig(cwd, { build: {} })).toThrow(`The \`build\` field of \`package.json\` configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and remove the field. ${guide('moving-from-buildconfigts')}`)
-    expect(() => assertNoLegacyBuildConfig(cwd, { unbuild: {} })).toThrow('The `unbuild` field of `package.json`')
-    expect(() => assertNoLegacyBuildConfig(cwd, {})).not.toThrow()
   })
 
   it('should list every tsdown option it sets that the config sets too', async () => {

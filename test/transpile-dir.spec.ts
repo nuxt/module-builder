@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { emptyEntry, transpileDir } from '../src/rolldown/index.ts'
 import type { ExternalImport } from '../src/rolldown/index.ts'
 
-const root = fileURLToPath(new URL('../.temp-rolldown-plugin', import.meta.url))
+const root = fileURLToPath(new URL('../.temp-transpile-dir', import.meta.url))
 const cwd = join(root, 'project')
 const dist = join(cwd, 'dist')
 const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/'))
@@ -89,31 +89,48 @@ describe('transpileDir', () => {
       await mkdir(join(root, file, '..'), { recursive: true })
       await writeFile(join(root, file), contents)
     }
-    const options = { cwd, config: false, entry: ['src/index.ts'], format: 'esm', dts: false, report: false } satisfies Parameters<typeof build>[0]
-    await build({
-      ...options,
-      outDir: dist,
-      plugins: [transpileDir({
-        srcDir: 'src/lib',
-        outBase: 'lib',
-        resolveExternal(specifier, _importer, { kind, file }) {
-          externals.push([specifier, kind, file.slice(root.length)])
-          return { mirror: kind }
-        },
-      })],
-    })
-    await build({
-      ...options,
-      entry: emptyEntry,
-      outDir: join(cwd, 'dist-raw'),
-      plugins: [transpileDir({
-        srcDir: 'src/lib',
-        exclude: ['**/*.spec.ts', '**/Other.vue'],
-        declaration: false,
-        stylesheets: false,
-      })],
-    })
-  }, 120_000)
+    const options = { cwd, config: false, entry: emptyEntry, format: 'esm', dts: false, report: false } satisfies Parameters<typeof build>[0]
+    const automatic = { runtime: 'automatic', importSource: 'vue' } as const
+    await Promise.all([
+      build({
+        ...options,
+        entry: ['src/index.ts'],
+        outDir: dist,
+        plugins: [transpileDir({
+          srcDir: 'src/lib',
+          outBase: 'lib',
+          resolveExternal(specifier, _importer, { kind, file }) {
+            externals.push([specifier, kind, file.slice(root.length)])
+            return { mirror: kind }
+          },
+        })],
+      }),
+      build({
+        ...options,
+        outDir: join(cwd, 'dist-raw'),
+        plugins: [transpileDir({
+          srcDir: 'src/lib',
+          exclude: ['**/*.spec.ts', '**/Other.vue'],
+          declaration: false,
+          stylesheets: false,
+        })],
+      }),
+      build({
+        ...options,
+        outDir: join(cwd, 'dist-jsx'),
+        plugins: [
+          transpileDir({ srcDir: 'src/lib', outBase: 'preserved', include: ['components/Button.tsx'], extension: 'mjs' }),
+          transpileDir({ srcDir: 'src/lib', outBase: 'compiled', include: ['components/Button.tsx'], declaration: false, jsx: automatic }),
+          transpileDir({ srcDir: 'src/lib', outBase: 'mixed', include: ['index.ts', 'components/*.tsx'], declaration: false, jsx: file => file.endsWith('Button.tsx') ? automatic : 'preserve' }),
+        ],
+      }),
+      build({
+        ...options,
+        outDir: join(cwd, 'dist-maps'),
+        plugins: [transpileDir({ srcDir: 'src/lib', outBase: 'lib', include: ['lazy.ts'], declaration: false, sourcemap: true })],
+      }),
+    ])
+  })
 
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
@@ -262,21 +279,6 @@ describe('transpileDir', () => {
 
   it('should compile JSX with the `jsx` option, per file when it is a function', async () => {
     const outDir = join(cwd, 'dist-jsx')
-    const automatic = { runtime: 'automatic', importSource: 'vue' } as const
-    await build({
-      cwd,
-      config: false,
-      entry: emptyEntry,
-      format: 'esm',
-      dts: false,
-      report: false,
-      outDir,
-      plugins: [
-        transpileDir({ srcDir: 'src/lib', outBase: 'preserved', include: ['components/Button.tsx'], extension: 'mjs' }),
-        transpileDir({ srcDir: 'src/lib', outBase: 'compiled', include: ['components/Button.tsx'], declaration: false, jsx: automatic }),
-        transpileDir({ srcDir: 'src/lib', outBase: 'mixed', include: ['index.ts', 'components/*.tsx'], declaration: false, jsx: file => file.endsWith('Button.tsx') ? automatic : 'preserve' }),
-      ],
-    })
     expect((await listFiles(outDir)).filter(file => file.includes('.')).sort()).toEqual([
       'compiled/components/Button.js',
       'mixed/components/Button.js',
@@ -293,16 +295,6 @@ describe('transpileDir', () => {
 
   it('should emit a source map next to each script that links back to its source', async () => {
     const outDir = join(cwd, 'dist-maps')
-    await build({
-      cwd,
-      config: false,
-      entry: emptyEntry,
-      format: 'esm',
-      dts: false,
-      report: false,
-      outDir,
-      plugins: [transpileDir({ srcDir: 'src/lib', outBase: 'lib', include: ['lazy.ts'], declaration: false, sourcemap: true })],
-    })
     const code = await readFile(join(outDir, 'lib/lazy.js'), 'utf8')
     expect(code.trimEnd().split('\n').at(-1)).toBe('//# sourceMappingURL=lazy.js.map')
     const map = JSON.parse(await readFile(join(outDir, 'lib/lazy.js.map'), 'utf8'))

@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config'
 const config: ReturnType<typeof defineConfig> = defineConfig({
   test: {
     coverage: {},
+    globalSetup: ['./test/setup.ts'],
     testTimeout: 180_000,
     hookTimeout: 180_000,
   },
