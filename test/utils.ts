@@ -36,8 +36,12 @@ async function acquireSlot(): Promise<string> {
         return slot
       }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        const { code } = error as NodeJS.ErrnoException
+        if (code === 'ENOENT') {
           await mkdir(slotsDir, { recursive: true })
+        }
+        else if (code !== 'EEXIST' && code !== 'EPERM' && code !== 'EBUSY') {
+          throw error
         }
       }
     }
