@@ -217,7 +217,7 @@ describe('builder', () => {
 
   it('should refuse package `imports` that the output imports and that would not work once installed', async () => {
     expect(expectFailed('packageImports')).toContain(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#ext/*\` (\`./src/ext/*.ts\`).`)
-    expect(await read(dirs.packageImports!, 'dist/module.mjs')).toContain('"#ext/value"')
+    expect(exists(dirs.packageImports!, 'dist')).toBe(false)
     const module = await read(dirs.compose!, 'dist/module.mjs')
     expect(module).toContain('"#ext/value"')
     expect(module).toContain('through imports')

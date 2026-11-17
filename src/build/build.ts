@@ -239,7 +239,7 @@ export interface FinishBuildOptions {
   outputs: string[]
   /** Versions recorded as `builder` in `module.json`, besides this package's. */
   builder: Record<string, string>
-  /** Keeps the output when the built module cannot be loaded, as a watcher goes on serving it. */
+  /** Keeps the output when a step or check fails, as a watcher goes on serving it. */
   keepOutput?: boolean
 }
 
@@ -247,17 +247,26 @@ export interface FinishBuildOptions {
 let metaImports = 0
 
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
-export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
+export async function finishBuild(plan: BuildPlan, { keepOutput, ...options }: FinishBuildOptions): Promise<void> {
+  try {
+    await finish(plan, options)
+  }
+  catch (error) {
+    if (!keepOutput) {
+      await rm(plan.outDir, { recursive: true, force: true })
+    }
+    throw error
+  }
+}
+
+async function finish(plan: BuildPlan, { outputs, builder }: Omit<FinishBuildOptions, 'keepOutput'>) {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
   if (outputs.includes('types.mjs')) {
     throw new Error(`A directory entry emits \`types.mjs\` at the root of \`${relative(cwd, outDir)}\`, whose declarations would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
   }
   const moduleFile = resolve(outDir, 'module.mjs')
-  const meta = await readModuleMeta(moduleFile, cwd).catch(async (error) => {
-    if (!keepOutput) {
-      await rm(outDir, { recursive: true, force: true })
-    }
+  const meta = await readModuleMeta(moduleFile, cwd).catch((error) => {
     throw new Error(`Cannot load \`${relative(cwd, moduleFile)}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
   meta.name ||= pkg.name
