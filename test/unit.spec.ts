@@ -632,6 +632,8 @@ describe('writeTypes', () => {
       `export type { Options as ModuleOptions } from './options.mjs'`,
       `export { t as shared } from './chunk.mjs'`,
       `export { a as "kebab-name" }`,
+      `export * from "./it's.mjs"`,
+      `export * as "kebab-ns" from './kebab.mjs'`,
       'declare const _default: unknown',
       'export { _default as default }',
     ].join('\n'))
@@ -640,6 +642,8 @@ describe('writeTypes', () => {
       `export { a, b, Base, c, e, Helpers, "kebab-name", type ModuleOptions, shared, default } from './module.mjs'`,
       `export * as ns from './ns.mjs'`,
       `export type * from './types.mjs'`,
+      `export * from './it\\'s.mjs'`,
+      `export * as "kebab-ns" from './kebab.mjs'`,
     ])
     await rm(dir, { recursive: true, force: true })
   })
