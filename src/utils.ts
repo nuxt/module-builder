@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'pathe'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'pathe'
 
 export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
 export const TYPESCRIPT_RE: RegExp = /\.[cm]?tsx?$/
@@ -48,10 +48,14 @@ export function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile()
 }
 
-/** `path` resolved, with symlinks followed when it exists, as module ids are. */
+/** `path` resolved, with symlinks in it and its existing ancestors followed, as module ids are. */
 export function realpath(path: string): string {
   const resolved = resolve(path)
-  return existsSync(resolved) ? resolve(realpathSync(resolved)) : resolved
+  if (existsSync(resolved)) {
+    return resolve(realpathSync(resolved))
+  }
+  const parent = dirname(resolved)
+  return parent === resolved ? resolved : join(realpath(parent), basename(resolved))
 }
 
 /** Whether `path` is `dir` or inside it. */

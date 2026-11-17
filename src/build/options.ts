@@ -2,7 +2,7 @@ import { isAbsolute, normalize, relative, resolve } from 'pathe'
 import type { PackageJson } from 'pkg-types'
 
 import { assertNoLegacyBuildConfig } from '../legacy/build-config.ts'
-import { escapeRegExp, isInside, isPlainObject, probe } from '../utils.ts'
+import { escapeRegExp, isInside, isPlainObject, probe, realpath } from '../utils.ts'
 import type { BuildPlan } from './build.ts'
 import { guide } from './guide.ts'
 
@@ -255,7 +255,7 @@ function entryPath(cwd: string, input: string) {
 
 /** Resolves `outDir` against `cwd`, refusing a directory outside the module, which the build would empty. */
 export function resolveOutDir(cwd: string, outDir: string, label: string = `--outDir ${outDir}`): string {
-  const resolved = resolve(cwd, outDir)
+  const resolved = realpath(resolve(cwd, outDir))
   if (resolved === cwd || !isInside(cwd, resolved)) {
     throw new Error(`\`${label}\` resolves to \`${resolved}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
   }

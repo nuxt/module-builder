@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -981,6 +982,16 @@ describe('resolveOutDir', () => {
       expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     }
   })
+
+  it('should refuse an output directory that a symlink inside the module points outside it', async () => {
+    const root = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-outdir-')))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await mkdir(join(root, 'mod'))
+    await mkdir(join(root, 'other'))
+    await symlink(join(root, 'other'), join(root, 'mod/linked'))
+    expect(() => resolveOutDir(join(root, 'mod'), 'linked/dist')).toThrow(`resolves to \`${join(root, 'other/dist')}\`, which is not inside the module root`)
+    expect(resolveOutDir(join(root, 'mod'), 'dist')).toBe(join(root, 'mod/dist'))
+  })
 })
 
 describe('createTsconfigResolver', () => {
@@ -1178,7 +1189,7 @@ describe('build plan', () => {
     await mkdir(join(dir, 'real'))
     await symlink(join(dir, 'real'), join(dir, 'link'))
     expect(resolveCwdArg({ rootDir: join(dir, 'link') })).toBe(resolveCwdArg({ rootDir: join(dir, 'real') }))
-    expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(dir, 'missing'))
+    expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(realpathSync(dir), 'missing'))
   })
 
   it('should change the declaration cache key with the nearest lockfile', async () => {
