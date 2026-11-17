@@ -1,9 +1,9 @@
-import { dirname, isAbsolute, join, normalize, relative } from 'pathe'
+import { isAbsolute, join, normalize, relative } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
 import { rewriteAppAliases } from '../build/aliases.ts'
 import { scriptExtension } from '../transpile/specifiers.ts'
-import { DECLARATION_RE, isInside, NODE_MODULES_RE, probe, SCRIPT_RE } from '../utils.ts'
+import { DECLARATION_RE, isInside, NODE_MODULES_RE, probe, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
 
 /**
  * Keeps declaration imports of installed packages external, whether or not the package
@@ -100,14 +100,13 @@ export function runtimeExternals({ outDir, directories, packageName, preserveJsx
       if (!dir) {
         return
       }
-      const chunkDir = dirname(join(dir, chunk.fileName))
+      const chunkFile = join(dir, chunk.fileName)
       let result = code
       for (const id of new Set([...chunk.imports, ...chunk.dynamicImports])) {
         if (!directories.some(directory => id.startsWith(`${directory.outDir}/`))) {
           continue
         }
-        const specifier = relative(chunkDir, id)
-        result = result.replaceAll(JSON.stringify(id), JSON.stringify(specifier.startsWith('.') ? specifier : `./${specifier}`))
+        result = result.replaceAll(JSON.stringify(id), JSON.stringify(relativeSpecifier(chunkFile, id)))
       }
       return result === code ? undefined : { code: result, map: null }
     },

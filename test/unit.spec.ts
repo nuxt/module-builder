@@ -125,6 +125,8 @@ describe('runtimeExternals', () => {
     expect(renderChunk(code, chunk('nested/helper.mjs'), { dir: '/dist' })?.code).toBe(code
       .replace('"/dist/runtime/plugins/plugin.js"', '"../runtime/plugins/plugin.js"')
       .replace('"/dist/runtime/lazy.js"', '"../runtime/lazy.js"'))
+    const dotted = runtimeExternals({ outDir: '/dist', directories: [{ srcDir: runtimeSrcDir, outDir: '/dist/.runtime', ext: 'js' }] }).renderChunk as typeof renderChunk
+    expect(dotted('import plugin from "/dist/.runtime/plugin.js";\n', { fileName: 'module.mjs', imports: ['/dist/.runtime/plugin.js'], dynamicImports: [] }, { dir: '/dist' })?.code).toBe('import plugin from "./.runtime/plugin.js";\n')
   })
 })
 
