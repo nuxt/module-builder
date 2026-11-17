@@ -1,10 +1,9 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { relative, resolve } from 'pathe'
 import { resolvePath } from 'mlly'
-import { readPackageJSON } from 'pkg-types'
-import type { PackageJson } from 'pkg-types'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
@@ -15,7 +14,8 @@ import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/opti
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
-import { findUp, logger, realpath } from '../utils.ts'
+import { findUp, logger, readPackageJson, realpath } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
@@ -76,7 +76,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }
 
   const cwd = realpath(config.cwd ?? process.cwd())
-  const pkg = await readPackageJSON(cwd)
+  const pkg = await readPackageJson(cwd)
   const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
   if (packageError) {
     throw new Error(packageError)
@@ -253,7 +253,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
       await finishBuild(plan, {
         outputs: outputs.flatMap(map => [...map.values()]),
-        builder: { tsdown: await readPackageJSON('tsdown', { from: import.meta.url }).then(r => r.version || 'unknown').catch(() => 'unknown') },
+        builder: { tsdown: (createRequire(import.meta.url)('tsdown/package.json') as PackageJson).version || 'unknown' },
         keepOutput: watch,
       })
     },

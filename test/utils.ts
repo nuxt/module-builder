@@ -5,10 +5,10 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'pathe'
 import { exec } from 'tinyexec'
-import type { PackageJson } from 'pkg-types'
 import { onTestFailed } from 'vitest'
 
 import { publishedPackage } from '../src/build/package.ts'
+import type { PackageJson } from '../src/utils.ts'
 
 export const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 export const exampleDir = join(repoRoot, 'example')

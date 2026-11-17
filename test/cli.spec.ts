@@ -3,13 +3,13 @@ import { pathToFileURL } from 'node:url'
 import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { join, relative, resolve } from 'pathe'
-import { readPackageJSON } from 'pkg-types'
-import type { PackageJson } from 'pkg-types'
+import { version as tsdownVersion } from 'tsdown/package.json'
 import { satisfies } from 'verkit'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
+import type { PackageJson } from '../src/utils.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 import type { Result } from './utils.ts'
 import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
@@ -1493,9 +1493,8 @@ describe('the example', () => {
     })
 
     it('should generate module metadata as separate JSON file', async () => {
-      const tsdownPkg = await readPackageJSON('tsdown')
       expect(JSON.parse(await read(dist(), 'module.json'))).toMatchObject({
-        builder: { '@nuxt/module-builder': version, 'tsdown': tsdownPkg.version },
+        builder: { '@nuxt/module-builder': version, 'tsdown': tsdownVersion },
         configKey: 'myModule',
         name: 'my-module',
         version: '1.0.0',

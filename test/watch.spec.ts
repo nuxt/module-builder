@@ -3,10 +3,10 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { join, relative } from 'pathe'
-import type { PackageJson } from 'pkg-types'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { TestContext } from 'vitest'
 
+import type { PackageJson } from '../src/utils.ts'
 import { builderImport, exists, fixture, read, repoRoot, run, succeed, tsdown, tsdownBin, waitFor, watch } from './utils.ts'
 
 const PLUGIN = `export default {\n  plugins: [builder()],\n}\n`

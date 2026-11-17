@@ -9,6 +9,22 @@ export const logger = {
   error: (message: string): void => log.error(message, { spacing: 0, output: process.stderr }),
 }
 
+/** The fields of `package.json` that the builder reads. */
+export interface PackageJson {
+  name?: string
+  version?: string
+  main?: string
+  module?: string
+  types?: string
+  typings?: string
+  exports?: unknown
+  imports?: unknown
+  typesVersions?: unknown
+  files?: string[]
+  publishConfig?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
 export const TYPESCRIPT_RE: RegExp = /\.[cm]?tsx?$/
 export const DECLARATION_RE: RegExp = /\.d\.[cm]?ts$/
@@ -75,6 +91,11 @@ export function isInside(dir: string, path: string): boolean {
 export function relativeSpecifier(from: string, to: string): string {
   const path = relative(dirname(from), to)
   return RELATIVE_RE.test(path) ? path : `./${path}`
+}
+
+/** The `package.json` in `dir`. */
+export async function readPackageJson(dir: string): Promise<PackageJson> {
+  return JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as PackageJson
 }
 
 /** The directory of an installed package, found the way Node looks up `node_modules`. */

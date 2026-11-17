@@ -5,7 +5,6 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { relative, resolve } from 'pathe'
-import type { PackageJson } from 'pkg-types'
 
 import type { BuildPlan } from '../build/build.ts'
 import { guide } from '../build/guide.ts'
@@ -14,6 +13,7 @@ import { findModuleCodeIssues, formatModuleCodeIssues, importModule } from '../b
 import { bundledEntries, createOptionsCollector, entryName } from '../build/options.ts'
 import type { BuildHookName, ModuleConfig } from '../build/options.ts'
 import { isPlainObject, logger } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import type { BuildContext, BuildHook } from './define.ts'
 
 const BUILD_CONFIG_FILES = ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs']

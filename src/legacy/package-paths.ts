@@ -2,10 +2,10 @@
  * Advice for `package.json` paths to the `.d.ts` declarations and `module.cjs` that v1
  * of `@nuxt/module-builder` generated for the module entry.
  */
-import type { PackageJson } from 'pkg-types'
 
 import { guide } from '../build/guide.ts'
 import { list, missingPaths, warnWhen } from '../build/package.ts'
+import type { PackageJson } from '../utils.ts'
 
 const DECLARATION_RE = /(?:^|\/)(?:module|types)\.d\.ts$/
 const CJS_MODULE_RE = /(?:^|\/)module\.cjs$/

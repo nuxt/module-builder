@@ -1,7 +1,7 @@
 import process from 'node:process'
-import { readPackageJSON } from 'pkg-types'
 
 import { sourcePathsPackError, unpublishablePaths } from '../src/build/package.ts'
+import { readPackageJson } from '../src/utils.ts'
 
 const PACK_VARS = /^npm_(?:lifecycle_event|execpath|config_user_agent|command)$/i
 
@@ -31,7 +31,7 @@ function packVars() {
 if (process.env.MODULE_BUILDER_PACK_PROBE) {
   delete process.env.MODULE_BUILDER_PACK_PROBE
   const cwd = process.cwd()
-  const pkg = await readPackageJSON(cwd)
+  const pkg = await readPackageJson(cwd)
   const report = (when: string, extra: Record<string, unknown> = {}) => process.stderr.write(`[pack-probe] ${when} ${JSON.stringify({
     pid: process.pid,
     ppid: process.ppid,

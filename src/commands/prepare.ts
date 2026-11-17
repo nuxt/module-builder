@@ -6,8 +6,6 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { parseTsconfig } from 'get-tsconfig'
 import { resolvePath } from 'mlly'
 import { dirname, join, relative, resolve } from 'pathe'
-import { readPackageJSON } from 'pkg-types'
-import type { PackageJson } from 'pkg-types'
 import { glob } from 'tinyglobby'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
@@ -17,7 +15,8 @@ import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
-import { isInside, probe } from '../utils.ts'
+import { isInside, probe, readPackageJson } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
 import { loadModuleConfig } from './config-file.ts'
 
@@ -31,7 +30,7 @@ interface PrepareConfig {
 }
 
 async function loadPrepareConfig(cwd: string): Promise<PrepareConfig> {
-  const pkg = await readPackageJSON(cwd)
+  const pkg = await readPackageJson(cwd)
   const moduleConfig = await loadModuleConfig(cwd)
   const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
   const config = moduleConfig ? resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options) : await loadBuildConfig(cwd, pkg, outDir)
