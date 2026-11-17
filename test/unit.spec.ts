@@ -346,10 +346,11 @@ describe('findModuleCodeIssues', () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-conditional-imports-'))
     try {
       await mkdir(join(dir, 'src'))
-      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module', imports: { '#helper': { import: './src/esm.ts', require: './src/cjs.cjs' } } }))
-      await writeFile(join(dir, 'src/module.ts'), `export { Mode } from '#helper'\n`)
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module', imports: { '#helper': { import: './src/esm.ts', require: './src/cjs.cjs' }, '#external': { import: 'external', require: './src/legacy.ts' } } }))
+      await writeFile(join(dir, 'src/module.ts'), `export { Mode } from '#helper'\nexport { value } from '#external'\n`)
       await writeFile(join(dir, 'src/esm.ts'), `export enum Mode { On }\n`)
       await writeFile(join(dir, 'src/cjs.cjs'), `exports.Mode = { On: 0 }\n`)
+      await writeFile(join(dir, 'src/legacy.ts'), `export enum Legacy { On }\n`)
       expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
         'src/esm.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
       ])
