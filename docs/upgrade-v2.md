@@ -369,6 +369,10 @@ TypeScript resolves `typesVersions` entries with `node10` rules. A path without 
 
 Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that doesn't exist after the build is listed in a warning. Either add the entry that produces it (see [Build configuration](#build-configuration)), or remove the path.
 
+## Commands
+
+`nuxt-module-build` and `nuxt build-module` need a subcommand. Without one they print their usage, so a script such as `"prepack": "nuxt-module-build"` becomes `"prepack": "tsdown"`, or `nuxt-module-build build`.
+
 ## Stub builds
 
 `nuxt-module-build build --stub` and `nuxt-module-build prepare --stub` have been removed, and fail with a link to this section. Replace the scripts that use them as described in [Developing a module](#developing-a-module):

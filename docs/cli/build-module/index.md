@@ -13,7 +13,7 @@ npx nuxt build-module build [ROOTDIR] [--cwd=<directory>] [--outDir=<directory>]
 npx nuxt build-module prepare [ROOTDIR] [--cwd=<directory>]
 ```
 
-The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/module-builder`](/docs/guide/modules/module-builder) installs in your module. It's the same CLI as `nuxt-module-build`, with two subcommands. Without a subcommand, it runs `build` and prints a warning.
+The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/module-builder`](/docs/guide/modules/module-builder) installs in your module. It's the same CLI as `nuxt-module-build`, with two subcommands. Without a subcommand, it prints its usage.
 
 ## `build`
 
