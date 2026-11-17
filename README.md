@@ -41,11 +41,7 @@ For writing the module itself, read the [Nuxt Module Author Guide](https://nuxt.
 
 ## 💻 Development
 
-- Clone repository
-- Install dependencies using `pnpm install`
-- Try building [example module](./example) using `pnpm example:build`
-
-Pages in [`docs/`](./docs) are written for [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, the architecture and the tests.
 
 ## License
 
