@@ -814,7 +814,7 @@ describe('builder options', () => {
   })
 
   it('should refuse a bundled entry named `types`', () => {
-    for (const entries of [[{ input: './src/utils', name: 'types' }], ['./src/types']]) {
+    for (const entries of [[{ input: './src/utils', name: 'types' }], [{ input: './src/utils', name: 'Types' }], ['./src/types']]) {
       expect(() => resolveModuleOptions(cwd, {}, outDir, { entries })).toThrow('named `types`, whose declarations would replace the generated `types.d.mts`')
     }
   })

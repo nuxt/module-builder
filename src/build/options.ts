@@ -135,7 +135,7 @@ export function createOptionsCollector(cwd: string, outDir: string): OptionsColl
     }
 
     const name = typeof normalised.name === 'string' ? normalised.name : entryName(input, cwd)
-    if (name === 'types') {
+    if (name.toLowerCase() === 'types') {
       throw new Error(`A bundled entry is named \`types\`, whose declarations would replace the generated \`types.d.mts\`. Give \`${input}\` another \`name\`.`)
     }
     config.entries[name] = entryPath(cwd, input)
