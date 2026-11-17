@@ -17,7 +17,7 @@ export interface Specifier {
   end: number
 }
 
-const DYNAMIC_IMPORT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*)*(?:(['"])([^'"\n]+)\1|`([^`$]+)`)\s*(?:,[\s\S]*)?$/
+const DYNAMIC_IMPORT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*)*(?:(['"])([^'"\n]+)\1|`([^`$]+)`)\s*(?:,[\s\S]*)?$/
 
 /** The specifier of an `import()` whose first argument is a string literal. */
 function dynamicImportSpecifier(expression: string) {

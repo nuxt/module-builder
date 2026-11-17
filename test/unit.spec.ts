@@ -1218,9 +1218,11 @@ describe('build plan', () => {
       'import(`./b`)',
       `import('./c', { with: { type: 'json' } })`,
       'import(`./${name}`)',
+      `import(/* a */ /** b **/ './d')`,
+      `import(/*${'*//*'.repeat(40)}x)`,
     ].join('\n')
-    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c'])
-    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c'])
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
   })
 
   it('should treat a dot-prefixed name as a path inside the directory', () => {
