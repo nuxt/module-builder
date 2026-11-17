@@ -14,7 +14,7 @@ import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
+import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
 import { externalDependencyDeclarations } from './externals.ts'
 import { replacePlugin } from './replace.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
@@ -100,9 +100,9 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     outBase: relative(outDir, directory.outDir),
     extension: directory.ext,
     paths: plan.directoryPaths,
-    transform: loadOxc()?.transform,
+    transform: loadOxc()!.transform,
     sourcemap: plan.sourcemap,
-    vue: { cacheVersion: plan.generatedTypesHash },
+    cacheVersion: plan.generatedTypesHash,
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
     resolveExternal: resolveDirectoryExternal(plan, directory),
   }))

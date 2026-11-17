@@ -104,5 +104,4 @@ The `dev:prepare` script in step 3 is for a module that you publish with pnpm or
 - [TypeScript](/docs/guide/modules/module-builder/typescript): your module's `tsconfig.json`, its declarations, and the rules for module code.
 - [Build Output](/docs/guide/modules/module-builder/output): the files in `dist`, and the size report.
 - [Exports](/docs/guide/modules/module-builder/exports): subpath exports, including runtime components.
-- [Transpiling a Directory](/docs/guide/modules/module-builder/transpile-dir): the `transpileDir` rolldown plugin.
 - [Upgrading to v2](/docs/guide/modules/module-builder/upgrade-v2): moving a module from v1.

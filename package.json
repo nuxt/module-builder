@@ -7,7 +7,6 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
-    "./rolldown": "./dist/rolldown.mjs",
     "./tsdown": "./dist/tsdown.mjs",
     "./package.json": "./package.json"
   },
@@ -15,9 +14,6 @@
     "*": {
       "*": [
         "./dist/*.d.mts"
-      ],
-      "rolldown": [
-        "./dist/rolldown.d.mts"
       ],
       "tsdown": [
         "./dist/tsdown.d.mts"
@@ -73,14 +69,8 @@
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.37.0 || ^4.0.0",
-    "rolldown": "^1.2.6",
     "tsdown": "^0.23.7",
     "typescript": "^5.9.3 || ^6.0.0"
-  },
-  "peerDependenciesMeta": {
-    "rolldown": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

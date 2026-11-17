@@ -1,7 +1,7 @@
 import { dirname, isAbsolute, join, normalize, relative } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
-import { probe, SCRIPT_RE, scriptExtension } from '../rolldown/resolve.ts'
+import { probe, SCRIPT_RE, scriptExtension } from '../transpile/resolve.ts'
 
 export interface RuntimeExternalsOptions {
   /** Absolute path of the build's output directory. */

@@ -18,18 +18,17 @@ export interface TsconfigResolver {
 }
 
 /**
- * Finds the nearest tsconfig above `dir`, or reads `file`. When it has `references`, each
+ * Finds the nearest tsconfig above `dir`. When it has `references`, each
  * source file is compiled with the referenced project that includes it, falling back to
  * the tsconfig itself. A tsconfig whose generated types come from a `.nuxt` other than
  * `dir`'s own (a playground's, typically) is rebuilt on `dir/.nuxt/tsconfig.json`, see
  * {@link rebaseOnOwnBuildDir}.
  */
-export async function createTsconfigResolver(dir: string, file?: string): Promise<TsconfigResolver> {
-  const path = file && resolve(dir, file)
-  let root = path ? { path, config: parseTsconfig(path) } : getTsconfig(dir) ?? undefined
+export async function createTsconfigResolver(dir: string): Promise<TsconfigResolver> {
+  let root = getTsconfig(dir) ?? undefined
   let replaced: string | undefined
   const own = join(dir, '.nuxt/tsconfig.json')
-  if (root && !path && usesForeignBuildDir(root, dir) && existsSync(own)) {
+  if (root && usesForeignBuildDir(root, dir) && existsSync(own)) {
     replaced = root.path
     root = await rebaseOnOwnBuildDir(root.path, own, dir)
   }

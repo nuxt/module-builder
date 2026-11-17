@@ -6,7 +6,7 @@ import { resolvePathSync } from 'mlly'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
-import type { Transform } from '../rolldown/transpile-dir.ts'
+import type { Transform } from '../transpile/transpile-dir.ts'
 import { isInside, relativeSpecifier } from '../utils.ts'
 import { guide } from './guide.ts'
 

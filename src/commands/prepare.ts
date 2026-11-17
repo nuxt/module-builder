@@ -15,8 +15,8 @@ import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/tsconfig.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
-import { probe } from '../rolldown/resolve.ts'
-import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../rolldown/tsconfig.ts'
+import { probe } from '../transpile/resolve.ts'
+import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
 import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
 
 const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/

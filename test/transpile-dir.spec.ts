@@ -5,8 +5,9 @@ import { join } from 'pathe'
 import { build } from 'tsdown'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { emptyEntry, transpileDir } from '../src/rolldown/index.ts'
-import type { ExternalImport } from '../src/rolldown/index.ts'
+import { loadOxc } from '../src/build/loader.ts'
+import { transpileDir } from '../src/transpile/transpile-dir.ts'
+import type { ExternalImport, TranspileDirOptions } from '../src/transpile/transpile-dir.ts'
 
 const root = fileURLToPath(new URL('../.temp-transpile-dir', import.meta.url))
 const cwd = join(root, 'project')
@@ -75,12 +76,18 @@ const files: Record<string, string> = {
   'project/src/lib/styles/theme.scss': `@use "tokens";\n.theme { color: tokens.$brand; }\n`,
   'project/src/lib/assets/data.json': `{ "answer": 42 }\n`,
   'project/src/lib/lib.spec.ts': `export const excluded = true\n`,
+  'project/src/jsx/index.ts': `import Button from './components/Button'\n\nexport { Button }\n`,
+  'project/src/jsx/components/Button.tsx': `export default function Button() {\n  return <button>Click</button>\n}\n`,
+  'project/src/jsx/components/Toolbar.tsx': `import Button from './Button.js'\n\nexport default function Toolbar() {\n  return <nav><Button /></nav>\n}\n`,
+  'project/src/maps/lazy.ts': `export const lazy = true\n`,
   'project/node_modules/side-effect-package/package.json': JSON.stringify({ name: 'side-effect-package', type: 'module', exports: './index.js' }),
   'project/node_modules/side-effect-package/index.js': `globalThis.sideEffect = true\n`,
   'project/node_modules/side-effect-package/index.d.ts': `export {}\n`,
 }
 
 const externals: Array<[string, ExternalImport['kind'], string]> = []
+
+const plugin = (options: Partial<TranspileDirOptions>) => transpileDir({ cwd, srcDir: join(cwd, 'src/lib'), outBase: '', extension: 'js', paths: {}, jsx: () => 'preserve', transform: loadOxc()!.transform, sourcemap: false, cacheVersion: '', resolveExternal: () => undefined, ...options })
 
 describe('transpileDir', () => {
   beforeAll(async () => {
@@ -89,15 +96,14 @@ describe('transpileDir', () => {
       await mkdir(join(root, file, '..'), { recursive: true })
       await writeFile(join(root, file), contents)
     }
-    const options = { cwd, config: false, entry: emptyEntry, format: 'esm', dts: false, report: false } satisfies Parameters<typeof build>[0]
+    const options = { cwd, config: false, entry: ['src/index.ts'], format: 'esm', dts: false, report: false } satisfies Parameters<typeof build>[0]
     const automatic = { runtime: 'automatic', importSource: 'vue' } as const
+    const jsxDir = join(cwd, 'src/jsx')
     await Promise.all([
       build({
         ...options,
-        entry: ['src/index.ts'],
         outDir: dist,
-        plugins: [transpileDir({
-          srcDir: 'src/lib',
+        plugins: [plugin({
           outBase: 'lib',
           resolveExternal(specifier, _importer, { kind, file }) {
             externals.push([specifier, kind, file.slice(root.length)])
@@ -107,27 +113,17 @@ describe('transpileDir', () => {
       }),
       build({
         ...options,
-        outDir: join(cwd, 'dist-raw'),
-        plugins: [transpileDir({
-          srcDir: 'src/lib',
-          exclude: ['**/*.spec.ts', '**/Other.vue'],
-          declaration: false,
-          stylesheets: false,
-        })],
-      }),
-      build({
-        ...options,
         outDir: join(cwd, 'dist-jsx'),
         plugins: [
-          transpileDir({ srcDir: 'src/lib', outBase: 'preserved', include: ['components/Button.tsx'], extension: 'mjs' }),
-          transpileDir({ srcDir: 'src/lib', outBase: 'compiled', include: ['components/Button.tsx'], declaration: false, jsx: automatic }),
-          transpileDir({ srcDir: 'src/lib', outBase: 'mixed', include: ['index.ts', 'components/*.tsx'], declaration: false, jsx: file => file.endsWith('Button.tsx') ? automatic : 'preserve' }),
+          plugin({ srcDir: jsxDir, outBase: 'preserved', extension: 'mjs' }),
+          plugin({ srcDir: jsxDir, outBase: 'compiled', jsx: () => automatic }),
+          plugin({ srcDir: jsxDir, outBase: 'mixed', jsx: file => file.endsWith('Button.tsx') ? automatic : 'preserve' }),
         ],
       }),
       build({
         ...options,
         outDir: join(cwd, 'dist-maps'),
-        plugins: [transpileDir({ srcDir: 'src/lib', outBase: 'lib', include: ['lazy.ts'], declaration: false, sourcemap: true })],
+        plugins: [plugin({ srcDir: join(cwd, 'src/maps'), outBase: 'lib', sourcemap: true })],
       }),
     ])
   })
@@ -264,29 +260,20 @@ describe('transpileDir', () => {
     expect(existsSync(join(dist, 'lib/lib.spec.js'))).toBe(false)
   })
 
-  it('should leave out declarations, stylesheet processing and excluded components when asked', async () => {
-    const raw = join(cwd, 'dist-raw')
-    const emitted = (await listFiles(raw)).filter(file => file.includes('.')).sort()
-    expect(emitted.filter(file => /\.d\.|\.vue|\.mjs$|styles\//.test(file))).toEqual([
-      'components/Hello.vue',
-      'styles/_tokens.scss',
-      'styles/main.css',
-      'styles/theme.scss',
-    ])
-    expect(await readFile(join(raw, 'styles/theme.scss'), 'utf8')).toBe(files['project/src/lib/styles/theme.scss'])
-    expect(await readFile(join(raw, 'components/Hello.vue'), 'utf8')).toContain('defineProps')
-  })
-
-  it('should compile JSX with the `jsx` option, per file when it is a function', async () => {
+  it('should compile JSX with the `jsx` option, per file', async () => {
     const outDir = join(cwd, 'dist-jsx')
-    expect((await listFiles(outDir)).filter(file => file.includes('.')).sort()).toEqual([
+    expect((await listFiles(outDir)).filter(file => file.includes('/') && file.includes('.') && !/\.d\.m?ts$/.test(file)).sort()).toEqual([
       'compiled/components/Button.js',
+      'compiled/components/Toolbar.js',
+      'compiled/index.js',
       'mixed/components/Button.js',
       'mixed/components/Toolbar.jsx',
       'mixed/index.js',
-      'preserved/components/Button.d.ts',
       'preserved/components/Button.jsx',
+      'preserved/components/Toolbar.jsx',
+      'preserved/index.mjs',
     ])
+    expect(existsSync(join(outDir, 'preserved/components/Button.d.ts'))).toBe(true)
     expect(await readFile(join(outDir, 'compiled/components/Button.js'), 'utf8')).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
     expect(await readFile(join(outDir, 'mixed/components/Button.js'), 'utf8')).toContain(`import { jsx as _jsx } from "vue/jsx-runtime";`)
     expect(await readFile(join(outDir, 'mixed/components/Toolbar.jsx'), 'utf8')).toBe(`import Button from "./Button.js";\nexport default function Toolbar() {\n\treturn <nav><Button /></nav>;\n}\n`)
@@ -299,8 +286,8 @@ describe('transpileDir', () => {
     expect(code.trimEnd().split('\n').at(-1)).toBe('//# sourceMappingURL=lazy.js.map')
     const map = JSON.parse(await readFile(join(outDir, 'lib/lazy.js.map'), 'utf8'))
     expect(map.file).toBe('lazy.js')
-    expect(map.sources).toEqual(['../../src/lib/lazy.ts'])
+    expect(map.sources).toEqual(['../../src/maps/lazy.ts'])
     expect(map.mappings).not.toBe('')
-    expect(await readFile(join(outDir, 'lib', map.sources[0]), 'utf8')).toBe(files['project/src/lib/lazy.ts'])
+    expect(await readFile(join(outDir, 'lib', map.sources[0]), 'utf8')).toBe(files['project/src/maps/lazy.ts'])
   })
 })

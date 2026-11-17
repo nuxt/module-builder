@@ -8,10 +8,10 @@ import type { PackageJson } from 'pkg-types'
 import { glob, globSync } from 'tinyglobby'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { DECLARATION_RE, probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
-import { DEFAULT_EXCLUDE } from '../rolldown/transpile-dir.ts'
-import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
+import { DECLARATION_RE, probe as probeSource, scriptExtension, valueSpecifiers } from '../transpile/resolve.ts'
+import { EXCLUDE } from '../transpile/transpile-dir.ts'
+import type { ResolveExternal } from '../transpile/transpile-dir.ts'
+import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
 import { relativeSpecifier } from '../utils.ts'
 import { shouldAdvise } from './advice.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
@@ -174,7 +174,7 @@ export function analyseSources(plan: BuildPlan): PreparedBuild {
     }
   }
   // Nitro and Node do not transform files in `node_modules`, so JSX that runs there is compiled.
-  const runtimeFiles = plan.directories.map(directory => globSync(['**/*'], { cwd: directory.srcDir, ignore: DEFAULT_EXCLUDE, absolute: true, onlyFiles: true }))
+  const runtimeFiles = plan.directories.map(directory => globSync(['**/*'], { cwd: directory.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true }))
   const serverFiles = runtimeFiles.flat().map(file => normalize(file)).filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
   const compiledJsx = valueImports([...serverFiles, ...bundledSources.keys()])
   return { bundledSources, compiledJsx, startedAt: Date.now() }

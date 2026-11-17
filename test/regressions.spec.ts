@@ -13,7 +13,7 @@ import { selfReferencePaths } from '../src/build/tsconfig.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
 import { translateBuildConfig } from '../src/legacy/build-config.ts'
 import { checkLegacyCJSPaths } from '../src/legacy/package-paths.ts'
-import { moduleSpecifiers, valueSpecifiers } from '../src/rolldown/resolve.ts'
+import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/resolve.ts'
 import { relativeSpecifier } from '../src/utils.ts'
 import { copyExample, repoRoot } from './utils.ts'
 

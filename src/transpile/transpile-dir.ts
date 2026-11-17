@@ -12,16 +12,17 @@ import type { DeclarationProgram } from './declarations.ts'
 import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, scriptExtension, valueSpecifiers } from './resolve.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
+import type { TsconfigResolver } from './tsconfig.ts'
 import { declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
-import type { VueDeclarations, VueOptions } from './vue.ts'
+import type { VueDeclarations } from './vue.ts'
 
-export interface TransformResult {
+interface TransformResult {
   code: string
   map?: object
   errors: Array<{ message: string }>
 }
 
-export interface TransformOptions {
+interface TransformOptions {
   lang?: string
   sourcemap?: boolean
   jsx?: 'preserve' | { runtime?: 'automatic' | 'classic', importSource?: string }
@@ -32,7 +33,7 @@ export interface TransformOptions {
 /** The shape of `transform` from `rolldown/utils`. */
 export type Transform = (filename: string, source: string, options?: TransformOptions) => Promise<TransformResult>
 
-export type ImportKind = 'value' | 'type'
+type ImportKind = 'value' | 'type'
 
 export interface ExternalImport {
   /** Absolute path of the file the specifier resolves to. */
@@ -45,7 +46,7 @@ export interface ExternalImport {
   output: string
 }
 
-export interface MirrorExternal {
+interface MirrorExternal {
   /** Emit the file alongside the directory: as a script and declaration, or as a declaration only. */
   mirror: ImportKind
   /** Where to emit it, relative to the output directory. Defaults to the proposed `output`. */
@@ -59,55 +60,35 @@ export interface MirrorExternal {
 export type ResolveExternal = (specifier: string, importer: string, context: ExternalImport) => string | MirrorExternal | undefined | Promise<string | MirrorExternal | undefined>
 
 export interface TranspileDirOptions {
-  /** The directory whose files are transpiled one by one. */
+  /** Absolute path of the directory whose files are transpiled one by one. */
   srcDir: string
-  /** Where the outputs go, relative to the build's output directory. Defaults to its root. */
-  outBase?: string
-  /** The project root: where `srcDir` is resolved, the tsconfig search starts and `node_modules` is read. Defaults to the build's `cwd`. */
-  cwd?: string
-  /** Globs of files to include, relative to `srcDir`. Defaults to every file. */
-  include?: string[]
-  /** Globs of files to exclude. Defaults to test and story files. */
-  exclude?: string[]
-  /** The extension of emitted scripts; declarations follow (`.d.ts` or `.d.mts`). Defaults to `js`. */
-  extension?: 'js' | 'mjs'
-  /** The tsconfig to compile with, or `false` for none. Defaults to the nearest one above `cwd`. */
-  tsconfig?: string | false
+  /** Where the outputs go, relative to the build's output directory. */
+  outBase: string
+  /** The module root: where the tsconfig search starts and `node_modules` is read. */
+  cwd: string
+  /** The extension of emitted scripts; declarations follow (`.d.ts` or `.d.mts`). */
+  extension: 'js' | 'mjs'
   /** `paths` added to the tsconfig's when generating declarations. */
-  paths?: Record<string, string[]>
+  paths: Record<string, string[]>
   /**
-   * JSX compilation for `.tsx` and `.jsx` files, or a function of the source path that returns it.
-   * Defaults to `'preserve'`, which emits them as `.jsx` with types stripped, next to a `.d.ts`,
-   * for the consumer's JSX plugin (such as `@vitejs/plugin-vue-jsx`) to compile.
+   * JSX compilation for a `.tsx` or `.jsx` source. `'preserve'` emits it as `.jsx` with types
+   * stripped, next to a `.d.ts`, for the app's JSX plugin to compile.
    */
-  jsx?: TransformOptions['jsx'] | ((file: string) => TransformOptions['jsx'])
-  /** The oxc `transform` to use. Defaults to the one of the `rolldown` installed. */
-  transform?: Transform
+  jsx: (file: string) => TransformOptions['jsx']
+  /** The oxc `transform` of the `rolldown` that tsdown runs. */
+  transform: Transform
   /** Emit source maps next to scripts. */
-  sourcemap?: boolean
-  /** Generate declarations. Defaults to `true`. */
-  declaration?: boolean
-  /** Process `.css` with lightningcss and compile Sass. Defaults to `true`; `false` copies stylesheets as they are. */
-  stylesheets?: boolean
-  /** Options for `.vue` files, or `false` to leave them out. */
-  vue?: VueOptions | false
-  /** Relative imports that resolve outside `srcDir`. By default they are kept as written. */
-  resolveExternal?: ResolveExternal
+  sourcemap: boolean
+  /** Extra key for the declaration cache of single-file components, for inputs the cache cannot see. */
+  cacheVersion: string
+  /** Relative imports that resolve outside `srcDir`. */
+  resolveExternal: ResolveExternal
 }
 
-export interface TranspileDirApi {
+interface TranspileDirApi {
   /** Every discovered or mirrored source of the latest build, mapped to the path it is emitted at, relative to the output directory. */
   readonly outputs: Promise<Map<string, string>>
 }
-
-const EMPTY_ENTRY_ID = '\0transpile-dir:empty-entry'
-
-/**
- * An entry for a build that has nothing to bundle, only directories to transpile. Pass it
- * as tsdown's `entry` (or rolldown's `input`); `transpileDir` resolves it to an empty module
- * and removes its chunk from the output.
- */
-export const emptyEntry: Record<string, string> = { 'transpile-dir': EMPTY_ENTRY_ID }
 
 /** `pluginCode` of the warning that lists type errors which do not affect the emitted declarations. */
 export const TYPE_ERRORS_WARNING = 'TYPE_ERRORS'
@@ -129,7 +110,7 @@ interface Emitted {
 }
 
 const EMPTY_IMPORT_RE = /^[ \t]*import\s*\{\s*\}\s*from\s*(['"])[^'"\n]+\1\s*;?/gm
-export const DEFAULT_EXCLUDE: string[] = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}', '**/node_modules/**']
+export const EXCLUDE: string[] = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}', '**/node_modules/**']
 const STYLESHEET_RE = /\.(?:css|s[ac]ss)$/
 const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
 const TYPESCRIPT_RE = /\.(?:[cm]?ts|tsx)$/
@@ -148,7 +129,6 @@ interface Emitter {
  * files are copied, and declarations come from one TypeScript program over the directory.
  */
 export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: TranspileDirApi } {
-  let cwd = process.cwd()
   let resolveOutputs: (outputs: Map<string, string>) => void
   let rejectOutputs: (error: unknown) => void
   const outputs = new Promise<Map<string, string>>((resolve, reject) => {
@@ -167,22 +147,12 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
         return latestOutputs
       },
     },
-    resolveId: {
-      filter: { id: /^\0transpile-dir:empty-entry$/ },
-      handler: id => id,
-    },
-    load: {
-      filter: { id: /^\0transpile-dir:empty-entry$/ },
-      handler: () => ({ code: 'export {}', moduleSideEffects: false }),
-    },
-    async buildStart(inputOptions) {
-      cwd = resolve(inputOptions.cwd, options.cwd ?? '')
-      const srcDir = resolve(cwd, options.srcDir)
-      const files = await glob(options.include ?? ['**/*'], { cwd: srcDir, ignore: options.exclude ?? DEFAULT_EXCLUDE, absolute: true, onlyFiles: true })
+    async buildStart() {
+      const files = await glob(['**/*'], { cwd: options.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true })
       for (const file of files) {
         this.addWatchFile(file)
       }
-      const build = latestBuild = new DirectoryBuild({ ...options, cwd, srcDir }, files.map(file => normalize(file)).sort())
+      const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort())
       work = build.run()
         .then((files) => {
           resolveOutputs(build.outputs)
@@ -201,12 +171,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
         this.addWatchFile(source)
       }
     },
-    async generateBundle(outputOptions, bundle) {
-      for (const [fileName, output] of Object.entries(bundle)) {
-        if (output.type === 'chunk' && output.facadeModuleId === EMPTY_ENTRY_ID) {
-          Reflect.deleteProperty(bundle, fileName)
-        }
-      }
+    async generateBundle(outputOptions) {
       const result = await work!
       if ('error' in result) {
         this.error(result.error instanceof Error ? result.error : new Error(String(result.error)))
@@ -214,7 +179,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
       for (const warning of result.build.warnings) {
         this.warn(warning)
       }
-      const outDir = resolve(cwd, outputOptions.dir ?? '')
+      const outDir = resolve(options.cwd, outputOptions.dir ?? '')
       for (const { fileName, source, map } of result.files) {
         this.emitFile({ type: 'asset', fileName, source })
         if (map) {
@@ -238,33 +203,24 @@ class DirectoryBuild {
   private edges = new Map<string, Promise<Edge[]>>()
   private resolutions = new Map<string, Promise<Resolution>>()
   private references = new Map<string, Set<string>>()
-  private transform: Promise<Transform> | undefined
-  private resolver: ReturnType<DirectoryBuild['tsconfigs']> | undefined
+  private resolver: Promise<TsconfigResolver> | undefined
   private extension: string
   private dtsExtension: string
-  private outBase: string
-  private options: TranspileDirOptions & { cwd: string, srcDir: string }
+  private options: TranspileDirOptions
 
-  constructor(options: TranspileDirOptions & { cwd: string, srcDir: string }, files: string[]) {
+  constructor(options: TranspileDirOptions, files: string[]) {
     this.options = options
-    this.extension = `.${options.extension ?? 'js'}`
+    this.extension = `.${options.extension}`
     this.dtsExtension = options.extension === 'mjs' ? '.d.mts' : '.d.ts'
-    this.outBase = options.outBase ?? ''
     for (const file of files) {
-      const path = join(this.outBase, relative(options.srcDir, file))
+      const path = join(options.outBase, relative(options.srcDir, file))
       if (file.endsWith('.vue')) {
-        if (options.vue !== false) {
-          this.vue.push(file)
-          this.outputs.set(file, path)
-        }
+        this.vue.push(file)
+        this.outputs.set(file, path)
       }
       else if (SCRIPT_RE.test(file) && !DECLARATION_RE.test(file)) {
         this.scripts.push(file)
         this.outputs.set(file, path.replace(SCRIPT_RE, this.scriptExtension(file)))
-      }
-      else if (options.stylesheets === false) {
-        this.assets.push(file)
-        this.outputs.set(file, path)
       }
       else if (!(SASS_RE.test(file) && basename(file).startsWith('_'))) {
         this.assets.push(file)
@@ -276,12 +232,12 @@ class DirectoryBuild {
   async run(): Promise<Emitted[]> {
     await this.plan()
     const valueFiles = [...this.outside].filter(([, kind]) => kind === 'value').map(([file]) => file)
-    const emitter = this.options.declaration === false ? undefined : await this.createEmitter()
+    const emitter = await this.createEmitter()
     const settled = await Promise.allSettled([
       Promise.all([...this.scripts, ...valueFiles].map(file => this.transpile(file))),
       Promise.all(this.assets.map(file => this.asset(file))),
       this.transformVue(emitter),
-      emitter?.emit([...this.scripts, ...valueFiles]),
+      emitter.emit([...this.scripts, ...valueFiles]),
     ])
     const failures = settled.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : [])
     if (failures.length) {
@@ -290,18 +246,13 @@ class DirectoryBuild {
         : failures.find(failure => !(failure instanceof DeclarationError))
     }
     const [scripts, assets, vue] = settled.map(result => (result as PromiseFulfilledResult<unknown>).value) as [Emitted[], Emitted[], Emitted[]]
-    const declarations: Emitted[] = []
-    if (emitter) {
-      const requested = new Set([...this.scripts, ...valueFiles])
-      let referenced = this.referencedOutside([...this.scripts, ...valueFiles, ...this.vue], requested)
-      while (referenced.length) {
-        await emitter.emit(referenced)
-        referenced = this.referencedOutside(referenced, requested)
-      }
-      for (const [source, text] of emitter.emitted) {
-        declarations.push({ fileName: this.declarationOutput(source), source: text })
-      }
+    const requested = new Set([...this.scripts, ...valueFiles])
+    let referenced = this.referencedOutside([...this.scripts, ...valueFiles, ...this.vue], requested)
+    while (referenced.length) {
+      await emitter.emit(referenced)
+      referenced = this.referencedOutside(referenced, requested)
     }
+    const declarations = [...emitter.emitted].map(([source, text]) => ({ fileName: this.declarationOutput(source), source: text }))
     if (this.typeErrors.length) {
       this.warnings.push({ pluginCode: TYPE_ERRORS_WARNING, message: typeErrorsWarning([...new Set(this.typeErrors)], relative(this.options.cwd, this.options.srcDir)) })
     }
@@ -309,8 +260,7 @@ class DirectoryBuild {
   }
 
   private jsx(file: string) {
-    const { jsx } = this.options
-    return (typeof jsx === 'function' ? jsx(file) : jsx) ?? 'preserve'
+    return this.options.jsx(file) ?? 'preserve'
   }
 
   private scriptExtension(file: string) {
@@ -360,7 +310,7 @@ class DirectoryBuild {
     const key = `${importer}\0${edge.specifier}\0${context.kind}`
     let pending = this.resolutions.get(key)
     if (!pending) {
-      pending = Promise.resolve(this.options.resolveExternal?.(edge.specifier, importer, context)).then((result): Resolution => {
+      pending = Promise.resolve(this.options.resolveExternal(edge.specifier, importer, context)).then((result): Resolution => {
         if (typeof result === 'string') {
           return { specifier: result }
         }
@@ -414,26 +364,15 @@ class DirectoryBuild {
     return edges
   }
 
-  private loadTransform() {
-    if (this.options.transform) {
-      return this.options.transform
-    }
-    this.transform ??= import('rolldown/utils').then(utils => utils.transform as Transform, (cause) => {
-      throw new Error('`transpileDir` needs `rolldown` to transpile scripts. Install it, or pass its `transform` in the `transform` option.', { cause })
-    })
-    return this.transform
-  }
-
   private async transpileSource(file: string, source: string, sourcemap = false) {
-    const transform = await this.loadTransform()
-    const resolver = await (this.resolver ??= this.tsconfigs())
-    const project = resolver?.resolve(file)
-    const result = await transform(file, /\.[cm]?tsx?$/.test(file) ? source.replace(EMPTY_IMPORT_RE, match => ' '.repeat(match.length)) : source, {
+    const resolver = await this.tsconfigs()
+    const project = resolver.resolve(file)
+    const result = await this.options.transform(file, TYPESCRIPT_RE.test(file) ? source.replace(EMPTY_IMPORT_RE, match => ' '.repeat(match.length)) : source, {
       lang: file.match(/\.[cm]?([jt]sx?)$/)![1],
       sourcemap,
       jsx: this.jsx(file),
       typescript: { onlyRemoveTypeImports: false },
-      ...project && project !== resolver?.root && { tsconfig: project.path },
+      ...project && project !== resolver.root && { tsconfig: project.path },
     })
     if (result.errors.length) {
       throw new Error(`Failed to transpile ${relative(this.options.cwd, file)}:\n${result.errors.map(error => error.message).join('\n')}`)
@@ -491,7 +430,7 @@ class DirectoryBuild {
 
   private async asset(file: string): Promise<Emitted> {
     const fileName = this.outputs.get(file)!
-    if (this.options.stylesheets !== false && STYLESHEET_RE.test(file)) {
+    if (STYLESHEET_RE.test(file)) {
       const source = SASS_RE.test(file)
         ? await compileSass(file, this.options.cwd)
         : await transformCss(file, this.options.cwd, message => this.warnings.push(message))
@@ -501,21 +440,18 @@ class DirectoryBuild {
   }
 
   private tsconfigs() {
-    return this.options.tsconfig === false ? undefined : createTsconfigResolver(this.options.cwd, this.options.tsconfig)
+    return this.resolver ??= createTsconfigResolver(this.options.cwd)
   }
 
-  private async transformVue(emitter: Emitter | undefined): Promise<Emitted[]> {
+  private async transformVue(emitter: Emitter): Promise<Emitted[]> {
     if (!this.vue.length) {
       return []
     }
-    const runtime = await transformVueRuntime(this.vue, await this.loadTransform() as VueTransform)
+    const runtime = await transformVueRuntime(this.vue, this.options.transform as VueTransform)
     const results: Promise<Emitted>[] = [...runtime].map(async ([file, source]) => {
       const fileName = this.outputs.get(file)!
       return { fileName, source: await this.rewriteSpecifiers(file, fileName, source) }
     })
-    if (!emitter) {
-      return Promise.all(results)
-    }
     const { declarations, errors, warnings } = await emitter.vue!()
     const selected = new Set(this.vue)
     const errorMessages = errors.filter(({ file }) => file === undefined || selected.has(file)).map(({ message }) => message)
@@ -546,12 +482,12 @@ class DirectoryBuild {
    */
   private async createEmitter(): Promise<Emitter> {
     const resolver = await this.tsconfigs()
-    const imports = await writeDependencyImports(this.options.cwd, resolver?.root)
+    const imports = await writeDependencyImports(this.options.cwd, resolver.root)
     const programs = new Map<string | undefined, Promise<DeclarationProgram>>()
     const programFor = (tsconfig: TsConfigResult | undefined) => {
       let program = programs.get(tsconfig?.path)
       if (!program) {
-        program = createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths ?? {} }, [...this.scripts, ...this.outside.keys(), ...imports ? [imports] : []])
+        program = createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths }, [...this.scripts, ...this.outside.keys(), ...imports ? [imports] : []])
         programs.set(tsconfig?.path, program)
       }
       return program
@@ -559,11 +495,11 @@ class DirectoryBuild {
     let vue: Promise<VueDeclarations> | undefined
     const vueProgram = this.vue.length
       ? () => vue ??= (async () => {
-          const tsconfig = resolver?.root
+          const tsconfig = resolver.root
           return emitDeclarations([...this.vue, ...[...this.scripts, ...this.outside.keys()].filter(file => TYPESCRIPT_RE.test(file))], {
-            ...this.options.vue || {},
             cwd: this.options.cwd,
-            tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths ?? {}, { vue: true, imports }),
+            cacheVersion: this.options.cacheVersion,
+            tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths, { vue: true, imports }),
           })
         })()
       : undefined
@@ -582,7 +518,7 @@ class DirectoryBuild {
             shared.push(file)
             continue
           }
-          const program = programFor(resolver?.resolve(file))
+          const program = programFor(resolver.resolve(file))
           groups.set(program, [...groups.get(program) ?? [], file])
         }
         if (shared.length) {
