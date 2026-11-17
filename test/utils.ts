@@ -5,12 +5,19 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'pathe'
 import { exec } from 'tinyexec'
+import ts from 'typescript'
 import { onTestFailed } from 'vitest'
 
 import { publishedPackage } from '../src/build/package.ts'
 import type { PackageJson } from '../src/utils.ts'
 
 export const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+
+/** The static `import` declarations of `code`. */
+export function staticImports(code: string): Array<{ specifier: string, code: string }> {
+  const source = ts.createSourceFile('module.ts', code, ts.ScriptTarget.Latest)
+  return source.statements.filter(ts.isImportDeclaration).map(statement => ({ specifier: (statement.moduleSpecifier as ts.StringLiteral).text, code: statement.getText(source) }))
+}
 export const exampleDir = join(repoRoot, 'example')
 export const tsdownBin = join(repoRoot, 'node_modules/tsdown/dist/run.mjs')
 export const cliBin = join(repoRoot, 'src/cli.ts')

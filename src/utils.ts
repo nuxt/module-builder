@@ -1,5 +1,6 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { log } from '@clack/prompts'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'pathe'
 
@@ -96,6 +97,19 @@ export function relativeSpecifier(from: string, to: string): string {
 /** The `package.json` in `dir`. */
 export async function readPackageJson(dir: string): Promise<PackageJson> {
   return JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as PackageJson
+}
+
+/**
+ * The file that `specifier` resolves to from `parent`, a file or a directory path ending in
+ * `/`, with the conditions of `require`.
+ */
+export function resolveFrom(parent: string | URL, specifier: string): string | undefined {
+  try {
+    return createRequire(parent).resolve(specifier)
+  }
+  catch {
+    return undefined
+  }
 }
 
 /** The directory of an installed package, found the way Node looks up `node_modules`. */

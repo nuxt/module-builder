@@ -367,10 +367,10 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
   }
   const { default: ts } = await import('typescript')
   const files = new Set(projects.flatMap(project => projectFiles(parseProject(ts, project.path, true), cwd)))
-  const sources = await Promise.all([...files].sort().map(file => readFile(file, 'utf8').catch(() => '')))
+  const sources = await Promise.all([...files].sort().map(async file => ({ file, source: await readFile(file, 'utf8').catch(() => '') })))
   const specifiers = new Map<string, string>()
-  for (const source of sources) {
-    for (const { specifier } of moduleSpecifiers(source)) {
+  for (const { file, source } of sources) {
+    for (const { specifier } of moduleSpecifiers(source, file)) {
       const name = packageName(specifier)
       if (name && !specifiers.has(name) && findPackageDir(name, cwd)) {
         specifiers.set(name, specifier)

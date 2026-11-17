@@ -291,7 +291,7 @@ function valueImports(roots: string[]) {
     }
     found.add(file)
     const { code } = transformSync(file, readFileSync(file, 'utf8'), { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })
-    for (const specifier of valueSpecifiers(code)) {
+    for (const specifier of valueSpecifiers(code, file)) {
       const target = probe(resolve(dirname(file), specifier))
       if (target && isSourceScript(target)) {
         queue.push(normalize(target))

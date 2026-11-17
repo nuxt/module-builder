@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { findStaticImports } from 'mlly'
 import { join, relative } from 'pathe'
 import ts from 'typescript'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
@@ -12,7 +11,7 @@ import { assertNoLegacyBuildConfig, formatUnsupportedOptions, loadBuildConfig, t
 import { guide } from '../src/build/guide.ts'
 import { logger } from '../src/utils.ts'
 import type { FixtureOptions, Result } from './utils.ts'
-import { cli, exists, fixture, listFiles, read, repoRoot, tsdown } from './utils.ts'
+import { cli, exists, fixture, listFiles, read, repoRoot, staticImports, tsdown } from './utils.ts'
 
 const exampleDir = fileURLToPath(new URL('../example', import.meta.url))
 
@@ -479,7 +478,7 @@ export default defineBuildConfig({
 
   it('should import runtime code relative to nested entries', async () => {
     const helper = await read(dirs.buildConfig!, 'dist/nested/helper.mjs')
-    expect(findStaticImports(helper).map(i => i.specifier)).toEqual(['../runtime/plugins/plugin.js'])
+    expect(staticImports(helper).map(i => i.specifier)).toEqual(['../runtime/plugins/plugin.js'])
     expect(helper).toContain('import("../runtime/composables/useWrappedFetch.js")')
     expect(helper).not.toContain(dirs.buildConfig)
   })

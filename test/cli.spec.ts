@@ -1,6 +1,5 @@
 import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { join, relative, resolve } from 'pathe'
 import { version as tsdownVersion } from 'tsdown/package.json'
@@ -12,7 +11,7 @@ import { guide } from '../src/build/guide.ts'
 import type { PackageJson } from '../src/utils.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 import type { Result } from './utils.ts'
-import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
+import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, staticImports, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
 
 const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '**/tsdown.config.ts'] }
 const ISOLATED = {
@@ -65,7 +64,7 @@ void [light, dark, options]
   }),
 }
 
-const runtimeSpecifiers = (code: string) => findStaticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
+const runtimeSpecifiers = (code: string) => staticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
 
 const dirs: Record<string, string> = {}
 let sourceWithoutDist = false
@@ -680,8 +679,8 @@ describe('a module that imports runtime code, built through a symlink, under a p
       './runtime/utils/name.js',
     ])
     const moduleDts = await read(dist(), 'module.d.mts')
-    expect(findStaticImports(moduleDts).find(i => i.specifier.includes('plugins'))!.code.trim()).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
-    expect(findStaticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
+    expect(staticImports(moduleDts).find(i => i.specifier.includes('plugins'))!.code).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
+    expect(staticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
     expect(moduleDts).toContain('from "nuxt/app"')
     expect(moduleDts).not.toContain('#app')
   })
@@ -720,7 +719,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
   })
 
   it('should keep every non-relative runtime import as written', async () => {
-    expect(findStaticImports(await read(dist(), 'runtime/server/handler.js')).map(i => i.specifier)).toEqual([
+    expect(staticImports(await read(dist(), 'runtime/server/handler.js')).map(i => i.specifier)).toEqual([
       '#internal/nuxt.config.mjs',
       '~/app.config',
       '@/root',
@@ -729,7 +728,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
       '#fixture-cache',
       '../utils/local.js',
     ])
-    expect(findStaticImports(await read(dist(), 'runtime/utils/options.d.ts')).map(i => i.specifier)).toEqual(['fake-types'])
+    expect(staticImports(await read(dist(), 'runtime/utils/options.d.ts')).map(i => i.specifier)).toEqual(['fake-types'])
   })
 
   it('should not emit dependencies or bundler helpers into the runtime directory', async () => {
@@ -1523,7 +1522,7 @@ describe('the example', () => {
     })
 
     it('should correctly add extensions to imports from runtime/ directory', async () => {
-      const runtimeImport = findStaticImports(await read(dist(), 'module.d.mts')).find(i => i.specifier.includes('runtime'))
+      const runtimeImport = staticImports(await read(dist(), 'module.d.mts')).find(i => i.specifier.includes('runtime'))
       expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";"`)
     })
 

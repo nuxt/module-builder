@@ -4,7 +4,6 @@ import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { readFile, writeFile } from 'node:fs/promises'
 import { parseTsconfig } from 'get-tsconfig'
-import { resolvePath } from 'mlly'
 import { dirname, join, relative, resolve } from 'pathe'
 import { glob } from 'tinyglobby'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
@@ -15,7 +14,7 @@ import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
-import { isInside, probe, readPackageJson } from '../utils.ts'
+import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
 import { loadModuleConfig } from './config-file.ts'
@@ -279,11 +278,11 @@ function replaceEntries(modules: unknown[] | undefined, name: string, nuxtModule
 
 /** `useNuxt` from the kit the module in `cwd` resolves, so hooks can read the Nuxt instance they run in. */
 async function loadUseNuxt(cwd: string): Promise<(() => Nuxt) | undefined> {
-  for (const id of ['@nuxt/kit', 'nuxt/kit']) {
-    const path = await resolvePath(id, { url: pathToFileURL(`${cwd}/`) }).catch(() => undefined)
-    if (path) {
-      return (await import(pathToFileURL(path).href) as { useNuxt: () => Nuxt }).useNuxt
-    }
+  const nuxt = resolveFrom(`${cwd}/`, 'nuxt/package.json')
+  // `nuxt/kit` re-exports the `@nuxt/kit` that `nuxt` depends on, and some versions of `nuxt` export it only for `import`.
+  const path = resolveFrom(`${cwd}/`, '@nuxt/kit') ?? (nuxt && resolveFrom(nuxt, '@nuxt/kit'))
+  if (path) {
+    return (await import(pathToFileURL(path).href) as { useNuxt: () => Nuxt }).useNuxt
   }
 }
 

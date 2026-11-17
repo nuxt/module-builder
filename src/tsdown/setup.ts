@@ -3,7 +3,6 @@ import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { relative, resolve } from 'pathe'
-import { resolvePath } from 'mlly'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
@@ -266,8 +265,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
  * tsdown runs, because built-in plugins only work with the binding that created them.
  */
 async function replacePlugin({ values, ...options }: ReplaceOptions): Promise<Rolldown.RolldownPluginOption> {
-  const tsdown = await resolvePath('tsdown', { url: import.meta.url })
-  const plugins = await resolvePath('rolldown/plugins', { url: tsdown })
+  const plugins = createRequire(import.meta.resolve('tsdown')).resolve('rolldown/plugins')
   const { replacePlugin } = await import(pathToFileURL(plugins).href) as { replacePlugin: (values: Record<string, string>, options: Omit<ReplaceOptions, 'values'>) => Rolldown.RolldownPluginOption }
   return replacePlugin(values, options)
 }

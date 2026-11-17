@@ -280,8 +280,8 @@ class DirectoryBuild {
 
   private async readEdges(importer: string): Promise<Edge[]> {
     const source = await readFile(importer, 'utf8')
-    const values = valueSpecifiers(importer.endsWith('.vue') ? source : (await this.transpileSource(importer, source)).code)
-    const specifiers = new Set(moduleSpecifiers(source).map(({ specifier }) => specifier).filter(specifier => RELATIVE_RE.test(specifier)))
+    const values = valueSpecifiers(importer.endsWith('.vue') ? source : (await this.transpileSource(importer, source)).code, importer)
+    const specifiers = new Set(moduleSpecifiers(source, importer).map(({ specifier }) => specifier).filter(specifier => RELATIVE_RE.test(specifier)))
     return [...specifiers].flatMap((specifier) => {
       const target = probe(resolve(dirname(importer), specifier))
       return target && isSourceScript(target) ? [{ specifier, target: normalize(target), value: values.has(specifier) }] : []
@@ -319,7 +319,7 @@ class DirectoryBuild {
    */
   private rewriteSpecifiers(source: string, output: string, code: string, declaration = false) {
     const referenced = new Set<string>()
-    const rewritten = rewriteSpecifiers(code, specifier => RELATIVE_RE.test(specifier) ? this.replacement(source, specifier, output, referenced) : undefined)
+    const rewritten = rewriteSpecifiers(code, specifier => RELATIVE_RE.test(specifier) ? this.replacement(source, specifier, output, referenced) : undefined, output)
     if (declaration) {
       this.references.set(source, referenced)
     }

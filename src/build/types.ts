@@ -1,18 +1,29 @@
 import { existsSync, promises as fsp, readFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'pathe'
-import { findExports, findTypeExports } from 'mlly'
-import type { ESMExport } from 'mlly'
+import type ts from 'typescript'
 
+import { parseModule } from '../transpile/specifiers.ts'
 import { getOrCreate, probe, writeIfChanged } from '../utils.ts'
 
-const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
+interface ExportedName {
+  name: string
+  /** Whether this export only exports a type: `export type`, `export { type Foo }`, an interface or a type alias. */
+  typeOnly: boolean
+}
+
+interface ModuleExport {
+  names: ExportedName[]
+  specifier?: string
+  /** For `export *` and `export * as`, whether it is `export type *`. */
+  star?: { typeOnly: boolean }
+}
+
 const DECLARATION_SUFFIXES: Record<string, string[]> = {
   '': ['.d.ts', '.d.mts', '.d.cts', '/index.d.ts', '/index.d.mts'],
   '.js': ['.d.ts'],
   '.mjs': ['.d.mts'],
   '.cjs': ['.d.cts'],
 }
-const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|const\s+enum|const|let|var|class|enum)\s+([$\w]+)/g
 
 /**
  * Writes `module.d.mts`, which re-exports `entry`, and the `types.d.mts` that adds its type
@@ -21,7 +32,7 @@ const VALUE_DECLARATION_RE = /\bexport\s+declare\s+(?:async\s+function|function|
  */
 export async function writeSourceTypes(dir: string, entry: string, reExported: string = entry): Promise<void> {
   const source = await fsp.readFile(entry, 'utf8')
-  const hasDefaultExport = findExports(source).some(e => e.type === 'default' || e.names?.includes('default'))
+  const hasDefaultExport = parseExports(source, entry).some(e => e.names.some(({ name }) => name === 'default'))
   // TypeScript resolves the `.js` specifier to the `.ts` source, or to its declaration, without `allowImportingTsExtensions`.
   const path = relative(dir, reExported).replace(/\.([cm]?)tsx?$/, '.$1js')
   const specifier = path.startsWith('.') ? path : `./${path}`
@@ -42,25 +53,14 @@ export async function writeSourceTypes(dir: string, entry: string, reExported: s
 export async function writeTypes(distDir: string, source?: { exports: Set<string> | undefined }): Promise<void> {
   const dtsFile = resolve(distDir, 'types.d.mts')
 
-  const moduleReExports: ESMExport[] = []
+  let moduleReExports: ModuleExport[] = []
   let typeOnlyExports = new Set<string>()
   if (!source) {
     const moduleTypes = await fsp.readFile(resolve(distDir, 'module.d.mts'), 'utf8').catch(() => '')
-    const exports = findExports(withoutTypeModifiers(moduleTypes))
-    const typeExports = findTypeExports(moduleTypes)
-    moduleReExports.push(...exports, ...typeExports)
-    const namedExports = (list: ESMExport[]) => list.filter(e => e.type === 'named' || e.type === 'default').flatMap(e => e.names)
-    const isTypeOnly = (e: ESMExport) => e.type === 'named' || (e.type === 'declaration' && TYPE_ONLY_DECLARATIONS.has(e.declarationType!))
-    const valueExports = new Set([
-      ...namedExports(findExports(moduleTypes)),
-      ...typeExports.filter(e => !isTypeOnly(e)).flatMap(e => e.names),
-      // `findTypeExports` drops a value declaration that shares its name with a type
-      // export, so read those names from the generated declarations too.
-      ...[...moduleTypes.matchAll(VALUE_DECLARATION_RE)].map(match => match[1]!),
-    ])
-    // `findExports` only reports `export { type Foo }` after the `type` keyword is removed,
-    // so names it finds only in the normalised types are type-only.
-    typeOnlyExports = new Set([...typeExports.filter(isTypeOnly).flatMap(e => e.names), ...namedExports(exports)].filter(name => !valueExports.has(name)))
+    moduleReExports = parseExports(moduleTypes, 'module.d.mts')
+    const names = moduleReExports.flatMap(e => e.names)
+    const valueExports = new Set(names.filter(e => !e.typeOnly).map(e => e.name))
+    typeOnlyExports = new Set(names.map(e => e.name).filter(name => !valueExports.has(name)))
   }
 
   const appShims: string[] = []
@@ -71,7 +71,7 @@ export async function writeTypes(distDir: string, source?: { exports: Set<string
 
   const hasTypeExport = (name: string) => source
     ? !source.exports || source.exports.has(name)
-    : moduleReExports.some(exp => exp.names?.includes(name))
+    : moduleReExports.some(e => e.names.some(exported => exported.name === name))
 
   if (!hasTypeExport('ModuleOptions')) {
     schemaImports.push('NuxtModule')
@@ -101,7 +101,7 @@ ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n'
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${source ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
 ${[...groupNamedReExports(moduleReExports)].map(([specifier, names]) => `\nexport { ${names.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + n).join(', ')} } from '${specifier}'`).join('\n')}
-${moduleReExports.filter(e => e.type === 'star').map(e => `\nexport * from '${e.specifier || './module.mjs'}'`).join('\n')}
+${moduleReExports.filter(e => e.star).map(e => `\nexport ${e.star!.typeOnly ? 'type ' : ''}*${e.names[0] ? ` as ${e.names[0].name}` : ''} from '${e.specifier}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await writeIfChanged(dtsFile, dtsContents)
@@ -117,10 +117,9 @@ function exportedNames(file: string, seen = new Set<string>()): Set<string> | un
     return names
   }
   seen.add(file)
-  const code = readFileSync(file, 'utf8')
-  for (const exp of [...findExports(withoutTypeModifiers(code).replace(/\bexport\s+type\s*\*/g, 'export *')), ...findTypeExports(code)]) {
-    if (exp.type !== 'star' || exp.names?.length) {
-      exp.names?.forEach(name => names.add(name))
+  for (const exp of parseExports(readFileSync(file, 'utf8'), file)) {
+    if (!exp.star || exp.names.length) {
+      exp.names.forEach(({ name }) => names.add(name))
       continue
     }
     const target = exp.specifier?.startsWith('.') ? probeWithDeclarations(resolve(dirname(file), exp.specifier)) : undefined
@@ -140,17 +139,56 @@ function probeWithDeclarations(path: string) {
   return probe(path) ?? DECLARATION_SUFFIXES[extension]!.map(suffix => base + suffix).find(candidate => existsSync(candidate))
 }
 
-/** `code` with `export { type Foo }` written as `export { Foo }`, which `findExports` reports. */
-function withoutTypeModifiers(code: string) {
-  return code.replace(/export\s*\{.*?\}/gs, match => match.replace(/\b(type|interface)\b/g, ''))
+function parseExports(code: string, filename: string): ModuleExport[] {
+  const { ts, sourceFile } = parseModule(code, filename)
+  const exports: ModuleExport[] = []
+  const hasModifier = (node: ts.Node, kind: ts.SyntaxKind) => ts.canHaveModifiers(node) && !!ts.getModifiers(node)?.some(modifier => modifier.kind === kind)
+  for (const statement of sourceFile.statements) {
+    if (ts.isExportDeclaration(statement)) {
+      const specifier = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : undefined
+      const clause = statement.exportClause
+      if (clause && ts.isNamedExports(clause)) {
+        exports.push({ specifier, names: clause.elements.map(element => ({ name: element.name.text, typeOnly: statement.isTypeOnly || element.isTypeOnly })) })
+      }
+      else if (specifier) {
+        exports.push({ specifier, star: { typeOnly: statement.isTypeOnly }, names: clause ? [{ name: clause.name.text, typeOnly: statement.isTypeOnly }] : [] })
+      }
+    }
+    else if (ts.isExportAssignment(statement)) {
+      if (!statement.isExportEquals) {
+        exports.push({ names: [{ name: 'default', typeOnly: false }] })
+      }
+    }
+    else if (hasModifier(statement, ts.SyntaxKind.ExportKeyword)) {
+      const typeOnly = ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)
+      const names = hasModifier(statement, ts.SyntaxKind.DefaultKeyword) ? ['default'] : declaredNames(ts, statement)
+      exports.push({ names: names.map(name => ({ name, typeOnly })) })
+    }
+  }
+  return exports
 }
 
-function groupNamedReExports(exports: ESMExport[]) {
+function declaredNames(ts: typeof import('typescript'), statement: ts.Statement): string[] {
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.flatMap(declaration => bindingNames(ts, declaration.name))
+  }
+  const name = (statement as ts.DeclarationStatement).name
+  return name && ts.isIdentifier(name) ? [name.text] : []
+}
+
+function bindingNames(ts: typeof import('typescript'), name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) {
+    return [name.text]
+  }
+  return name.elements.flatMap(element => ts.isBindingElement(element) ? bindingNames(ts, element.name) : [])
+}
+
+function groupNamedReExports(exports: ModuleExport[]) {
   const groups = new Map<string, Set<string>>()
   for (const e of exports) {
-    if (e.type === 'named' || e.type === 'default' || e.type === 'declaration') {
+    if (!e.star) {
       const names = getOrCreate(groups, e.specifier || './module.mjs', () => new Set<string>())
-      e.names.forEach(name => names.add(name))
+      e.names.forEach(({ name }) => names.add(name))
     }
   }
   return new Map([...groups].map(([specifier, names]) => [

@@ -1,19 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { dirname, relative, resolve } from 'pathe'
-import { resolvePathSync } from 'mlly'
+import { dirname, join, relative, resolve } from 'pathe'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
-import { isInside, NODE_MODULES_RE, probe, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
+import { findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import { guide } from './guide.ts'
+import { importsKeyFor } from './package.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const PATH_ALIAS_RE = /^(?:~|@\/)/
 const JSON_RE = /\.json$/
 const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
+const IMPORT_CONDITIONS = new Set(['import', 'node', 'default'])
 
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
@@ -214,20 +216,6 @@ function walkSources(cwd: string, entries: string[], visit: (file: string, analy
   }
 }
 
-function resolvesAsPackage(specifier: string, parentDir: string) {
-  try {
-    return resolvePathSync(specifier, { url: pathToFileURL(resolve(parentDir, 'index.js')), conditions: ['import', 'node', 'default'] })
-  }
-  catch {
-    try {
-      return createRequire(resolve(parentDir, 'index.js')).resolve(specifier)
-    }
-    catch {
-      return undefined
-    }
-  }
-}
-
 /**
  * The module source `specifier` reaches: a relative file, an entry in the `imports` of the
  * module's `package.json`, or a tsconfig `paths` alias. Packages and the aliases only a
@@ -241,7 +229,9 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     const file = probe(resolve(parentDir, specifier))
     return file ? { file, via: 'relative' } : undefined
   }
-  const resolved = PATH_ALIAS_RE.test(specifier) ? undefined : resolvesAsPackage(specifier, parentDir)
+  const resolved = PATH_ALIAS_RE.test(specifier)
+    ? undefined
+    : (specifier.startsWith('#') && resolvePackageImport(specifier, parentDir)) || resolveFrom(resolve(parentDir, 'index.js'), specifier)
   if (resolved) {
     return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
   }
@@ -249,6 +239,37 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     const file = probe(candidate)
     if (file) {
       return { file, via: 'paths' }
+    }
+  }
+}
+
+/** The file that `specifier` maps to through the `imports` of the closest `package.json`, with the conditions of `import`. */
+function resolvePackageImport(specifier: string, parentDir: string) {
+  const scope = findUp(parentDir, dir => existsSync(join(dir, 'package.json')) ? dir : undefined)
+  const { imports } = scope ? JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8')) as PackageJson : {}
+  const key = isPlainObject(imports) ? importsKeyFor(Object.keys(imports), specifier) : undefined
+  if (!scope || !key) {
+    return
+  }
+  const star = key.indexOf('*')
+  const target = importTarget((imports as Record<string, unknown>)[key], star === -1 ? undefined : specifier.slice(star, specifier.length - key.length + star + 1))
+  const file = target?.startsWith('./') ? resolve(scope, target) : undefined
+  return file && isFile(file) ? file : undefined
+}
+
+function importTarget(target: unknown, match: string | undefined): string | undefined {
+  if (typeof target === 'string') {
+    return match === undefined ? target : target.replaceAll('*', match)
+  }
+  if (Array.isArray(target)) {
+    return target.map(item => importTarget(item, match)).find(item => item !== undefined)
+  }
+  if (isPlainObject(target)) {
+    for (const [condition, value] of Object.entries(target)) {
+      const resolved = IMPORT_CONDITIONS.has(condition) ? importTarget(value, match) : undefined
+      if (resolved !== undefined) {
+        return resolved
+      }
     }
   }
 }

@@ -64,7 +64,7 @@ export async function writeModuleDeclarations(cwd: string, dir: string, { tsconf
         return relativeSpecifier(output, declaration).replace(/\.d\.([cm]?)ts$/, '.$1js')
       }
       return isRelative && target ? relativeSpecifier(output, target).replace(/\.d\.([cm]?)ts$/, '.$1js') : undefined
-    })
+    }, output)
     await mkdir(dirname(output), { recursive: true })
     await writeFile(output, code)
   }))

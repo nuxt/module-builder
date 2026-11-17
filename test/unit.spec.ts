@@ -13,7 +13,7 @@ import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/bu
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
-import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
+import { moduleSpecifiers, rewriteSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
 import { logger, relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
@@ -26,7 +26,7 @@ import { transformCss } from '../src/transpile/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
-import { writeSourceTypes } from '../src/build/types.ts'
+import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
@@ -591,6 +591,30 @@ describe('sourcePathsPackError', () => {
     expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `types` (`./.nuxt/module-builder/types.d.mts`)')
     expect(sourcePathsPackError(cwd, { main: pkg.main, publishConfig: { main: pkg.publishConfig.main } }, yarn2)).toBeUndefined()
     expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toContain('`yarn@5.0.0` packs')
+  })
+})
+
+describe('writeTypes', () => {
+  it('should re-export every declaration and star re-export of `module.d.mts` as written', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-types-'))
+    await writeFile(join(dir, 'module.d.mts'), [
+      'export declare abstract class Base {}',
+      'export declare namespace Helpers { const x: number }',
+      'export declare const a: string, b: number',
+      'export declare const { c, d: [e] }: { c: 1, d: [2] }',
+      `export * as ns from './ns.mjs'`,
+      `export type * from './types.mjs'`,
+      'export interface ModuleOptions {}',
+      'declare const _default: unknown',
+      'export { _default as default }',
+    ].join('\n'))
+    await writeTypes(dir)
+    expect((await readFile(join(dir, 'types.d.mts'), 'utf-8')).split('\n').filter(line => line.startsWith('export'))).toEqual([
+      `export { a, b, Base, c, e, Helpers, type ModuleOptions, default } from './module.mjs'`,
+      `export * as ns from './ns.mjs'`,
+      `export type * from './types.mjs'`,
+    ])
+    await rm(dir, { recursive: true, force: true })
   })
 })
 
@@ -1239,6 +1263,26 @@ describe('build plan', () => {
     ].join('\n')
     expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
     expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+    expect(rewriteSpecifiers(`const load = () => import/* lazy */('./d')`, specifier => `${specifier}.js`)).toBe(`const load = () => import/* lazy */('./d.js')`)
+  })
+
+  it('should find imports with comments inside or before them, and imports of string names', () => {
+    const code = [
+      `import {\n  a, // the a's value\n} from './a'`,
+      `/* b */import b from './b'`,
+      `import { 'c-c' as c } from './c'`,
+      `import type from './d'`,
+    ].join('\n')
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+  })
+
+  it('should ignore import statements inside strings', () => {
+    const template = 'const template = `\nimport x from \'./in-string\'\n`\n'
+    expect(moduleSpecifiers(`@decorate\nclass A {}\n${template}`)).toEqual([])
+    const sfc = `<template>\n  <p>Don't</p>\n</template>\n\n<script setup lang="ts">\nimport A from './a'\n${template}</script>\n`
+    expect(moduleSpecifiers(sfc, 'Component.vue').map(({ specifier }) => specifier)).toEqual(['./a'])
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
   })
 
   it('should treat a dot-prefixed name as a path inside the directory', () => {
