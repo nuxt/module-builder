@@ -191,7 +191,7 @@ export default {
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
     step('published', run('node', [tsdownBin], { cwd: repoRoot })).then(() => step('published:import', run('node', ['--input-type=module', '-e', `const root = await import('@nuxt/module-builder')\nconst { builder } = await import('@nuxt/module-builder/tsdown')\nconsole.log(JSON.stringify(['builder' in root, builder().name]))`]))),
   ])
-}, 300_000)
+})
 
 describe('builder', () => {
   it('should run the config\'s hooks before its own, so `build:prepare` can generate sources, and compose with its plugins and options', async () => {

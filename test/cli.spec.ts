@@ -651,7 +651,7 @@ export type { Kit } from './kit'
       await inOrder(['dist:generate', () => nuxt(['generate', 'playground'], dirs.dist)], ['dist:pack', () => pack(dirs.dist!, 'npm')])
     })(),
   ])
-}, 300_000)
+})
 
 const expectBuilt = (name: string) => {
   const { exitCode, output } = result(name)

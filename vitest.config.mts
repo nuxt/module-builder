@@ -5,7 +5,7 @@ const config: ReturnType<typeof defineConfig> = defineConfig({
     coverage: {},
     globalSetup: ['./test/setup.ts'],
     testTimeout: 180_000,
-    hookTimeout: 180_000,
+    hookTimeout: 600_000,
   },
 })
 

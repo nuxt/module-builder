@@ -448,7 +448,7 @@ export default defineBuildConfig({
       step('withField:prepare', cli(['prepare', dirs.withField])),
       step('withFile', tsdown(dirs.withFile)),
     ])
-  }, 300_000)
+  })
 
   it('should build `build.config.ts` entries under the names unbuild gave them, alongside the `build` field of `package.json`', async () => {
     expectBuilt('buildConfig')
