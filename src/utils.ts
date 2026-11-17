@@ -10,10 +10,14 @@ export const logger = {
   error: (message: string): void => log.error(message, { spacing: 0, output: process.stderr }),
 }
 
-/** The fields of `package.json` that the builder reads. */
+/** A `package.json`, typed for the fields that the builder reads and the dependency fields. */
 export interface PackageJson {
   name?: string
   version?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
   main?: string
   module?: string
   types?: string
