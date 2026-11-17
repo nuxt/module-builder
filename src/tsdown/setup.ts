@@ -1,25 +1,24 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
 import { dirname, relative, resolve } from 'pathe'
 import { consola } from 'consola'
+import { resolvePath } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
 import type { PackageJson } from 'pkg-types'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
-import type { BuildPlan } from '../build/build.ts'
 import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
-import type { BuilderOptions, ModuleConfig } from '../build/options.ts'
+import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
-import { externalDependencyDeclarations } from './externals.ts'
-import { replacePlugin } from './replace.ts'
-import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
-import { runtimeExternals } from './runtime-externals.ts'
 import { realpath } from '../utils.ts'
+import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
+import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
@@ -28,7 +27,6 @@ export interface SetupOptions {
 }
 
 export interface BuilderSession {
-  plan: BuildPlan
   /** Whether a build has started with this session. */
   started: boolean
   /** Directories a watcher watches as a whole, so new files in them trigger a rebuild. */
@@ -192,7 +190,6 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   } satisfies UserConfig)
 
   const session: BuilderSession = {
-    plan,
     started: false,
     watchDirs: [...new Set(plan.runtimeDirs.map(dir => existingAncestor(dir, cwd)))],
     checkResolved(resolved) {
@@ -260,6 +257,17 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     },
   }
   return session
+}
+
+/**
+ * rolldown's built-in replace plugin. It is loaded from the copy of rolldown that
+ * tsdown runs, because built-in plugins only work with the binding that created them.
+ */
+async function replacePlugin({ values, ...options }: ReplaceOptions): Promise<Rolldown.RolldownPluginOption> {
+  const tsdown = await resolvePath('tsdown', { url: import.meta.url })
+  const plugins = await resolvePath('rolldown/plugins', { url: tsdown })
+  const { replacePlugin } = await import(pathToFileURL(plugins).href) as { replacePlugin: (values: Record<string, string>, options: Omit<ReplaceOptions, 'values'>) => Rolldown.RolldownPluginOption }
+  return replacePlugin(values, options)
 }
 
 /** The files that `finishBuild` writes after the bundle. */

@@ -1,41 +1,12 @@
-import { existsSync, statSync } from 'node:fs'
 import { findDynamicImports, findExports, findStaticImports, findTypeExports } from 'mlly'
-import { resolve } from 'pathe'
 
-export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
-export const DECLARATION_RE: RegExp = /\.d\.[cm]?ts$/
-export const RELATIVE_RE: RegExp = /^\.\.?(?:\/|$)/
+import { RELATIVE_RE } from '../utils.ts'
+
 const JSX_RE = /\.[jt]sx$/
 
 /** The extension `file` is emitted with: `.jsx` for a JSX source when JSX is preserved, `extension` otherwise. */
 export function scriptExtension(file: string, extension: string, preserveJsx: boolean): string {
   return preserveJsx && JSX_RE.test(file) ? '.jsx' : extension
-}
-
-const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
-
-/** The file an extensionless or `.js`-suffixed specifier for a TypeScript source resolves to. */
-export function probe(path: string): string | undefined {
-  if (existsSync(path) && statSync(path).isFile()) {
-    return path
-  }
-  const source = path.replace(/\.([cm]?)js(x?)$/, '.$1ts$2')
-  if (source !== path && existsSync(source)) {
-    return source
-  }
-  if (path.endsWith('.js') && existsSync(`${source}x`)) {
-    return `${source}x`
-  }
-  for (const extension of EXTENSIONS) {
-    if (existsSync(path + extension)) {
-      return path + extension
-    }
-  }
-  for (const extension of EXTENSIONS) {
-    if (existsSync(resolve(path, `index${extension}`))) {
-      return resolve(path, `index${extension}`)
-    }
-  }
 }
 
 export interface Specifier {

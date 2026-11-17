@@ -2,10 +2,9 @@ import { isAbsolute, normalize, relative, resolve } from 'pathe'
 import type { PackageJson } from 'pkg-types'
 
 import { assertNoLegacyBuildConfig } from '../legacy/build-config.ts'
-import { escapeRegExp, isInside, isPlainObject } from '../utils.ts'
+import { escapeRegExp, isInside, isPlainObject, probe } from '../utils.ts'
 import type { BuildPlan } from './build.ts'
 import { guide } from './guide.ts'
-import { probe } from './loader.ts'
 
 export const NUXT_EXTERNALS: (string | RegExp)[] = [
   '@nuxt/schema',

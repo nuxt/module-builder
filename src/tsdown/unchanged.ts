@@ -4,8 +4,7 @@ import { join } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
 import { declarationTargets } from '../build/aliases.ts'
-
-const DECLARATION_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
+import { ANY_DECLARATION_RE } from '../utils.ts'
 
 export interface UnchangedOutputs {
   /**
@@ -73,7 +72,7 @@ function contentHash(output: Rolldown.OutputChunk | Rolldown.OutputAsset, bundle
   if (output.type === 'chunk' && output.map) {
     hash.update(output.map.toString())
   }
-  if (DECLARATION_RE.test(output.fileName)) {
+  if (ANY_DECLARATION_RE.test(output.fileName)) {
     const text = typeof code === 'string' ? code : Buffer.from(code).toString('utf8')
     hash.update('\0').update(declarationTargets(output.fileName, text).filter(target => Object.hasOwn(bundle, target)).join('\0'))
   }

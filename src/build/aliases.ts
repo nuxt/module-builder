@@ -1,6 +1,8 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { dirname, join, resolve } from 'pathe'
 
+import { DECLARATION_RE } from '../utils.ts'
+
 const APP_ALIAS_RE = /(\bfrom\s*|\bimport\s*\(\s*)(['"])#app(?:\/[^'"]*)?\2/g
 const RELATIVE_SPECIFIER_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.\.?\/[^'"]*)\2/g
 const DECLARATION_TARGETS = [
@@ -54,7 +56,7 @@ export function declarationTargets(fileName: string, code: string): string[] {
 }
 
 function declarationsOf(output: string) {
-  if (/\.d\.[cm]?ts$/.test(output)) {
+  if (DECLARATION_RE.test(output)) {
     return [output]
   }
   if (output.endsWith('.vue')) {

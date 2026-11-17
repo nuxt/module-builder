@@ -12,12 +12,13 @@ import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
 import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
 import type { ModuleConfig } from '../build/options.ts'
-import { selfReferencePaths } from '../build/tsconfig.ts'
+import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
-import { probe } from '../transpile/resolve.ts'
 import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
-import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
+import { isInside, probe } from '../utils.ts'
+import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
+import { loadModuleConfig } from './config-file.ts'
 
 const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/
 const PATH_OPTIONS = new Set(['paths', 'baseUrl', 'rootDir', 'rootDirs', 'outDir', 'outFile', 'declarationDir', 'typeRoots', 'tsBuildInfoFile'])
@@ -178,7 +179,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: ModuleC
                 list.push(...ambient.augmentations.map(path => ({ path })))
               }
               // Module code can import types from runtime sources, which rely on the app's aliases, declarations and JSX options.
-              const appDeclarations = (tsConfig.include ?? []).filter(pattern => !relative(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)).startsWith('..'))
+              const appDeclarations = (tsConfig.include ?? []).filter(pattern => isInside(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)))
               nodeTsConfig.include = [...new Set([...nodeTsConfig.include ?? [], ...appDeclarations])]
               // A type reference does not resolve the module's own package name.
               const ownReference = nodeReferences.findIndex(isOwnTypes)
@@ -207,7 +208,7 @@ export async function prepareModule(cwd: string, buildConfig?: { config: ModuleC
   await writeSourceTypes(sourceTypesDir(cwd), entryPath)
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
   if (name && perContext) {
-    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => !relative(dir, file).startsWith('..')))
+    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file)))
     const tsconfigs = await createTsconfigResolver(cwd)
     const project = tsconfigs.resolve(entryPath)
     const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
@@ -242,7 +243,7 @@ async function writeCompatibilityTsconfig(file: string, cwd: string, { ownPaths,
   const entryDir = dirname(entryPath)
   const isDerived = (pattern: string) => {
     const path = resolve(dirname(file), pattern)
-    const inEntryDist = entryDir !== cwd && !relative(join(entryDir, 'dist'), path).startsWith('..')
+    const inEntryDist = entryDir !== cwd && isInside(join(entryDir, 'dist'), path)
     return path === ownTypes || path === join(entryDir, 'runtime/server') || inEntryDist
   }
   config.include = config.include?.filter(pattern => !isDerived(pattern))

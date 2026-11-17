@@ -3,8 +3,7 @@ import { dirname, relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 
-import { probe } from './loader.ts'
-import { writeIfChanged } from './write.ts'
+import { probe, writeIfChanged } from '../utils.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
 const DECLARATION_SUFFIXES: Record<string, string[]> = {

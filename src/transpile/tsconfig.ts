@@ -3,10 +3,11 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createFilesMatcher, createPathsMatcher, getTsconfig, parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
-import { dirname, isAbsolute, join, relative, resolve } from 'pathe'
+import { dirname, join, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
-import { moduleSpecifiers } from './resolve.ts'
+import { findPackageDir, isInside, NODE_MODULES_RE } from '../utils.ts'
+import { moduleSpecifiers } from './specifiers.ts'
 
 export interface TsconfigResolver {
   /** The nearest tsconfig, which may delegate files to `references`. */
@@ -50,7 +51,7 @@ function usesForeignBuildDir(tsconfig: TsConfigResult, dir: string) {
 }
 
 function isOwnBuildFile(file: string, dir: string) {
-  return !relative(join(dir, '.nuxt'), file).startsWith('..')
+  return isInside(join(dir, '.nuxt'), file)
 }
 
 function isForeignBuildFile(file: string, dir: string) {
@@ -174,8 +175,7 @@ export function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: stri
 
 /** Whether `file` belongs to the module in `dir`, as {@link projectFiles} decides. */
 export function isModuleFile(file: string, dir: string): boolean {
-  const path = relative(dir, file)
-  if (path.startsWith('..') || isAbsolute(path) || FOREIGN_DIR_RE.test(path.split('/')[0]!) || NODE_MODULES_RE.test(file)) {
+  if (!isInside(dir, file) || FOREIGN_DIR_RE.test(relative(dir, file).split('/')[0]!) || NODE_MODULES_RE.test(file)) {
     return false
   }
   return !NUXT_BUILD_DIR_RE.test(file) || isOwnBuildFile(file, dir)
@@ -210,6 +210,10 @@ function allReferencedProjects(tsconfig: TsConfigResult | undefined, seen = new 
   }).sort((a, b) => projectRank(a.path) - projectRank(b.path))
 }
 
+export function hasIsolatedDeclarations(tsconfig: TsConfigResult | undefined): boolean {
+  return tsconfig?.config.compilerOptions?.isolatedDeclarations === true
+}
+
 /** The tsconfig's `paths` made absolute. */
 export function tsconfigPaths(tsconfig: TsConfigResult | undefined): Record<string, string[]> {
   const paths = tsconfig?.config.compilerOptions?.paths
@@ -223,7 +227,6 @@ export function tsconfigPaths(tsconfig: TsConfigResult | undefined): Record<stri
 const BUILD_ALIAS_RE = /^#(?:build|internal)(?:\/|$)/
 const SERVER_ROUTES_ALIAS = '#build/server-routes'
 const NUXT_BUILD_DIR_RE = /[\\/]\.nuxt(?:[\\/]|$)/
-const NODE_MODULES_RE = /[\\/]node_modules[\\/]/
 const PACKAGE_NAME_RE = /^(?:@[\w.-]+\/)?[\w.-]+/
 
 export interface DeclarationPaths {
@@ -265,19 +268,6 @@ function serverRoutesTable(paths: Record<string, string[]>, cwd: string) {
     const file = target.endsWith('.d.ts') ? target : `${target}.d.ts`
     if (isOwnBuildFile(file, cwd) && existsSync(file)) {
       return file
-    }
-  }
-}
-
-/** The directory of an installed package, found the way Node looks up `node_modules`. */
-export function findPackageDir(name: string, cwd: string): string | undefined {
-  for (let dir = cwd; ; dir = dirname(dir)) {
-    const packageDir = join(dir, 'node_modules', name)
-    if (existsSync(join(packageDir, 'package.json'))) {
-      return packageDir
-    }
-    if (dirname(dir) === dir) {
-      return
     }
   }
 }

@@ -2,8 +2,7 @@ import { relative } from 'pathe'
 import type { Rolldown, UserConfig } from 'tsdown'
 
 import type { DirectoryEntry } from '../build/options.ts'
-
-const DECLARATION_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
+import { ANY_DECLARATION_RE } from '../utils.ts'
 
 /**
  * tsdown's size report, unless the config sets `report`: a summary when the build has
@@ -47,7 +46,7 @@ export function sizeBreakdown(bundle: Rolldown.OutputBundle, { cwd, outDir, entr
   for (const prefix of prefixes) {
     const files = sizes.filter(output => output.asset && !entryFiles.has(output.fileName) && owner(output.fileName) === prefix)
     if (files.length) {
-      const total = (declarations: boolean) => files.filter(output => DECLARATION_RE.test(output.fileName) === declarations).reduce((sum, output) => sum + output.size, 0)
+      const total = (declarations: boolean) => files.filter(output => ANY_DECLARATION_RE.test(output.fileName) === declarations).reduce((sum, output) => sum + output.size, 0)
       rows.push([`${base}/${prefix}`, `${formatSize(total(false))} · types ${formatSize(total(true))} · ${files.length} files`])
     }
   }

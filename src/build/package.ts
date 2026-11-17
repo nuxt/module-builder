@@ -1,6 +1,11 @@
-import { basename, relative, resolve } from 'pathe'
+import { existsSync, statSync } from 'node:fs'
+import { basename, join, relative, resolve } from 'pathe'
+import { consola } from 'consola'
+import { readPackageJSON } from 'pkg-types'
 import type { PackageJson } from 'pkg-types'
 
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, isLegacyPath } from '../legacy/package-paths.ts'
+import { DECLARATION_RE, isInside, TYPESCRIPT_RE } from '../utils.ts'
 import { guide } from './guide.ts'
 
 const PUBLISH_CONFIG_FIELDS = ['bin', 'browser', 'exports', 'imports', 'main', 'module', 'types', 'typings', 'typesVersions'] as const
@@ -18,9 +23,7 @@ const YARN_PUBLISH_CONFIG_FIELDS: Record<number, readonly PathField[]> = {
 
 const PACK_EVENTS = new Set(['prepack', 'prepublishOnly'])
 
-const TS_SOURCE_RE = /\.[cm]?tsx?$/
 const UNPUBLISHABLE = 'TypeScript sources or paths that `files` leaves out'
-const DECLARATION_RE = /\.d\.[cm]?ts$/
 
 /** `pkg` as pnpm publishes it, with the paths in `publishConfig` replacing their top-level fields. */
 export function publishedPackage(pkg: PackageJson): PackageJson {
@@ -53,7 +56,7 @@ export function unpublishablePaths(cwd: string, pkg: PackageJson, files: string[
     ? Object.entries((pkg.imports ?? {}) as Record<string, unknown>).flatMap(([key, value]) => collectStrings(value).filter(path => path.startsWith('./')).map(path => ({ path, key })))
     : collectStrings(pkg[field]).map(path => ({ path }))
   return PATH_FIELDS.flatMap(field => targets(field).flatMap(({ path, key }): UnpublishablePath[] => {
-    if (TS_SOURCE_RE.test(path) && !DECLARATION_RE.test(path)) {
+    if (TYPESCRIPT_RE.test(path) && !DECLARATION_RE.test(path)) {
       return [{ field, path, reason: 'source', key }]
     }
     return !packed(cwd, path, files, alwaysPacked) ? [{ field, path, reason: 'files', key }] : []
@@ -61,8 +64,9 @@ export function unpublishablePaths(cwd: string, pkg: PackageJson, files: string[
 }
 
 function packed(cwd: string, path: string, files: string[] | undefined, alwaysPacked: Set<string>): boolean {
-  const file = relative(cwd, resolve(cwd, path.split('*')[0]!))
-  if (!file || file.startsWith('..')) {
+  const target = resolve(cwd, path.split('*')[0]!)
+  const file = relative(cwd, target)
+  if (!file || !isInside(cwd, target)) {
     return !file
   }
   if (!path.includes('*') && alwaysPacked.has(file)) {
@@ -204,11 +208,11 @@ function publishConfigFields(name: string, version: string | undefined): readonl
   return []
 }
 
-function list(values: string[]) {
+export function list(values: string[]): string {
   return [...new Set(values)].map(value => `\`${value}\``).join(', ')
 }
 
-export function collectStrings(value: unknown): string[] {
+function collectStrings(value: unknown): string[] {
   if (typeof value === 'string') {
     return [value]
   }
@@ -219,4 +223,129 @@ export function collectStrings(value: unknown): string[] {
     return Object.values(value).flatMap(collectStrings)
   }
   return []
+}
+
+/**
+ * `paths` pointing the package's own name and `exports` subpaths at its sources, so
+ * self-referencing imports type-check before `dist` exists. A subpath that points at a
+ * bundled entry of `entries`, keyed by output name, maps to that entry's input.
+ */
+export function selfReferencePaths(cwd: string, pkg: PackageJson, outDir: string, entries: Record<string, string> = {}): Record<string, string[]> {
+  if (!pkg.name) {
+    return {}
+  }
+  const paths: Record<string, string[]> = { [pkg.name]: [resolve(cwd, 'src/module')] }
+  const { exports } = publishedPackage(pkg)
+  if (!exports || typeof exports !== 'object' || Array.isArray(exports)) {
+    return paths
+  }
+  for (const [subpath, target] of Object.entries(exports)) {
+    const file = exportTarget(target)
+    if (!subpath.startsWith('./') || !file) {
+      continue
+    }
+    if (isInside(outDir, resolve(cwd, file))) {
+      const name = relative(outDir, resolve(cwd, file)).replace(/(?:\.d)?\.[cm]?[jt]s$/, '')
+      const input = Object.hasOwn(entries, name) ? entries[name]!.replace(/\.[cm]?[jt]sx?$/, '') : join('src', name)
+      paths[`${pkg.name}/${subpath.slice(2)}`] = [resolve(cwd, input)]
+    }
+  }
+  return paths
+}
+
+function exportTarget(target: unknown): string | undefined {
+  if (typeof target === 'string') {
+    return target
+  }
+  if (target && typeof target === 'object' && !Array.isArray(target)) {
+    const conditions = target as Record<string, unknown>
+    return exportTarget(conditions.import ?? conditions.default ?? conditions.types)
+  }
+}
+
+/**
+ * Warn about `package.json` fields that point at output this builder no longer produces.
+ * The paths are read as published, with `publishConfig` applied.
+ */
+export async function checkPublishedPaths(cwd: string): Promise<void> {
+  const read = await readPackageJSON(cwd).catch(() => undefined)
+  const pkg = read && publishedPackage(read)
+  if (!pkg) {
+    return
+  }
+
+  checkLegacyDeclarationPaths(cwd, pkg)
+  checkLegacyCJSPaths(cwd, pkg)
+  checkStaleTypesField(cwd, pkg)
+  checkNode10DeclarationPaths(cwd, pkg)
+  checkMissingPaths(cwd, pkg)
+}
+
+export function checkStaleTypesField(cwd: string, pkg: PackageJson): boolean {
+  if (!pkg.types || resolvesForTypeScript(cwd, pkg.types)) {
+    return false
+  }
+  consola.warn(`\`types\` in \`package.json\` points at \`${pkg.types}\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
+  return true
+}
+
+/**
+ * Warn about `typesVersions` paths that TypeScript's node10 resolution cannot find because
+ * they rely on probing for `.d.ts`, where the build now produces `.d.mts`.
+ */
+export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJson): boolean {
+  const entries = typesVersionsPaths(pkg).flatMap((path) => {
+    const replacement = node10Replacement(cwd, path)
+    return replacement ? [`\`${path}\` (use \`${replacement}\`)`] : []
+  })
+  if (!entries.length) {
+    return false
+  }
+  consola.warn(`These \`typesVersions\` paths in \`package.json\` do not resolve under TypeScript's node10 module resolution, which probes for \`.d.ts\` but not for \`.d.mts\`: ${entries.join(', ')}. Write each path with its extension. ${guide('typesversions-paths')}`)
+  return true
+}
+
+/** Warn about paths in `package.json` that the build did not produce, other than those the checks above explain. */
+export function checkMissingPaths(cwd: string, pkg: PackageJson): boolean {
+  const paths = [...new Set(missingPaths(cwd, pkg))]
+    .filter(path => !path.includes('*') && !isLegacyPath(path) && path !== pkg.types && !node10Replacement(cwd, path))
+  if (!paths.length) {
+    return false
+  }
+  consola.warn(`These paths in \`package.json\` do not exist after the build, so imports that resolve to them will fail: ${list(paths)}. Add the entry that produces each one, or remove the path. ${guide('paths-the-build-does-not-produce')}`)
+  return true
+}
+
+const TS_PROBES = ['', '.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx', '/index.d.ts']
+const TS_MODULE_PROBES = ['.d.mts', '.d.cts', '/index.d.mts', '/index.d.cts']
+
+function isFile(path: string) {
+  return existsSync(path) && statSync(path).isFile()
+}
+
+/** Whether TypeScript's node10 resolution finds a file for `path`: as written, or with a `.ts`, `.tsx`, `.d.ts` or `/index` suffix. */
+function resolvesForTypeScript(cwd: string, path: string) {
+  return TS_PROBES.some(suffix => isFile(resolve(cwd, path + suffix)))
+}
+
+/** The `.d.mts` or `.d.cts` file an unresolvable `path` was meant to reach, as a `./` path. */
+function node10Replacement(cwd: string, path: string) {
+  if (resolvesForTypeScript(cwd, path)) {
+    return
+  }
+  const suffix = TS_MODULE_PROBES.find(suffix => isFile(resolve(cwd, path + suffix)))
+  return suffix === undefined ? undefined : `./${relative(cwd, resolve(cwd, path + suffix))}`
+}
+
+function typesVersionsPaths(pkg: PackageJson) {
+  return collectStrings(pkg.typesVersions).filter(path => !path.includes('*'))
+}
+
+export function missingPaths(cwd: string, pkg: PackageJson): string[] {
+  const typesVersions = new Set(typesVersionsPaths(pkg))
+  return referencedPaths(pkg).filter(path => !path.startsWith('/') && !(typesVersions.has(path) ? resolvesForTypeScript(cwd, path) : existsSync(resolve(cwd, path))))
+}
+
+function referencedPaths(pkg: PackageJson): string[] {
+  return [...[pkg.exports, pkg.typesVersions, pkg.types, pkg.main, pkg.module].flatMap(collectStrings), ...collectStrings(pkg.imports).filter(path => path.startsWith('./'))]
 }

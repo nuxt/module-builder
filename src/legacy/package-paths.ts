@@ -6,7 +6,7 @@ import { consola } from 'consola'
 import type { PackageJson } from 'pkg-types'
 
 import { guide } from '../build/guide.ts'
-import { list, missingPaths } from '../build/deprecations.ts'
+import { list, missingPaths } from '../build/package.ts'
 
 const DECLARATION_RE = /(?:^|\/)(?:module|types)\.d\.ts$/
 const CJS_MODULE_RE = /(?:^|\/)module\.cjs$/

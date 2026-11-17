@@ -15,14 +15,12 @@ import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/repo
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
-import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
-import { selfReferencePaths } from '../src/build/tsconfig.ts'
+import { runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
-import { importsKeyFor, publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
+import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
@@ -701,14 +699,13 @@ describe('selfReferencePaths', () => {
 })
 
 describe('importModule', () => {
-  it('should import files in an output directory outside the module afresh for each version', async () => {
+  it('should import files in the output directory afresh for each version', async () => {
     const root = await mkdtemp(join(tmpdir(), 'module-builder-versions-'))
-    await mkdir(join(root, 'module'))
     await mkdir(join(root, 'out/runtime'), { recursive: true })
     await writeFile(join(root, 'out/module.mjs'), `export { name } from './runtime/name.js'\n`)
     await writeFile(join(root, 'out/runtime/name.js'), `export const name = 'one'\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const options = JSON.stringify({ cwd: join(root, 'module'), outDir: join(root, 'out') })
+    const options = JSON.stringify({ cwd: root })
     const script = [
       `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)})`,
       `const { writeFile } = await import('node:fs/promises')`,

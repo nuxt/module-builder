@@ -3,26 +3,23 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
+import type { NuxtModule } from '@nuxt/schema'
 import type { TsConfigResult } from 'get-tsconfig'
 import type { PackageJson } from 'pkg-types'
 import { glob, globSync } from 'tinyglobby'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { DECLARATION_RE, probe as probeSource, scriptExtension, valueSpecifiers } from '../transpile/resolve.ts'
+import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
-import { relativeSpecifier } from '../utils.ts'
-import { shouldAdvise } from './advice.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { DECLARATION_RE, findPackageDir, isInside, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { checkDeprecatedPackageFields } from './deprecations.ts'
 import { guide } from './guide.ts'
-import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
-import { writeModuleMeta } from './meta.ts'
+import { assertLoadableModuleCode, importModule, loadOxc } from './loader.ts'
 import { bundledEntries, NUXT_EXTERNALS } from './options.ts'
 import type { DirectoryEntry, ModuleConfig } from './options.ts'
-import { importsKeyFor, publishedPackage, unpublishableImportsError } from './package.ts'
-import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
+import { checkPublishedPaths, importsKeyFor, publishedPackage, selfReferencePaths, unpublishableImportsError } from './package.ts'
 import { writeTypes } from './types.ts'
 
 const ISOLATED_DECLARATIONS_HINT = [
@@ -41,11 +38,17 @@ const TYPE_ERROR_HINT = [
   `If \`.nuxt\` is out of date, run \`nuxt-module-build prepare\` and build again. ${guide('declaration-errors')}`,
 ].join('\n')
 
-const SCRIPT_RE = /\.[cm]?[jt]sx?$/
 const SERVER_DIR_RE = /(?:^|\/)server\//
 
+let nudged = false
+
+/** Whether to suggest `isolatedDeclarations`, which happens once per process and never in CI. */
 export function shouldNudge(isolatedDeclarations: boolean): boolean {
-  return !isolatedDeclarations && shouldAdvise('isolated-declarations')
+  if (isolatedDeclarations || nudged || process.env.CI) {
+    return false
+  }
+  nudged = true
+  return true
 }
 
 export interface ResolveBuildOptions {
@@ -102,7 +105,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Reso
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {
     const path = relative(cwd, tsconfigs.replaced)
-    const advice = path.startsWith('..') ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
+    const advice = !isInside(cwd, tsconfigs.replaced) ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
     consola.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
   }
 
@@ -199,7 +202,7 @@ export function resolveDirectoryExternal(plan: BuildPlan, directory: DirectoryEn
     if (bundled) {
       return relativeSpecifier(from, bundled)
     }
-    const other = directories.find(directory => !relative(directory.srcDir, file).startsWith('..'))
+    const other = directories.find(directory => isInside(directory.srcDir, file))
     if (other) {
       return relativeSpecifier(from, join(relative(outDir, other.outDir), relative(other.srcDir, file).replace(SCRIPT_RE, scriptExtension(file, `.${other.ext}`, preservesJsx(plan, file)))))
     }
@@ -247,19 +250,17 @@ let metaImports = 0
 export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
-  const version = metaImports++ || undefined
-  await writeModuleMeta({
-    cwd,
-    outDir,
-    pkg,
-    builder: { [builderPkg.name]: builderPkg.version, ...builder },
-    version,
-  }).catch(async (error) => {
+  const moduleFile = resolve(outDir, 'module.mjs')
+  const meta = await readModuleMeta(moduleFile, cwd).catch(async (error) => {
     if (!keepOutput) {
       await rm(outDir, { recursive: true, force: true })
     }
-    throw new Error(`Cannot load \`${relative(cwd, resolve(outDir, 'module.mjs'))}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    throw new Error(`Cannot load \`${relative(cwd, moduleFile)}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   })
+  meta.name ||= pkg.name
+  meta.version ||= pkg.version
+  meta.builder = { [builderPkg.name]: builderPkg.version, ...builder }
+  await writeIfChanged(resolve(outDir, 'module.json'), JSON.stringify(meta, null, 2))
   await writeTypes(outDir)
   await plan.config.callHook?.('rollup:done', plan)
   await rewriteRuntimeDeclarations(outDir, outputs)
@@ -270,12 +271,18 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
     consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
   }
 
-  await checkDeprecatedPackageFields(cwd)
+  await checkPublishedPaths(cwd)
   const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
   if (importsError) {
     throw new Error(importsError)
   }
   await plan.config.callHook?.('build:done', plan)
+}
+
+async function readModuleMeta(file: string, cwd: string) {
+  const exports = await importModule(file, { cwd, version: metaImports++ || undefined })
+  const nuxtModule = (exports.default ?? exports) as NuxtModule<Record<string, unknown>>
+  return await nuxtModule.getMeta?.() || {}
 }
 
 const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
@@ -308,7 +315,7 @@ function valueImports(roots: string[]) {
       ? (transform(file, source, { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })).code
       : source
     for (const specifier of valueSpecifiers(code)) {
-      const target = probeSource(resolve(dirname(file), specifier))
+      const target = probe(resolve(dirname(file), specifier))
       if (target && isScript(target)) {
         queue.push(normalize(target))
       }

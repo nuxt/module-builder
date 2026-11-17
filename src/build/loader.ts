@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, relative, resolve } from 'pathe'
@@ -7,21 +7,17 @@ import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
-import { isInside, relativeSpecifier } from '../utils.ts'
+import { isInside, NODE_MODULES_RE, probe, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { guide } from './guide.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const ALIAS_SHAPED_RE = /^(?:#|~|@\/)/
-const NODE_MODULES_RE = /[\\/]node_modules[\\/]/
 const JSON_RE = /\.json$/
 const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
-const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
   cwd?: string
-  /** The build's output directory, inside which `version` also applies. */
-  outDir?: string
   /** Source code to serve in place of these bare specifiers. */
   stubs?: Record<string, string>
   /**
@@ -46,7 +42,7 @@ export async function importModule(path: string, options: ImportModuleOptions = 
         return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
       }
       const resolved = nextResolve(specifier, context)
-      if (!options.version || !resolved.url.startsWith('file:') || ![cwd, options.outDir ?? cwd].some(root => isInside(root, fileURLToPath(resolved.url))) || NODE_MODULES_RE.test(resolved.url)) {
+      if (!options.version || !resolved.url.startsWith('file:') || !isInside(cwd, fileURLToPath(resolved.url)) || NODE_MODULES_RE.test(resolved.url)) {
         return resolved
       }
       const url = new URL(resolved.url)
@@ -66,9 +62,6 @@ export async function importModule(path: string, options: ImportModuleOptions = 
     hooks.deregister()
   }
 }
-
-const TYPESCRIPT_RE = /\.[cm]?tsx?$/
-const SOURCE_RE = /\.[cm]?[jt]sx?$/
 
 interface Oxc {
   transform: Transform
@@ -210,7 +203,7 @@ function walkSources(cwd: string, entries: string[], visit: (file: string, analy
   const queue: Array<{ file: string, importer?: Importer }> = entries.map(entry => ({ file: resolve(cwd, entry) }))
   while (queue.length) {
     const { file, importer } = queue.shift()!
-    if (seen.has(file) || !SOURCE_RE.test(file) || !existsSync(file)) {
+    if (seen.has(file) || !SCRIPT_RE.test(file) || !existsSync(file)) {
       continue
     }
     seen.add(file)
@@ -385,29 +378,5 @@ function pathsMatcher(cwd: string) {
   }
   catch {
     return undefined
-  }
-}
-
-/**
- * Find the source file a specifier refers to, trying the path as written, its
- * TypeScript counterpart, each source extension, then an `index` file.
- */
-export function probe(path: string): string | undefined {
-  if (existsSync(path) && statSync(path).isFile()) {
-    return path
-  }
-  const source = path.replace(/\.([cm]?)js(x?)$/, '.$1ts$2')
-  if (source !== path && existsSync(source)) {
-    return source
-  }
-  for (const extension of EXTENSIONS) {
-    if (existsSync(path + extension)) {
-      return path + extension
-    }
-  }
-  for (const extension of EXTENSIONS) {
-    if (existsSync(resolve(path, `index${extension}`))) {
-      return resolve(path, `index${extension}`)
-    }
   }
 }

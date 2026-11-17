@@ -6,10 +6,10 @@ import type { Rolldown } from 'tsdown'
 
 import type { Transform as VueTransform } from 'vue-sfc-transformer/core'
 
-import { relativeSpecifier } from '../utils.ts'
+import { DECLARATION_RE, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
 import type { DeclarationProgram } from './declarations.ts'
-import { DECLARATION_RE, moduleSpecifiers, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE, scriptExtension, valueSpecifiers } from './resolve.ts'
+import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
 import type { TsconfigResolver } from './tsconfig.ts'
@@ -113,7 +113,6 @@ const EMPTY_IMPORT_RE = /^[ \t]*import\s*\{\s*\}\s*from\s*(['"])[^'"\n]+\1\s*;?/
 export const EXCLUDE: string[] = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}', '**/node_modules/**']
 const STYLESHEET_RE = /\.(?:css|s[ac]ss)$/
 const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
-const TYPESCRIPT_RE = /\.(?:[cm]?ts|tsx)$/
 
 interface Emitter {
   /** Rewritten declarations keyed by source path. */
@@ -129,14 +128,6 @@ interface Emitter {
  * files are copied, and declarations come from one TypeScript program over the directory.
  */
 export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: TranspileDirApi } {
-  let resolveOutputs: (outputs: Map<string, string>) => void
-  let rejectOutputs: (error: unknown) => void
-  const outputs = new Promise<Map<string, string>>((resolve, reject) => {
-    resolveOutputs = resolve
-    rejectOutputs = reject
-  })
-  outputs.catch(() => {})
-  let latestOutputs = outputs
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
   let latestBuild: DirectoryBuild | undefined
 
@@ -144,7 +135,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
     name: 'transpile-dir',
     api: {
       get outputs() {
-        return latestOutputs
+        return work!.then(result => 'error' in result ? Promise.reject(result.error) : result.build.outputs)
       },
     },
     async buildStart() {
@@ -153,17 +144,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
         this.addWatchFile(file)
       }
       const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort())
-      work = build.run()
-        .then((files) => {
-          resolveOutputs(build.outputs)
-          return { build, files }
-        })
-        .catch((error) => {
-          rejectOutputs(error)
-          return { error }
-        })
-      latestOutputs = work.then(result => 'error' in result ? Promise.reject(result.error) : result.build.outputs)
-      latestOutputs.catch(() => {})
+      work = build.run().then(files => ({ build, files }), (error: unknown) => ({ error }))
     },
     async buildEnd() {
       await work
