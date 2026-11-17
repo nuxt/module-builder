@@ -1285,6 +1285,11 @@ describe('build plan', () => {
     expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
   })
 
+  it('should find the imports of a script block whose end tag has whitespace or attributes', () => {
+    const sfc = `<script setup lang="ts">\nimport A from './a'\n</script\t\n bar>\n<template><A /></template>\n`
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
+  })
+
   it('should treat a dot-prefixed name as a path inside the directory', () => {
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')

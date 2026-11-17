@@ -5,7 +5,7 @@ import { RELATIVE_RE } from '../utils.ts'
 
 const JSX_RE = /\.[jt]sx$/
 const DYNAMIC_IMPORT_RE = /\bimport\s*(?:\(|\/[*/])/
-const VUE_SCRIPT_RE = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi
+const VUE_SCRIPT_RE = /(<script\b[^>]*>)([\s\S]*?)<\/script\b[^>]*>/gi
 const VUE_LANG_RE = /\blang\s*=\s*["']?(\w+)/
 
 /** The extension `file` is emitted with: `.jsx` for a JSX source when JSX is preserved, `extension` otherwise. */
