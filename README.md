@@ -23,7 +23,7 @@ Create a module from the [module starter](https://github.com/nuxt/starter/tree/m
 npm create nuxt -- -t module my-module
 ```
 
-Building a module requires Node `^22.18.0 || >=24.0.0`, with `tsdown` and `typescript` installed alongside `@nuxt/module-builder`. Apps that install a built module need Nuxt 3 or later.
+Building a module requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`, with `tsdown` and `typescript` installed alongside `@nuxt/module-builder`. Apps that install a built module need Nuxt 3 or later.
 
 ## Documentation
 
@@ -35,19 +35,13 @@ Building a module requires Node `^22.18.0 || >=24.0.0`, with `tsdown` and `types
 - [TypeScript](./docs/5.typescript.md): the module's `tsconfig.json`, and its declarations
 - [Build output](./docs/6.output.md)
 - [Exports](./docs/7.exports.md): subpath exports, including runtime components
-- [Transpiling a directory](./docs/8.transpile-dir.md): the `transpileDir` rolldown plugin
 - [Upgrading to v2](./docs/upgrade-v2.md)
 
 For writing the module itself, read the [Nuxt Module Author Guide](https://nuxt.com/docs/guide/modules).
 
 ## 💻 Development
 
-- Clone repository
-- Enable [Corepack](https://github.com/nodejs/corepack) using `corepack enable`
-- Install dependencies using `pnpm install`
-- Try building [example module](./example) using `pnpm example:build`
-
-Pages in [`docs/`](./docs) are written for [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, the architecture and the tests.
 
 ## License
 

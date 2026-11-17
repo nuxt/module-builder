@@ -3,27 +3,23 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { consola } from 'consola'
+import type { NuxtModule } from '@nuxt/schema'
 import type { TsConfigResult } from 'get-tsconfig'
 import type { PackageJson } from 'pkg-types'
 import { glob, globSync } from 'tinyglobby'
 
 import builderPkg from '../../package.json' with { type: 'json' }
-import { probe as probeSource, scriptExtension, valueSpecifiers } from '../rolldown/resolve.ts'
-import { DEFAULT_EXCLUDE } from '../rolldown/transpile-dir.ts'
-import type { ResolveExternal } from '../rolldown/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, findPackageDir, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../rolldown/tsconfig.ts'
-import { shouldAdvise } from './advice.ts'
+import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
+import { EXCLUDE } from '../transpile/transpile-dir.ts'
+import type { ResolveExternal } from '../transpile/transpile-dir.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { bundledEntries, callBuildHook, createBuildContext, formatUnsupportedOptions, warnDeprecatedBuildConfig } from './build-config.ts'
-import type { DirectoryEntry, LoadedBuildConfig } from './build-config.ts'
-import type { BuildContext } from './define.ts'
-import { checkDeprecatedPackageFields } from './deprecations.ts'
-import { NUXT_EXTERNALS } from './externals.ts'
 import { guide } from './guide.ts'
-import { assertLoadableModuleCode, loadOxc, probe } from './loader.ts'
-import { writeModuleMeta } from './meta.ts'
-import { importsKeyFor, publishedPackage, unpublishableImportsError } from './package.ts'
-import { hasIsolatedDeclarations, selfReferencePaths } from './tsconfig.ts'
+import { assertLoadableModuleCode, importModule, loadOxc } from './loader.ts'
+import { bundledEntries, NUXT_EXTERNALS } from './options.ts'
+import type { DirectoryEntry, ModuleConfig } from './options.ts'
+import { checkPublishedPaths, importsKeyFor, publishedPackage, selfReferencePaths, unpublishableImportsError } from './package.ts'
 import { writeTypes } from './types.ts'
 
 const ISOLATED_DECLARATIONS_HINT = [
@@ -42,36 +38,32 @@ const TYPE_ERROR_HINT = [
   `If \`.nuxt\` is out of date, run \`nuxt-module-build prepare\` and build again. ${guide('declaration-errors')}`,
 ].join('\n')
 
-const SCRIPT_RE = /\.[cm]?[jt]sx?$/
 const SERVER_DIR_RE = /(?:^|\/)server\//
 
-export function shouldNudge(isolatedDeclarations: boolean): boolean {
-  return !isolatedDeclarations && shouldAdvise('isolated-declarations')
-}
+let nudged = false
 
-export interface ResolveBuildOptions {
-  cwd: string
-  pkg: PackageJson
-  /** Absolute path of the output directory, already checked with `resolveOutDir`. */
-  outDir: string
-  sourcemap: boolean
-  /** Loads the translated build config once the module's tsconfig has been read. */
-  loadConfig: () => Promise<LoadedBuildConfig>
+/** Whether to suggest `isolatedDeclarations`, which happens once per process and never in CI. */
+export function shouldNudge(isolatedDeclarations: boolean): boolean {
+  if (isolatedDeclarations || nudged || process.env.CI) {
+    return false
+  }
+  nudged = true
+  return true
 }
 
 /** Everything a build needs to know about the module, resolved before anything is written. */
 export interface BuildPlan {
   cwd: string
   pkg: PackageJson
+  /** Absolute path of the output directory, already checked with `resolveOutDir`. */
   outDir: string
-  config: LoadedBuildConfig
+  config: ModuleConfig
   /** `src/runtime` and every other directory transpiled file by file. */
   directories: DirectoryEntry[]
   /** Bundled entries keyed by output name, as paths relative to `cwd`. */
   entries: { module: string, [name: string]: string }
   runtimeDirs: string[]
   sourcemap: boolean
-  ctx: BuildContext
   neverBundle: (string | RegExp)[]
   moduleTsconfig: TsConfigResult | undefined
   /** The nearest tsconfig, which may delegate files to `references`. */
@@ -90,8 +82,6 @@ export interface BuildPlan {
   generatedTypesHash: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
-  /** Whether {@link finishBuild} writes `types.d.mts`, rather than a bundled entry named `types`. */
-  writesTypes?: boolean
 }
 
 export interface PreparedBuild {
@@ -102,28 +92,19 @@ export interface PreparedBuild {
   startedAt: number
 }
 
-export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: ResolveBuildOptions): Promise<BuildPlan> {
-  const runtimeSrcDir = resolve(cwd, 'src/runtime')
+export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {
     const path = relative(cwd, tsconfigs.replaced)
-    const advice = path.startsWith('..') ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
+    const advice = !isInside(cwd, tsconfigs.replaced) ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
     consola.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
   }
-  const selfPaths = selfReferencePaths(cwd, pkg, outDir)
 
-  const config = await loadConfig()
-  if (config.unsupported.length) {
-    throw new Error(formatUnsupportedOptions(config.unsupported))
-  }
-  warnDeprecatedBuildConfig(config)
-
-  const directories: DirectoryEntry[] = [{ srcDir: runtimeSrcDir, outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
-  const resolvedSourcemap = sourcemap || config.sourcemap
-  const ctx = createBuildContext({ cwd, outDir, pkg, config, directories, sourcemap: resolvedSourcemap })
+  const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const entries = bundledEntries(cwd, config)
+  const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
 
-  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module ?? Object.values(entries)[0]!))
+  const moduleTsconfig = tsconfigs.resolve(resolve(cwd, entries.module))
   const nuxtDir = findPackageDir('nuxt', cwd)
 
   return {
@@ -134,8 +115,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     directories,
     entries,
     runtimeDirs: directories.map(directory => directory.srcDir),
-    sourcemap: resolvedSourcemap,
-    ctx,
+    sourcemap: sourcemap || !!config.sourcemap,
     neverBundle: [...NUXT_EXTERNALS, ...config.neverBundle],
     moduleTsconfig,
     rootTsconfig: tsconfigs.root,
@@ -143,8 +123,6 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
     isolatedDeclarations: hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
     declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
-    // `eager` puts every file of the tsconfig in the program, so ambient declarations such
-    // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
@@ -155,9 +133,9 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, loadConfig }: 
  * Runs `build:before` hooks, checks the module's imports, empties the output directory unless
  * `keepOutput` is set, and writes what declaration generation reads.
  */
-export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { keepOutput?: boolean } = {}): Promise<PreparedBuild> {
+export async function prepareBuild(plan: BuildPlan, { keepOutput }: { keepOutput: boolean }): Promise<void> {
   const { cwd, outDir, entries, runtimeDirs } = plan
-  await callBuildHook(plan.config, 'build:before', plan.ctx)
+  await plan.config.callHook?.('build:before', plan)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
   if (!keepOutput) {
     await rm(outDir, { recursive: true, force: true })
@@ -168,9 +146,7 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { ke
     const imports = plan.moduleProject ? await writeDependencyImports(cwd, plan.rootTsconfig) : undefined
     await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, { file: plan.declarationTsconfig, imports })
   }
-
   plan.prepared = analyseSources(plan)
-  return plan.prepared
 }
 
 /**
@@ -179,16 +155,14 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput = false }: { ke
  */
 export function analyseSources(plan: BuildPlan): PreparedBuild {
   const { cwd, entries } = plan
-  const bundledSources = new Map<string, string>()
-  for (const [name, input] of Object.entries(entries)) {
+  const bundledSources = new Map(Object.entries(entries).flatMap(([name, input]) => {
     const file = probe(resolve(cwd, input))
-    if (file) {
-      bundledSources.set(normalize(file), `${name}.mjs`)
-    }
-  }
+    return file ? [[normalize(file), `${name}.mjs`] as const] : []
+  }))
   // Nitro and Node do not transform files in `node_modules`, so JSX that runs there is compiled.
-  const runtimeFiles = plan.directories.map(directory => globSync(['**/*'], { cwd: directory.srcDir, ignore: DEFAULT_EXCLUDE, absolute: true, onlyFiles: true }))
-  const serverFiles = runtimeFiles.flat().map(file => normalize(file)).filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
+  const serverFiles = plan.directories.flatMap(directory => globSync(['**/*'], { cwd: directory.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true }))
+    .map(file => normalize(file))
+    .filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
   const compiledJsx = valueImports([...serverFiles, ...bundledSources.keys()])
   return { bundledSources, compiledJsx, startedAt: Date.now() }
 }
@@ -200,25 +174,18 @@ export function preservesJsx(plan: BuildPlan, file: string): boolean {
 
 /**
  * Where a relative import that resolves outside a transpiled directory points. Bundled
- * entries and other directories keep their own output. Any other file is mirrored where
- * the specifier already points, or under `_external/` when that would take the name of a
- * bundled entry or `types`.
+ * entries and other directories keep their own output. Any other file is mirrored.
  */
-export function resolveDirectoryExternal(plan: BuildPlan, directory: DirectoryEntry): ResolveExternal {
-  const { cwd, outDir, directories } = plan
-  const reserved = new Set([...Object.keys(plan.entries), 'types'])
-  return (_specifier, _importer, { file, kind, from, output }) => {
+export function resolveDirectoryExternal(plan: BuildPlan): ResolveExternal {
+  const { outDir, directories } = plan
+  return (_specifier, _importer, { file, kind, from }) => {
     const bundled = plan.prepared?.bundledSources.get(file)
     if (bundled) {
       return relativeSpecifier(from, bundled)
     }
-    const other = directories.find(directory => !relative(directory.srcDir, file).startsWith('..'))
+    const other = directories.find(directory => isInside(directory.srcDir, file))
     if (other) {
       return relativeSpecifier(from, join(relative(outDir, other.outDir), relative(other.srcDir, file).replace(SCRIPT_RE, scriptExtension(file, `.${other.ext}`, preservesJsx(plan, file)))))
-    }
-    if (reserved.has(output.replace(SCRIPT_RE, ''))) {
-      const segments = relative(cwd, file).replace(SCRIPT_RE, scriptExtension(file, `.${directory.ext}`, preservesJsx(plan, file))).split('/').map(segment => segment === '..' ? '_' : segment)
-      return { mirror: kind, output: join('_external', ...segments) }
     }
     return { mirror: kind }
   }
@@ -228,11 +195,11 @@ export interface BuildErrorOptions {
   /** Whether the error comes from a transpiled directory rather than the bundled entries. */
   directory?: boolean
   /** Keeps the previous output, which a watcher goes on serving. */
-  keepOutput?: boolean
+  keepOutput: boolean
 }
 
 /** Removes a partial output directory and explains declaration failures. */
-export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(error), keepOutput }: BuildErrorOptions = {}): Promise<void> {
+export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(error), keepOutput }: BuildErrorOptions): Promise<void> {
   if (!keepOutput) {
     await rm(plan.outDir, { recursive: true, force: true })
   }
@@ -249,46 +216,55 @@ export interface FinishBuildOptions {
   outputs: string[]
   /** Versions recorded as `builder` in `module.json`, besides this package's. */
   builder: Record<string, string>
+  /** Keeps the output when a step or check fails, as a watcher goes on serving it. */
+  keepOutput?: boolean
 }
 
 // Counted per process, as a restarted watcher imports the same files again with a new plan.
 let metaImports = 0
 
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
-export async function finishBuild(plan: BuildPlan, { outputs, builder }: FinishBuildOptions): Promise<void> {
+export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
-  const version = metaImports++ || undefined
-  await writeModuleMeta({
-    cwd,
-    outDir,
-    pkg,
-    builder: { [builderPkg.name]: builderPkg.version, ...builder },
-    version,
-  }).catch((error) => {
-    consola.error(error)
-    consola.error('Cannot load module. Please check dist:', resolve(outDir, 'module.mjs'))
-  })
-  const typesFile = join(outDir, 'types.d.mts')
-  plan.writesTypes ??= !existsSync(typesFile)
-  if (plan.writesTypes) {
+  try {
+    const types = outputs.find(file => file === 'types.mjs' || file === 'types.d.mts')
+    if (types) {
+      throw new Error(`A directory entry emits \`${types}\` at the root of \`${relative(cwd, outDir)}\`, which would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
+    }
+    const moduleFile = resolve(outDir, 'module.mjs')
+    const meta = await importModule(moduleFile, { cwd, version: metaImports++ || undefined })
+      .then(exports => ((exports.default ?? exports) as NuxtModule<Record<string, unknown>>).getMeta?.())
+      .then(meta => meta || {}, (error) => {
+        throw new Error(`Cannot load \`${relative(cwd, moduleFile)}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+      })
+    meta.name ||= pkg.name
+    meta.version ||= pkg.version
+    meta.builder = { [builderPkg.name]: builderPkg.version, ...builder }
+    await writeIfChanged(resolve(outDir, 'module.json'), JSON.stringify(meta, null, 2))
     await writeTypes(outDir)
-  }
-  await callBuildHook(plan.config, 'rollup:done', plan.ctx)
-  await rewriteRuntimeDeclarations(outDir, outputs)
+    await plan.config.callHook?.('rollup:done', plan)
+    await rewriteRuntimeDeclarations(outDir, outputs)
 
-  if (shouldNudge(plan.isolatedDeclarations)) {
-    const project = plan.moduleProject && relative(cwd, plan.moduleProject)
-    const where = !project ? 'your `tsconfig.json`' : project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${project}\``
-    consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
-  }
+    if (shouldNudge(plan.isolatedDeclarations)) {
+      const project = plan.moduleProject && relative(cwd, plan.moduleProject)
+      const where = !project ? 'your `tsconfig.json`' : project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${project}\``
+      consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
+    }
 
-  await checkDeprecatedPackageFields(cwd)
-  const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
-  if (importsError) {
-    throw new Error(importsError)
+    await checkPublishedPaths(cwd)
+    const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
+    if (importsError) {
+      throw new Error(importsError)
+    }
+    await plan.config.callHook?.('build:done', plan)
   }
-  await callBuildHook(plan.config, 'build:done', plan.ctx)
+  catch (error) {
+    if (!keepOutput) {
+      await rm(outDir, { recursive: true, force: true })
+    }
+    throw error
+  }
 }
 
 const OUTPUT_TEXT_RE = /\.(?:[cm]?[jt]sx?|vue|css)$/
@@ -306,8 +282,8 @@ function importedFrom(dir: string, keys: string[]): (key: string) => boolean {
 }
 
 function valueImports(roots: string[]) {
-  const transform = loadOxc()?.transformSync
-  const queue = roots.filter(file => SCRIPT_RE.test(file))
+  const { transformSync } = loadOxc()!
+  const queue = roots.filter(isSourceScript)
   const found = new Set<string>()
   while (queue.length) {
     const file = queue.pop()!
@@ -315,13 +291,10 @@ function valueImports(roots: string[]) {
       continue
     }
     found.add(file)
-    const source = readFileSync(file, 'utf8')
-    const code = transform
-      ? (transform(file, source, { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })).code
-      : source
+    const { code } = transformSync(file, readFileSync(file, 'utf8'), { lang: file.match(/\.[cm]?([jt]sx?)$/)![1], jsx: 'preserve', typescript: { onlyRemoveTypeImports: false } })
     for (const specifier of valueSpecifiers(code)) {
-      const target = probeSource(resolve(dirname(file), specifier))
-      if (target && SCRIPT_RE.test(target)) {
+      const target = probe(resolve(dirname(file), specifier))
+      if (target && isSourceScript(target)) {
         queue.push(normalize(target))
       }
     }
@@ -334,19 +307,17 @@ function isDirectoryError(error: unknown) {
   return Array.isArray(errors) && errors.some(nested => nested.plugin === 'transpile-dir')
 }
 
-function relativeSpecifier(from: string, to: string) {
-  const path = relative(dirname(from), to)
-  return path.startsWith('.') ? path : `./${path}`
-}
+const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb']
 
 /**
- * A hash of the types Nuxt generates in `.nuxt/`, which augment what single-file
- * component declarations refer to without being visible to the declaration cache.
+ * A hash of the types Nuxt generates in `.nuxt/` and of the nearest lockfile, which change
+ * what single-file component declarations refer to without being visible to the declaration cache.
  */
-async function hashGeneratedTypes(cwd: string) {
+export async function hashGeneratedTypes(cwd: string): Promise<string> {
   const files = await glob(['tsconfig.json', '**/*.d.ts'], { cwd: join(cwd, '.nuxt'), absolute: true, onlyFiles: true })
+  const lockfile = findUp(cwd, dir => LOCKFILES.map(name => join(dir, name)).find(file => existsSync(file)))
   const hash = createHash('sha256')
-  for (const file of files.sort()) {
+  for (const file of [...files.sort(), ...lockfile ? [lockfile] : []]) {
     hash.update(relative(cwd, file)).update(await readFile(file))
   }
   return hash.digest('hex').slice(0, 12)

@@ -1,6 +1,9 @@
 import { existsSync, promises as fsp } from 'node:fs'
 import { dirname, join, resolve } from 'pathe'
 
+import { DECLARATION_RE } from '../utils.ts'
+
+const APP_ALIAS_RE = /(\bfrom\s*|\bimport\s*\(\s*)(['"])#app(?:\/[^'"]*)?\2/g
 const RELATIVE_SPECIFIER_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.\.?\/[^'"]*)\2/g
 const DECLARATION_TARGETS = [
   ['.d.ts', '.js'],
@@ -15,25 +18,29 @@ const DECLARATION_TARGETS = [
  *
  * - Relative specifiers without an extension get the one of the file they resolve to in
  *   `outDir`, so they resolve under `node16` and `nodenext` module resolution.
- * - `#app` aliases, which tsc prints whenever the real path is not reachable through
- *   `node_modules` and which only resolve inside a Nuxt app, become `nuxt/app`.
+ * - `#app` aliases become `nuxt/app`, see {@link rewriteAppAliases}.
  */
 export async function rewriteRuntimeDeclarations(outDir: string, outputs: string[]): Promise<void> {
   const files = outputs.flatMap(output => declarationsOf(join(outDir, output))).filter(file => existsSync(file))
   await Promise.all(files.map(async (file) => {
     const contents = await fsp.readFile(file, 'utf8')
-    const rewritten = contents
-      .replace(RELATIVE_SPECIFIER_RE, (match, prefix: string, quote: string, specifier: string) => {
-        const resolved = resolveDeclarationSpecifier(dirname(file), specifier) ?? specifier
-        return resolved === specifier ? match : `${prefix}${quote}${resolved}${quote}`
-      })
-      .replace(/import\("#app(?:\/[^"]*)?"\)/g, 'import("nuxt/app")')
-      .replace(/(\bfrom\s*)(['"])#app(?:\/[^'"]*)?\2/g, '$1$2nuxt/app$2')
+    const rewritten = rewriteAppAliases(contents.replace(RELATIVE_SPECIFIER_RE, (match, prefix: string, quote: string, specifier: string) => {
+      const resolved = resolveDeclarationSpecifier(dirname(file), specifier) ?? specifier
+      return resolved === specifier ? match : `${prefix}${quote}${resolved}${quote}`
+    }))
 
     if (rewritten !== contents) {
       await fsp.writeFile(file, rewritten, 'utf8')
     }
   }))
+}
+
+/**
+ * `code` with `#app` aliases, which tsc prints whenever the real path is not reachable through
+ * `node_modules` and which only resolve inside a Nuxt app, written as `nuxt/app`.
+ */
+export function rewriteAppAliases(code: string): string {
+  return code.replace(APP_ALIAS_RE, '$1$2nuxt/app$2')
 }
 
 /**
@@ -49,7 +56,7 @@ export function declarationTargets(fileName: string, code: string): string[] {
 }
 
 function declarationsOf(output: string) {
-  if (/\.d\.[cm]?ts$/.test(output)) {
+  if (DECLARATION_RE.test(output)) {
     return [output]
   }
   if (output.endsWith('.vue')) {

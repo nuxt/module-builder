@@ -1,32 +1,32 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
-import { dirname, relative, resolve } from 'pathe'
+import { pathToFileURL } from 'node:url'
+import { relative, resolve } from 'pathe'
 import { consola } from 'consola'
+import { resolvePath } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
+import type { PackageJson } from 'pkg-types'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
-import type { BuildPlan } from '../build/build.ts'
-import { assertNoLegacyBuildConfig, loadBuildConfig, resolveModuleOptions, resolveOutDir } from '../build/build-config.ts'
-import type { BuilderOptions } from '../build/build-config.ts'
 import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
+import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
+import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { transpileDir, TYPE_ERRORS_WARNING } from '../rolldown/transpile-dir.ts'
-import { externalDependencyDeclarations } from './externals.ts'
-import { replacePlugin } from './replace.ts'
+import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
+import { findUp, realpath } from '../utils.ts'
+import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
-import { runtimeExternals } from './runtime-externals.ts'
 import { unchangedOutputs } from './unchanged.ts'
 
 export interface SetupOptions {
-  /** Read `build.config.*` and `package.json`'s `build` or `unbuild` field. */
-  legacy: boolean
+  /** Loads the module's options from elsewhere than `builder()`. */
+  loadConfig?: (cwd: string, pkg: PackageJson, outDir: string) => Promise<ModuleConfig>
 }
 
 export interface BuilderSession {
-  plan: BuildPlan
   /** Whether a build has started with this session. */
   started: boolean
   /** Directories a watcher watches as a whole, so new files in them trigger a rebuild. */
@@ -66,7 +66,7 @@ const FORBIDDEN: Array<[option: string, isSet: (config: UserConfig) => boolean, 
  * Resolves the module build for `config`, fills in the tsdown options it depends on and
  * adds the plugins and hooks that build the module.
  */
-export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { legacy }: SetupOptions): Promise<BuilderSession> {
+export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { loadConfig }: SetupOptions): Promise<BuilderSession> {
   const forbidden = FORBIDDEN.filter(([, isSet]) => isSet(config))
   if (forbidden.length) {
     throw new Error([
@@ -76,7 +76,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     ].join('\n'))
   }
 
-  const cwd = resolve(config.cwd ?? process.cwd())
+  const cwd = realpath(config.cwd ?? process.cwd())
   const pkg = await readPackageJSON(cwd)
   const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
   if (packageError) {
@@ -84,28 +84,26 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }
   const outDirOption = config.outDir ?? 'dist'
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
-  if (!legacy) {
-    assertNoLegacyBuildConfig(cwd, pkg)
-  }
-  const buildConfig = legacy ? await loadBuildConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
+  const buildConfig = loadConfig ? await loadConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
     consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
-    await prepareModule(cwd, { config: buildConfig, outDir })
+    await prepareModule(cwd, { config: buildConfig, outDir, pkg })
   }
 
-  const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, loadConfig: async () => buildConfig })
+  const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })
   const directoryPlugins = plan.directories.map(directory => transpileDir({
     cwd,
     srcDir: directory.srcDir,
     outBase: relative(outDir, directory.outDir),
     extension: directory.ext,
     paths: plan.directoryPaths,
-    transform: loadOxc()?.transform,
+    transform: loadOxc()!.transform,
     sourcemap: plan.sourcemap,
-    vue: { cacheVersion: plan.generatedTypesHash },
+    cacheVersion: plan.generatedTypesHash,
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
-    resolveExternal: resolveDirectoryExternal(plan, directory),
+    resolveExternal: resolveDirectoryExternal(plan),
+    reserved: [...Object.keys(plan.entries), 'types'],
   }))
 
   let watch = false
@@ -140,6 +138,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
+    // `eager` puts every file of the tsconfig in the program, so ambient declarations such
+    // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
     // TODO: allow the parallel worker while watching once https://github.com/sxzz/rolldown-plugin-dts/pull/365 is released.
     // The worker inherits stdin, which tsdown reads while watching, and on Windows it then blocks at startup.
     tsc: { eager: true, parallel: !config.watch },
@@ -193,7 +193,6 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   } satisfies UserConfig)
 
   const session: BuilderSession = {
-    plan,
     started: false,
     watchDirs: [...new Set(plan.runtimeDirs.map(dir => existingAncestor(dir, cwd)))],
     checkResolved(resolved) {
@@ -253,16 +252,25 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         }
       }
       const outputs = await Promise.all(directoryPlugins.map(plugin => plugin.api.outputs))
-      if (keptOutput) {
-        plan.writesTypes ??= !Object.hasOwn(bundle, 'types.d.mts')
-      }
       await finishBuild(plan, {
         outputs: outputs.flatMap(map => [...map.values()]),
         builder: { tsdown: await readPackageJSON('tsdown', { from: import.meta.url }).then(r => r.version || 'unknown').catch(() => 'unknown') },
+        keepOutput: watch,
       })
     },
   }
   return session
+}
+
+/**
+ * rolldown's built-in replace plugin. It is loaded from the copy of rolldown that
+ * tsdown runs, because built-in plugins only work with the binding that created them.
+ */
+async function replacePlugin({ values, ...options }: ReplaceOptions): Promise<Rolldown.RolldownPluginOption> {
+  const tsdown = await resolvePath('tsdown', { url: import.meta.url })
+  const plugins = await resolvePath('rolldown/plugins', { url: tsdown })
+  const { replacePlugin } = await import(pathToFileURL(plugins).href) as { replacePlugin: (values: Record<string, string>, options: Omit<ReplaceOptions, 'values'>) => Rolldown.RolldownPluginOption }
+  return replacePlugin(values, options)
 }
 
 /** The files that `finishBuild` writes after the bundle. */
@@ -274,8 +282,5 @@ function filesIn(dir: string) {
 
 /** `dir`, or the closest directory above it that exists, so a watcher sees `dir` being created. */
 function existingAncestor(dir: string, root: string) {
-  while (!existsSync(dir) && dir !== root && dirname(dir) !== dir) {
-    dir = dirname(dir)
-  }
-  return dir
+  return findUp(dir, ancestor => existsSync(ancestor) || ancestor === root ? ancestor : undefined)!
 }

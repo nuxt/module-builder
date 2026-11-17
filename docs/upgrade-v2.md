@@ -9,7 +9,7 @@ Most modules upgrade by running the build and following its output. Every messag
 
 ## Node engines
 
-v2 requires Node `^22.18.0 || >=24.0.0`. Use Node 22.18+ or 24+ locally and in CI:
+v2 requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`. Use Node 22.18+, 24.11+, or 26+ locally and in CI:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -369,6 +369,10 @@ TypeScript resolves `typesVersions` entries with `node10` rules. A path without 
 
 Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that doesn't exist after the build is listed in a warning. Either add the entry that produces it (see [Build configuration](#build-configuration)), or remove the path.
 
+## Commands
+
+`nuxt-module-build` and `nuxt build-module` need a subcommand. Without one they print their usage, so a script such as `"prepack": "nuxt-module-build"` becomes `"prepack": "tsdown"`, or `nuxt-module-build build`.
+
 ## Stub builds
 
 `nuxt-module-build build --stub` and `nuxt-module-build prepare --stub` have been removed, and fail with a link to this section. Replace the scripts that use them as described in [Developing a module](#developing-a-module):
@@ -611,7 +615,7 @@ Each file under `src/runtime` is still emitted under `dist/runtime` with its nam
 
 ## Output directory
 
-A one-off build empties `--outDir` (`dist` by default) before it writes to it. `tsdown --watch` removes the files in it that the build doesn't emit any more. The directory must therefore be inside your module. An `--outDir` of `.`, or of a directory that contains the module, fails the build.
+A one-off build empties `--outDir` (`dist` by default) before it writes to it. `tsdown --watch` removes the files in it that the build doesn't emit any more. The directory must therefore be inside your module. An `--outDir` outside the module, such as `../dist`, or the module root itself, fails the build.
 
 ## Module tsconfig
 
@@ -872,7 +876,7 @@ pnpm remove unbuild
 
 Follow these steps in order to upgrade a module. Each step is mechanical until the build runs. Where a step says `pnpm`, use your module's own package manager.
 
-1. Use Node 22.18+ or 24+ locally and in CI.
+1. Use Node 22.18+, 24.11+, or 26+ locally and in CI.
 2. Install v2 and tsdown, before step 3:
    - Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`.
    - Run `pnpm remove unbuild`. Also remove `mkdist` and `jiti`, if they only served the builder.

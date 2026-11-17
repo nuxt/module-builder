@@ -2,7 +2,6 @@ const GUIDE_URL = 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade
 
 /** The sections of the upgrade guide that build messages link to, by heading anchor. */
 export const GUIDE_SECTIONS = [
-  'node-engines',
   'install-tsdown',
   'build-configuration',
   'tsdown-config',

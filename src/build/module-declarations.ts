@@ -3,11 +3,11 @@ import { consola } from 'consola'
 import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 
-import { createDeclarationProgram, relativeSpecifier } from '../rolldown/declarations.ts'
-import { DECLARATION_RE, probe, RELATIVE_RE, rewriteSpecifiers, SCRIPT_RE } from '../rolldown/resolve.ts'
-import { isModuleFile } from '../rolldown/tsconfig.ts'
+import { createDeclarationProgram } from '../transpile/declarations.ts'
+import { rewriteSpecifiers } from '../transpile/specifiers.ts'
+import { hasIsolatedDeclarations, isModuleFile } from '../transpile/tsconfig.ts'
+import { isInside, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
 import { loadOxc } from './loader.ts'
-import { hasIsolatedDeclarations } from './tsconfig.ts'
 import { writeSourceTypes } from './types.ts'
 
 const NUXT_DIR_RE = /^\.nuxt(?:\/|$)/
@@ -25,7 +25,7 @@ export function moduleDeclarationPaths(cwd: string, dir: string, name: string, s
   const paths: Record<string, string[]> = { [name]: [join(dir, 'types.d.mts')] }
   for (const [alias, [target]] of Object.entries(selfPaths)) {
     const file = target && !alias.includes('*') && alias !== name ? probe(target) : undefined
-    if (file && SCRIPT_RE.test(file) && !runtimeDirs.some(runtimeDir => !relative(runtimeDir, file).startsWith('..'))) {
+    if (file && SCRIPT_RE.test(file) && !runtimeDirs.some(runtimeDir => isInside(runtimeDir, file))) {
       paths[alias] = [declarationFile(cwd, dir, file)]
     }
   }
@@ -49,7 +49,7 @@ export interface ModuleDeclarationOptions {
  */
 export async function writeModuleDeclarations(cwd: string, dir: string, { tsconfig, entry, roots, paths }: ModuleDeclarationOptions): Promise<void> {
   await writeSourceTypes(dir, entry, join(dir, relative(cwd, entry)))
-  const isModuleCode = (file: string) => SCRIPT_RE.test(file) && !DECLARATION_RE.test(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
+  const isModuleCode = (file: string) => isSourceScript(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
   const program = await createDeclarationProgram({ cwd, tsconfig, paths }, roots)
   const sources = program.sources().filter(isModuleCode)
   const { declarations, errors } = (hasIsolatedDeclarations(tsconfig) && await isolatedDeclarations(sources, cwd))

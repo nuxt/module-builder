@@ -1,9 +1,8 @@
 import type { TsConfigResult } from 'get-tsconfig'
-import { dirname, relative } from 'pathe'
+import { relative } from 'pathe'
 import type ts from 'typescript'
 
-import { declarationPaths, projectFiles, tsconfigPaths, writeAmbientModules, writeServerRoutesStub } from './tsconfig.ts'
-import type { DeclarationPaths } from './tsconfig.ts'
+import { projectFiles, writeDeclarationPaths } from './tsconfig.ts'
 
 export interface DeclarationProgramOptions {
   cwd: string
@@ -22,7 +21,6 @@ interface DeclarationEmit {
 }
 
 export interface DeclarationProgram {
-  paths: DeclarationPaths
   emit: (files: string[]) => Promise<DeclarationEmit>
   /** The program's source files other than declaration files. */
   sources: () => string[]
@@ -38,12 +36,8 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
   const { default: ts } = await import('typescript')
   const classifier = import('vue-sfc-transformer/core')
   const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, configHost(ts)) : undefined
-  const declaration = declarationPaths({ ...tsconfigPaths(tsconfig), ...paths }, cwd)
-  const rootNames = new Set([...projectFiles(parsed, cwd), ...roots])
-  await writeServerRoutesStub(cwd)
-  if (declaration.ambient.length) {
-    rootNames.add(await writeAmbientModules(cwd, declaration.ambient))
-  }
+  const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
+  const rootNames = new Set([...projectFiles(parsed, cwd), ...roots, ...declaration.ambient ? [declaration.ambient] : []])
 
   const options: ts.CompilerOptions = {
     ...parsed?.options,
@@ -65,7 +59,6 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
   const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, projectReferences: parsed?.projectReferences })
 
   return {
-    paths: declaration,
     sources: () => createProgram().getSourceFiles().filter(source => !source.isDeclarationFile).map(source => source.fileName),
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
@@ -165,10 +158,4 @@ export function declarationError(diagnostics: string[]): DeclarationError {
         ]
       : [],
   ].join('\n'), diagnostics)
-}
-
-/** The relative specifier from the directory of `from` to `to`. */
-export function relativeSpecifier(from: string, to: string): string {
-  const path = relative(dirname(from), to)
-  return path.startsWith('.') ? path : `./${path}`
 }

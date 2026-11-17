@@ -1,7 +1,7 @@
 import type { TsdownPlugin } from 'tsdown'
 
-import { BUILDER_OPTIONS } from '../build/build-config.ts'
-import type { BuilderOptions } from '../build/build-config.ts'
+import { BUILDER_OPTIONS } from '../build/options.ts'
+import type { BuilderOptions } from '../build/options.ts'
 import type { BuilderSession, SetupOptions } from './setup.ts'
 
 export interface BuilderPlugin extends TsdownPlugin {
@@ -27,7 +27,7 @@ export interface BuilderPlugin extends TsdownPlugin {
  * them out apart from additional `deps.neverBundle` entries.
  */
 export function builder(options: BuilderOptions = {}): BuilderPlugin {
-  return createBuilder(options, { legacy: false })
+  return createBuilder(options, {})
 }
 
 export function createBuilder(options: BuilderOptions, setupOptions: SetupOptions): BuilderPlugin {

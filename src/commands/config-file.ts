@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'pathe'
 
-import { BUILDER_OPTIONS } from '../build/build-config.ts'
-import type { BuilderOptions } from '../build/build-config.ts'
+import { BUILDER_OPTIONS } from '../build/options.ts'
+import type { BuilderOptions } from '../build/options.ts'
 import { guide } from '../build/guide.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 
@@ -40,7 +40,7 @@ export interface BuilderConfig {
  * Finds the options of the `builder()` plugin in a tsdown config file, which may export
  * a config, an array of configs, or a function returning either.
  */
-export async function loadBuilderConfig(cwd: string, file: string): Promise<BuilderConfig> {
+async function loadBuilderConfig(cwd: string, file: string): Promise<BuilderConfig> {
   if (!file.endsWith('.json')) {
     assertLoadableModuleCode(cwd, [file], [])
   }
@@ -70,6 +70,12 @@ export async function loadBuilderConfig(cwd: string, file: string): Promise<Buil
     throw missingBuilderError(file)
   }
   return found[0]
+}
+
+/** The `builder()` options of the module's tsdown config, when it has one. */
+export async function loadModuleConfig(cwd: string): Promise<BuilderConfig | undefined> {
+  const file = findTsdownConfig(cwd)
+  return file ? loadBuilderConfig(cwd, file) : undefined
 }
 
 /** Whether `plugins`, in any of the shapes a tsdown config accepts, contain `builder()`. */

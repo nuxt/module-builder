@@ -4,32 +4,38 @@ import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 import { readFile, writeFile } from 'node:fs/promises'
 import { parseTsconfig } from 'get-tsconfig'
-import { resolvePathSync } from 'mlly'
+import { resolvePath } from 'mlly'
 import { dirname, join, relative, resolve } from 'pathe'
 import { readPackageJSON } from 'pkg-types'
+import type { PackageJson } from 'pkg-types'
 import { glob } from 'tinyglobby'
-import { assertNoLegacyBuildConfig, bundledEntries, loadBuildConfig, resolveModuleOptions } from '../build/build-config.ts'
-import type { TranslatedBuildConfig } from '../build/build-config.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
-import { selfReferencePaths } from '../build/tsconfig.ts'
+import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
+import type { ModuleConfig } from '../build/options.ts'
+import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
-import { probe } from '../rolldown/resolve.ts'
-import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../rolldown/tsconfig.ts'
-import { assertNoStubArg, loadModuleConfig, resolveCwdArg, sharedArgs } from './_shared.ts'
+import { loadBuildConfig } from '../legacy/build-config.ts'
+import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
+import { isInside, probe } from '../utils.ts'
+import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
+import { loadModuleConfig } from './config-file.ts'
 
 const BUILD_DECLARATION_RE = /^declare module "#build\/(.+)";$/
 const PATH_OPTIONS = new Set(['paths', 'baseUrl', 'rootDir', 'rootDirs', 'outDir', 'outFile', 'declarationDir', 'typeRoots', 'tsBuildInfoFile'])
 
-async function loadPrepareConfig(cwd: string): Promise<{ config: TranslatedBuildConfig, outDir: string }> {
+interface PrepareConfig {
+  config: ModuleConfig
+  outDir: string
+  pkg: PackageJson
+}
+
+async function loadPrepareConfig(cwd: string): Promise<PrepareConfig> {
   const pkg = await readPackageJSON(cwd)
   const moduleConfig = await loadModuleConfig(cwd)
   const outDir = resolve(cwd, moduleConfig?.outDir ?? 'dist')
-  if (!moduleConfig) {
-    return { config: await loadBuildConfig(cwd, pkg, outDir), outDir }
-  }
-  assertNoLegacyBuildConfig(cwd, pkg)
-  return { config: resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options), outDir }
+  const config = moduleConfig ? resolveModuleOptions(cwd, pkg, outDir, moduleConfig.options) : await loadBuildConfig(cwd, pkg, outDir)
+  return { config, outDir, pkg }
 }
 
 /**
@@ -58,23 +64,23 @@ async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: 
   return { globals, augmentations }
 }
 
-export async function prepareModule(cwd: string, buildConfig?: { config: TranslatedBuildConfig, outDir: string }): Promise<{ result: unknown }> {
+export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
-  const { config, outDir } = buildConfig ?? await loadPrepareConfig(cwd)
+  const { config, outDir, pkg } = prepareConfig ?? await loadPrepareConfig(cwd)
   const runtimeDirs = [resolve(cwd, 'src/runtime'), ...config.directories.map(directory => directory.srcDir)]
   const entries = bundledEntries(cwd, config)
   assertLoadableModuleCode(cwd, [entries.module], runtimeDirs, Object.values(entries))
-  const moduleExports = await importModule(resolve(cwd, entries.module), { cwd })
+  const entryPath = resolve(cwd, entries.module)
+  const moduleExports = await importModule(entryPath, { cwd })
   const nuxtModule = (moduleExports.default ?? moduleExports) as NuxtModule
-  const pkg = await readPackageJSON(cwd)
   const { name } = pkg
   const useNuxt = name ? await loadUseNuxt(cwd) : undefined
-  const entryPath = resolve(cwd, entries.module)
   const rootConfig = await rootTsconfig(cwd)
   const ambient = await ambientDeclarations(cwd, runtimeDirs, [...rootConfig.exclude ?? [], outDir])
-  const selfPaths = selfReferencePaths(cwd, pkg, outDir)
-  const declarationsDir = join(sourceTypesDir(cwd), 'declarations')
+  const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
+  const sourceTypesDir = resolve(cwd, '.nuxt/module-builder')
+  const declarationsDir = join(sourceTypesDir, 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
   const ownPaths = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : {}
   let perContext = false
@@ -180,11 +186,11 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
                 list.push(...ambient.augmentations.map(path => ({ path })))
               }
               // Module code can import types from runtime sources, which rely on the app's aliases, declarations and JSX options.
-              const appDeclarations = (tsConfig.include ?? []).filter(pattern => !relative(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)).startsWith('..'))
+              const appDeclarations = (tsConfig.include ?? []).filter(pattern => isInside(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)))
               nodeTsConfig.include = [...new Set([...nodeTsConfig.include ?? [], ...appDeclarations])]
               // A type reference does not resolve the module's own package name.
               const ownReference = nodeReferences.findIndex(isOwnTypes)
-              nodeReferences.splice(ownReference === -1 ? nodeReferences.length : ownReference, ownReference === -1 ? 0 : 1, { path: join(sourceTypesDir(cwd), 'types.d.mts') })
+              nodeReferences.splice(ownReference === -1 ? nodeReferences.length : ownReference, ownReference === -1 ? 0 : 1, { path: join(sourceTypesDir, 'types.d.mts') })
               const { jsx, jsxImportSource } = tsConfig.compilerOptions ?? {}
               nodeTsConfig.compilerOptions = { jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
               nodeTsConfig.compilerOptions.paths = { ...tsConfig.compilerOptions?.paths, ...nodeTsConfig.compilerOptions.paths }
@@ -206,10 +212,10 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
       ],
     } satisfies NuxtConfig,
   })
-  await writeSourceTypes(sourceTypesDir(cwd), entryPath)
+  await writeSourceTypes(sourceTypesDir, entryPath)
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
   if (name && perContext) {
-    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => !relative(dir, file).startsWith('..')))
+    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file)))
     const tsconfigs = await createTsconfigResolver(cwd)
     const project = tsconfigs.resolve(entryPath)
     const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
@@ -218,8 +224,6 @@ export async function prepareModule(cwd: string, buildConfig?: { config: Transla
   }
   return result
 }
-
-const sourceTypesDir = (cwd: string) => resolve(cwd, '.nuxt/module-builder')
 
 interface CompatibilityOptions {
   ownPaths: Record<string, string[]>
@@ -244,7 +248,7 @@ async function writeCompatibilityTsconfig(file: string, cwd: string, { ownPaths,
   const entryDir = dirname(entryPath)
   const isDerived = (pattern: string) => {
     const path = resolve(dirname(file), pattern)
-    const inEntryDist = entryDir !== cwd && !relative(join(entryDir, 'dist'), path).startsWith('..')
+    const inEntryDist = entryDir !== cwd && isInside(join(entryDir, 'dist'), path)
     return path === ownTypes || path === join(entryDir, 'runtime/server') || inEntryDist
   }
   config.include = config.include?.filter(pattern => !isDerived(pattern))
@@ -277,19 +281,10 @@ function replaceEntries(modules: unknown[] | undefined, name: string, nuxtModule
 /** `useNuxt` from the kit the module in `cwd` resolves, so hooks can read the Nuxt instance they run in. */
 async function loadUseNuxt(cwd: string): Promise<(() => Nuxt) | undefined> {
   for (const id of ['@nuxt/kit', 'nuxt/kit']) {
-    const path = tryResolvePath(id, cwd)
+    const path = await resolvePath(id, { url: pathToFileURL(`${cwd}/`) }).catch(() => undefined)
     if (path) {
       return (await import(pathToFileURL(path).href) as { useNuxt: () => Nuxt }).useNuxt
     }
-  }
-}
-
-function tryResolvePath(id: string, cwd: string) {
-  try {
-    return resolvePathSync(id, { url: pathToFileURL(`${cwd}/`) })
-  }
-  catch {
-    return undefined
   }
 }
 

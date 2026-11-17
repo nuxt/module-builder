@@ -7,7 +7,6 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
-    "./rolldown": "./dist/rolldown.mjs",
     "./tsdown": "./dist/tsdown.mjs",
     "./package.json": "./package.json"
   },
@@ -15,9 +14,6 @@
     "*": {
       "*": [
         "./dist/*.d.mts"
-      ],
-      "rolldown": [
-        "./dist/rolldown.d.mts"
       ],
       "tsdown": [
         "./dist/tsdown.d.mts"
@@ -43,7 +39,7 @@
     "prepack": "pnpm build",
     "test": "pnpm vitest",
     "test:pack": "pnpm -C example pack --out ../.temp-pack/example.tgz && attw .temp-pack/example.tgz && publint .temp-pack/example.tgz",
-    "test:engines": "pnpm exec installed-check -d -i tsdown --no-workspaces --ignore @nuxt/cli",
+    "test:engines": "pnpm exec installed-check -d --no-workspaces --ignore @nuxt/cli",
     "test:knip": "knip --exclude unresolved",
     "test:types": "vue-tsc --noEmit && pnpm -r test:types"
   },
@@ -73,14 +69,8 @@
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.37.0 || ^4.0.0",
-    "rolldown": "^1.2.6",
     "tsdown": "^0.23.7",
     "typescript": "^5.9.3 || ^6.0.0"
-  },
-  "peerDependenciesMeta": {
-    "rolldown": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
@@ -97,7 +87,6 @@
     "ofetch": "^1.5.1",
     "pkg-pr-new": "^0.0.93",
     "publint": "^0.3.25",
-    "rolldown": "^1.3.0",
     "sass": "^1.108.1",
     "tinyexec": "^1.3.1",
     "tsdown": "^0.23.7",
@@ -108,6 +97,6 @@
     "vue-tsc": "^3.3.14"
   },
   "engines": {
-    "node": "^22.18.0 || >=24.0.0"
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   }
 }

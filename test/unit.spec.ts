@@ -1,27 +1,32 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { assertNoLegacyBuildConfig, bundledEntries, entryName, formatUnsupportedOptions, loadBuildConfig, resolveModuleOptions, resolveOutDir, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/build/build-config.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
+import type { BuildPlan } from '../src/build/build.ts'
+import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
+import { resolveCwdArg } from '../src/commands/_shared.ts'
+import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
+import { relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
-import { runtimeExternals } from '../src/tsdown/runtime-externals.ts'
-import { selfReferencePaths } from '../src/build/tsconfig.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/rolldown/tsconfig.ts'
-import { transformCss } from '../src/rolldown/stylesheets.ts'
+import { runtimeExternals } from '../src/tsdown/externals.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
+import { transformCss } from '../src/transpile/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
-import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField } from '../src/build/deprecations.ts'
-import { importsKeyFor, publishedPackage, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
+import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
+import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
@@ -50,16 +55,17 @@ function createResolver(packageName?: string) {
 }
 
 describe('runtimeExternals', () => {
-  it('should rewrite relative runtime imports to their built extension', async () => {
+  it('should point relative runtime imports at their output, keeping the name of `.vue` and non-code files', async () => {
     await expect(createResolver()('./runtime/plugins/plugin')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.js',
       external: true,
     })
-  })
-
-  it('should leave `.vue` specifiers untouched', async () => {
     await expect(createResolver()('./runtime/components/TestMe.vue')).resolves.toEqual({
       id: '/dist/runtime/components/TestMe.vue',
+      external: true,
+    })
+    await expect(createResolver()('./runtime/assets/config.json')).resolves.toEqual({
+      id: '/dist/runtime/assets/config.json',
       external: true,
     })
   })
@@ -80,38 +86,15 @@ describe('runtimeExternals', () => {
     })
   })
 
-  it('should keep the name of non-code runtime files', async () => {
-    await expect(createResolver()('./runtime/assets/config.json')).resolves.toEqual({
-      id: '/dist/runtime/assets/config.json',
-      external: true,
-    })
-  })
-
-  it('should rewrite self-referencing runtime imports', async () => {
+  it('should point self-referencing runtime imports at their output, treating a `.client` suffix as part of the name and a directory as its index', async () => {
     await expect(createResolver('my-module')('my-module/runtime/plugins/plugin')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.js',
       external: true,
     })
-  })
-
-  it('should treat a `.client` suffix in a self-referencing import as part of the name', async () => {
     await expect(createResolver('my-module')('my-module/runtime/plugins/plugin.client')).resolves.toEqual({
       id: '/dist/runtime/plugins/plugin.client.js',
       external: true,
     })
-  })
-
-  it('should ignore specifiers outside the runtime tree', async () => {
-    await expect(createResolver('my-module')('@nuxt/kit')).resolves.toBeUndefined()
-  })
-
-  it('should ignore files that resolve outside the runtime tree', async () => {
-    const resolveId = runtimeExternals(directories()).resolveId as (this: unknown, id: string, importer?: string) => Promise<unknown>
-    const context = { resolve: async () => ({ id: join(runtimeSrcDir, '../utils.ts'), external: false }) }
-    await expect(resolveId.call(context, './utils', importer)).resolves.toBeUndefined()
-  })
-
-  it('should point self-referencing directory imports at their index file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-'))
     try {
       await mkdir(join(dir, 'utils'))
@@ -127,6 +110,13 @@ describe('runtimeExternals', () => {
     }
   })
 
+  it('should ignore specifiers and files outside the runtime tree', async () => {
+    await expect(createResolver('my-module')('@nuxt/kit')).resolves.toBeUndefined()
+    const resolveId = runtimeExternals(directories()).resolveId as (this: unknown, id: string, importer?: string) => Promise<unknown>
+    const context = { resolve: async () => ({ id: join(runtimeSrcDir, '../utils.ts'), external: false }) }
+    await expect(resolveId.call(context, './utils', importer)).resolves.toBeUndefined()
+  })
+
   it('should import runtime files relative to the chunk that imports them', () => {
     const renderChunk = runtimeExternals(directories()).renderChunk as (code: string, chunk: { fileName: string, imports: string[], dynamicImports: string[] }, options: { dir?: string }) => { code: string } | undefined
     const code = 'import plugin from "/dist/runtime/plugins/plugin.js";\nconst lazy = () => import("/dist/runtime/lazy.js");\nconst path = "/dist/runtime/plugins/plugin.js/other";\n'
@@ -135,177 +125,8 @@ describe('runtimeExternals', () => {
     expect(renderChunk(code, chunk('nested/helper.mjs'), { dir: '/dist' })?.code).toBe(code
       .replace('"/dist/runtime/plugins/plugin.js"', '"../runtime/plugins/plugin.js"')
       .replace('"/dist/runtime/lazy.js"', '"../runtime/lazy.js"'))
-  })
-})
-
-describe('translateBuildConfig', () => {
-  const cwd = fileURLToPath(new URL('../example', import.meta.url))
-  const outDir = join(cwd, 'dist')
-  const translate = (...configs: unknown[]) => translateBuildConfig(configs.map((config, index) => ({ name: `config${index}`, config })), { cwd, outDir })
-
-  it('should name entries the way unbuild did', () => {
-    expect(entryName('src/vite', cwd)).toBe('vite')
-    expect(entryName('./src/runtime/server/index.ts', cwd)).toBe('runtime/server/index')
-    expect(entryName(join(cwd, 'src/cli.mts'), cwd)).toBe('cli')
-    expect(entryName('lib/other', cwd)).toBe('lib/other')
-  })
-
-  it('should resolve entry inputs to their source file', () => {
-    expect(translate({ entries: ['src/utils', { input: './src/utils.ts', name: 'helpers' }] }).entries).toEqual({
-      utils: './src/utils.ts',
-      helpers: './src/utils.ts',
-    })
-  })
-
-  it('should skip a directory entry for `src/runtime` and keep others', () => {
-    const { directories, unsupported } = translate({ entries: [{ input: 'src/runtime/', outDir: 'dist/runtime' }, { input: 'src/shared/', builder: 'mkdist', outDir: 'dist/shared' }, { input: 'src/features/', outDir: 'dist/features', ext: 'js' }, { input: 'src/other/', outDir: 'lib' }] })
-    expect(directories).toEqual([
-      { srcDir: join(cwd, 'src/shared'), outDir: join(outDir, 'shared'), ext: 'mjs' },
-      { srcDir: join(cwd, 'src/features'), outDir: join(outDir, 'features'), ext: 'js' },
-    ])
-    expect(unsupported).toEqual(['config0: entries[3].outDir'])
-  })
-
-  it('should match string externals by package name', () => {
-    const [pkg, alias] = translate({ externals: ['fake-pkg', '#alias'] }).neverBundle
-    expect(['fake-pkg', 'fake-pkg/sub'].every(id => pkg!.test(id))).toBe(true)
-    expect(pkg!.test('fake-pkg-other')).toBe(false)
-    expect(alias!.test('#alias/config')).toBe(true)
-  })
-
-  it('should merge replacements with earlier configs taking precedence', () => {
-    expect(translate(
-      { replace: { __A__: '"a"' }, rollup: { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } } },
-      { replace: { __A__: '"overridden"', __C__: '"c"' } },
-    ).replace).toEqual({ values: { __A__: '"a"', __B__: '"b"', __C__: '"c"' }, delimiters: ['', ''], preventAssignment: true })
-    expect(translate({ replace: { __A__: '"a"' }, rollup: { replace: false } }).replace).toBeUndefined()
-  })
-
-  it('should accept options without an effect on the output', () => {
-    expect(translate({
-      declaration: 'node16',
-      failOnWarn: false,
-      name: 'my-module',
-      rootDir: '.',
-      outDir: 'dist',
-      clean: true,
-      entries: [{ input: 'src/features/', outDir: 'dist/features', ext: 'mjs', addRelativeDeclarationExtensions: true }],
-      rollup: { emitCJS: false, cjsBridge: false, output: { exports: 'named' } },
-    }).unsupported).toEqual([])
-  })
-
-  it('should keep supported hooks, ignore mkdist hooks and reject the rest', () => {
-    const before = () => {}
-    const done = () => {}
-    const { hooks, ignoredHooks, unsupported } = translate({ hooks: { 'build:before': before, 'rollup:done': done, 'mkdist:entry:options': () => {}, 'rollup:options': () => {} } })
-    expect(hooks).toEqual({ 'build:before': [before], 'rollup:done': [done], 'build:done': [] })
-    expect(ignoredHooks).toEqual(['config0: hooks[\'mkdist:entry:options\']'])
-    expect(unsupported).toEqual(['config0: hooks[\'rollup:options\']'])
-  })
-
-  it('should not duplicate the default module entry', () => {
-    expect(bundledEntries(cwd, translate({ entries: ['src/module'] }))).toEqual({ module: './src/module.ts' })
-  })
-
-  it('should load a config file, then `package.json`', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'module-builder-'))
-    try {
-      await writeFile(join(dir, 'build.config.mjs'), `export default [{ externals: ['a'] }, false]\n`)
-      const config = await loadBuildConfig(dir, { build: { externals: ['b'] } }, join(dir, 'dist'))
-      expect(config.file).toBe('build.config.mjs')
-      expect(config.importsUnbuild).toBe(false)
-      expect(config.field).toBe('build')
-      expect(config.neverBundle.map(String)).toEqual(['/^a(?:\\/|$)/', '/^b(?:\\/|$)/'])
-      expect(config.unsupported).toEqual([])
-
-      await rm(join(dir, 'build.config.mjs'))
-      await mkdir(join(dir, 'node_modules/unbuild'), { recursive: true })
-      await writeFile(join(dir, 'node_modules/unbuild/package.json'), JSON.stringify({ name: 'unbuild', type: 'module', exports: './index.js' }))
-      await writeFile(join(dir, 'node_modules/unbuild/index.js'), 'export const defineBuildConfig = config => config\n')
-      await writeFile(join(dir, 'build.config.js'), `import { defineBuildConfig } from 'unbuild'\nexport default [defineBuildConfig({ externals: ['a'] }), { entries: ['src/utils'] }]\n`)
-      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ importsUnbuild: true, field: undefined, unsupported: ['build.config.js: an array of 2 configs'] })
-
-      await rm(join(dir, 'build.config.js'))
-      await writeFile(join(dir, 'build.config.mts'), 'export default () => ({})\n')
-      await expect(loadBuildConfig(dir, {}, join(dir, 'dist'))).rejects.toThrow(`not a function. Replace the function with the object it returns. ${guide('other-options')}`)
-
-      await rm(join(dir, 'build.config.mts'))
-      await mkdir(join(dir, 'extensions/src/lib'), { recursive: true })
-      await writeFile(join(dir, 'extensions/options.ts'), `export default { externals: ['o'] }\n`)
-      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options'\nexport default options\n`)
-      await writeFile(join(dir, 'extensions/src/module.ts'), `import { helper } from './helper'\nexport { shared } from './lib'\nexport default helper\n`)
-      await writeFile(join(dir, 'extensions/src/helper.ts'), `export const helper = 1\n`)
-      await writeFile(join(dir, 'extensions/src/lib/index.ts'), `import { shared } from '../../options'\nexport { shared }\n`)
-      await expect(loadBuildConfig(join(dir, 'extensions'), { build: { entries: ['src/lib/index'] } }, join(dir, 'dist'))).rejects.toThrow([
-        'Module code has to load with Node, which strips types and resolves imports as written:',
-        '  - build.config.ts:1:21: `./options` (use `./options.ts`)',
-        '  - src/lib/index.ts:1:24: `../../options` (use `../../options.ts`)',
-        '  - src/module.ts:1:24: `./helper` (use `./helper.ts`)',
-        '  - src/module.ts:2:24: `./lib` (use `./lib/index.ts`)',
-        `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
-      ].join('\n'))
-      await writeFile(join(dir, 'extensions/build.config.ts'), `import options from './options.ts'\nexport default options\n`)
-      expect((await loadBuildConfig(join(dir, 'extensions'), {}, join(dir, 'dist'))).neverBundle.map(String)).toEqual(['/^o(?:\\/|$)/'])
-
-      expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ file: undefined, unsupported: [] })
-      const fromPkg = await loadBuildConfig(dir, { unbuild: { externals: ['u'] }, build: { externals: ['b'] } }, join(dir, 'dist'))
-      expect(fromPkg.neverBundle.map(String)).toEqual(['/^u(?:\\/|$)/'])
-
-      const inferred = (await loadBuildConfig(dir, { name: '@nuxt/image', imports: { '#image/*': './src/*.ts' } }, join(dir, 'dist'))).neverBundle
-      expect(inferred).toHaveLength(1)
-      expect(['@nuxt/image', '@nuxt/image/utils'].every(id => inferred[0]!.test(id))).toBe(true)
-      expect(inferred[0]!.test('@nuxt/image/runtime/providers/ipx')).toBe(false)
-    }
-    finally {
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it('should collect every option without an equivalent', () => {
-    expect(translate(
-      { hooks: { 'build:prepare': () => {} }, rollup: { emitCJS: true, output: { format: 'cjs' } }, stubOptions: {} },
-      { externals: [42], replace: { __FN__: () => '' } },
-    ).unsupported).toEqual([
-      'config0: hooks[\'build:prepare\']',
-      'config0: rollup.emitCJS: true',
-      'config0: rollup.output',
-      'config0: stubOptions',
-      'config1: externals[0]',
-      'config1: replace[\'__FN__\']',
-    ])
-  })
-
-  it('should point each unsupported option at its section of the upgrade guide', () => {
-    const message = formatUnsupportedOptions(['build.config.ts: hooks[\'rollup:options\']', 'build.config.ts: rollup.emitCJS: true', 'build.config.ts: rollup.alias', 'build.config.ts: entries[0].esbuild', 'build.config.ts: stubOptions'])
-    expect(message.split('\n')).toEqual([
-      'The build config uses options that `@nuxt/module-builder` v2 does not support:',
-      `  - build.config.ts: hooks['rollup:options'] (${guide('hooks')})`,
-      `  - build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`,
-      `  - build.config.ts: rollup.alias (${guide('rollup-options')})`,
-      `  - build.config.ts: entries[0].esbuild (${guide('mkdist-options')})`,
-      `  - build.config.ts: stubOptions (${guide('other-options')})`,
-      `Remove each of them from the file named. ${guide('unsupported-build-options')}`,
-    ])
-  })
-
-  it('should warn about a deprecated config file and ignored hooks in CI too', () => {
-    vi.stubEnv('CI', 'true')
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
-    try {
-      const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
-      warnDeprecatedBuildConfig(config)
-      warnDeprecatedBuildConfig({ ...config, importsUnbuild: false, ignoredHooks: [], field: 'unbuild' })
-      expect(warn.mock.calls.map(([message]) => message)).toEqual([
-        expect.stringMatching(new RegExp(`^Ignoring build\\.config\\.ts: hooks\\['mkdist:entry:options'\\]: .*Remove the hook\\. ${guide('hooks')}$`)),
-        expect.stringMatching(new RegExp(`^\`build\\.config\\.ts\` is deprecated\\. .*instead of \`unbuild\`\\. Move them into \`builder\\(\\)\` in \`tsdown\\.config\\.ts\`\\. ${guide('moving-from-buildconfigts')}$`)),
-        `\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`,
-        expect.stringMatching(new RegExp(`^The \`unbuild\` field of \`package\\.json\` is deprecated\\. .*Rename the field to \`build\`\\. ${guide('build-configuration')}$`)),
-      ])
-    }
-    finally {
-      warn.mockRestore()
-      vi.unstubAllEnvs()
-    }
+    const dotted = runtimeExternals({ outDir: '/dist', directories: [{ srcDir: runtimeSrcDir, outDir: '/dist/.runtime', ext: 'js' }] }).renderChunk as typeof renderChunk
+    expect(dotted('import plugin from "/dist/.runtime/plugin.js";\n', { fileName: 'module.mjs', imports: ['/dist/.runtime/plugin.js'], dynamicImports: [] }, { dir: '/dist' })?.code).toBe('import plugin from "./.runtime/plugin.js";\n')
   })
 })
 
@@ -628,6 +449,7 @@ describe('deprecation checks', () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`\`module\\.cjs\`.*Replace it with \`\\./dist/module\\.mjs\`.* ${guide('modulecjs')}$`)))
     warn.mockClear()
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.mjs' })).toBe(false)
+    expect(checkLegacyCJSPaths(cwd, { main: './dist/submodule.cjs' })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
   })
@@ -883,17 +705,25 @@ describe('selfReferencePaths', () => {
       'my-module/runtime/*': ['/mod/src/runtime/*'],
     })
   })
+
+  it('should map a subpath to the input of the entry with that name', () => {
+    const pkg = { name: 'my-module', exports: { './vite': './dist/vite.mjs', './utils': './dist/utils.mjs' } }
+    expect(selfReferencePaths('/mod', pkg, '/mod/dist', { module: './src/module.ts', vite: './src/lib/vite.ts' })).toEqual({
+      'my-module': ['/mod/src/module'],
+      'my-module/vite': ['/mod/src/lib/vite'],
+      'my-module/utils': ['/mod/src/utils'],
+    })
+  })
 })
 
 describe('importModule', () => {
-  it('should import files in an output directory outside the module afresh for each version', async () => {
+  it('should import files in the output directory afresh for each version', async () => {
     const root = await mkdtemp(join(tmpdir(), 'module-builder-versions-'))
-    await mkdir(join(root, 'module'))
     await mkdir(join(root, 'out/runtime'), { recursive: true })
     await writeFile(join(root, 'out/module.mjs'), `export { name } from './runtime/name.js'\n`)
     await writeFile(join(root, 'out/runtime/name.js'), `export const name = 'one'\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const options = JSON.stringify({ cwd: join(root, 'module'), outDir: join(root, 'out') })
+    const options = JSON.stringify({ cwd: root })
     const script = [
       `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)})`,
       `const { writeFile } = await import('node:fs/promises')`,
@@ -914,7 +744,7 @@ describe('importModule', () => {
     await writeFile(join(dir, 'kind.ts'), `const Kind = { Stub: 'stub' } as const\nexport const kind: string = Kind.Stub\n`)
     await writeFile(join(dir, 'enum.ts'), `export enum Mode { Build }\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); const rejected = await importModule(${JSON.stringify(join(dir, 'enum.ts'))}).then(() => undefined, error => error.code); console.log(JSON.stringify([m.location, m.kind, rejected]))`
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}, { cwd: ${JSON.stringify(dir)} }); const rejected = await importModule(${JSON.stringify(join(dir, 'enum.ts'))}, { cwd: ${JSON.stringify(dir)} }).then(() => undefined, error => error.code); console.log(JSON.stringify([m.location, m.kind, rejected]))`
     const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { env: { ...process.env, CI: '1' } } })
     const [location, kind, rejected] = JSON.parse(stdout) as [string, string, string]
     expect(location).toContain(`entry.ts:1:${line.indexOf('new Error') + 1}`)
@@ -980,21 +810,20 @@ describe('builder options', () => {
     expect(config.neverBundle.map(String)).toEqual(['/^fake-pkg(?:\\/|$)/', '/^my-module(?:$|\\/(?!runtime\\/))/'])
     expect(config.replace).toEqual({ values: { __A__: '"a"' }, preventAssignment: true })
     expect(resolveModuleOptions(cwd, {}, outDir, { replace: { delimiters: ['', ''], values: { __B__: '"b"' } } }).replace).toEqual({ values: { __B__: '"b"' }, delimiters: ['', ''], preventAssignment: true })
-    expect(config.unsupported).toEqual([])
   })
 
-  it('should collect options it does not accept', () => {
-    expect(resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never).unsupported).toEqual(['builder(): entries[0].ext', 'builder(): outDir'])
+  it('should refuse options it does not accept', () => {
+    expect(() => resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never)).toThrow(`\`builder()\` does not support these options:\n  - outDir\n  - entries[0].ext\n${guide('tsdown-config')}`)
+  })
+
+  it('should refuse a bundled entry named `types`', () => {
+    for (const entries of [[{ input: './src/utils', name: 'types' }], [{ input: './src/utils', name: 'Types' }], ['./src/types']]) {
+      expect(() => resolveModuleOptions(cwd, {}, outDir, { entries })).toThrow('named `types`, whose declarations would replace the generated `types.d.mts`')
+    }
   })
 
   it('should refuse `hooks` and point at tsdown\'s own', () => {
     expect(() => resolveModuleOptions(cwd, {}, outDir, { hooks: { 'build:before': () => {} } } as never)).toThrow(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
-  })
-
-  it('should refuse a `build` or `unbuild` field of `package.json` alongside it', () => {
-    expect(() => assertNoLegacyBuildConfig(cwd, { build: {} })).toThrow(`The \`build\` field of \`package.json\` configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and remove the field. ${guide('moving-from-buildconfigts')}`)
-    expect(() => assertNoLegacyBuildConfig(cwd, { unbuild: {} })).toThrow('The `unbuild` field of `package.json`')
-    expect(() => assertNoLegacyBuildConfig(cwd, {})).not.toThrow()
   })
 
   it('should list every tsdown option it sets that the config sets too', async () => {
@@ -1149,11 +978,25 @@ describe('size report', () => {
 describe('resolveOutDir', () => {
   it('should resolve an output directory inside the module and refuse one containing it', () => {
     expect(resolveOutDir('/repo/mod', 'dist')).toBe('/repo/mod/dist')
-    expect(resolveOutDir('/repo/mod', '../sibling-dist')).toBe('/repo/sibling-dist')
     expect(resolveOutDir('/repo/mod', '/repo/mod/.stub')).toBe('/repo/mod/.stub')
-    for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod']) {
-      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`contains the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+    expect(resolveOutDir('/repo/mod', '..dist')).toBe('/repo/mod/..dist')
+    for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod', '../sibling', '/elsewhere/dist']) {
+      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
     }
+  })
+
+  it('should refuse an output directory that a symlink inside the module points outside it', async () => {
+    const root = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-outdir-')))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await mkdir(join(root, 'mod'))
+    await mkdir(join(root, 'other'))
+    await symlink(join(root, 'other'), join(root, 'mod/linked'))
+    await symlink(join(root, 'mod'), join(root, 'mod/self'))
+    await mkdir(join(root, 'mod/output'))
+    await symlink(join(root, 'mod/output'), join(root, 'mod/dist'))
+    expect(() => resolveOutDir(join(root, 'mod'), 'linked/dist')).toThrow(`resolves to \`${join(root, 'other/dist')}\`, which is not inside the module root`)
+    expect(() => resolveOutDir(join(root, 'mod'), 'self')).toThrow(`resolves to \`${join(root, 'mod')}\`, which is not inside the module root`)
+    expect(resolveOutDir(join(root, 'mod'), 'dist')).toBe(join(root, 'mod/dist'))
   })
 })
 
@@ -1256,7 +1099,7 @@ describe('writeDerivedTsconfig', () => {
     const diagnostics = (parsed: import('typescript').ParsedCommandLine) => ts.getPreEmitDiagnostics(ts.createProgram(parsed.fileNames, parsed.options))
       .map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
 
-    const derived = parse(await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root, {}))
+    const derived = parse(await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root!, {}))
     expect(derived.fileNames).toEqual([])
     const project = parse(ts.resolveProjectReferencePath(derived.projectReferences![0]!))
     expect(project.fileNames).toEqual([source])
@@ -1282,7 +1125,7 @@ describe('writeDerivedTsconfig', () => {
     await writeFile(join(cwd, 'test/setup.ts'), `export const setup = 1\n`)
     await writeFile(join(cwd, 'node_modules/dep/index.ts'), `export const dep = 1\n`)
     await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: 'ESNext', moduleResolution: 'Bundler' } }))
-    const derived = await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root, {})
+    const derived = await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root!, {})
     const names = (files: string[]) => files.map(file => file.slice(cwd.length + 1)).sort()
     expect(names(ts.getParsedCommandLineOfConfigFile(derived, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} })!.fileNames)).toEqual(['global.d.ts', 'src/use.ts'])
     expect(names(ts.parseJsonConfigFileContent(parseTsconfig(derived), ts.sys, dirname(derived)).fileNames)).toEqual(['global.d.ts', 'src/use.ts'])
@@ -1337,5 +1180,82 @@ describe('rewriteRuntimeDeclarations', () => {
       export type Kept = import('./missing')"
     `)
     await rm(dist, { recursive: true, force: true })
+  })
+})
+
+describe('build plan', () => {
+  const tempDir = async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-plan-'))
+    onTestFinished(() => rm(dir, { recursive: true, force: true }))
+    return dir
+  }
+
+  it('should resolve a module root reached through a symlink to its real path', async () => {
+    const dir = await tempDir()
+    await mkdir(join(dir, 'real'))
+    await symlink(join(dir, 'real'), join(dir, 'link'))
+    expect(resolveCwdArg({ rootDir: join(dir, 'link') })).toBe(resolveCwdArg({ rootDir: join(dir, 'real') }))
+    expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(realpathSync(dir), 'missing'))
+  })
+
+  it('should change the declaration cache key with the nearest lockfile', async () => {
+    const dir = await tempDir()
+    await mkdir(join(dir, 'module/.nuxt'), { recursive: true })
+    await writeFile(join(dir, 'module/.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
+    const before = await hashGeneratedTypes(join(dir, 'module'))
+    expect(await hashGeneratedTypes(join(dir, 'module'))).toBe(before)
+    await writeFile(join(dir, 'pnpm-lock.yaml'), 'lockfileVersion: 9\npackages: {}\n')
+    expect(await hashGeneratedTypes(join(dir, 'module'))).not.toBe(before)
+  })
+
+  it('should refuse a directory entry that emits `types.mjs` or `types.d.mts` at the root of the output', async () => {
+    const cwd = await tempDir()
+    const plan = { cwd, outDir: join(cwd, 'dist') } as BuildPlan
+    for (const types of ['types.mjs', 'types.d.mts']) {
+      await expect(finishBuild(plan, { outputs: ['runtime/a.js', types], builder: {}, keepOutput: true })).rejects.toThrow(`emits \`${types}\` at the root of \`dist\`, which would replace the generated \`types.d.mts\``)
+    }
+  })
+
+  it('should keep the output when a step after the bundle fails in watch mode', async () => {
+    const cwd = await tempDir()
+    const outDir = join(cwd, 'dist')
+    await mkdir(outDir)
+    await writeFile(join(outDir, 'module.mjs'), `throw new Error('fails once built')\n`)
+    const plan = { cwd, outDir, pkg: {} } as BuildPlan
+    await expect(finishBuild(plan, { outputs: [], builder: {}, keepOutput: true })).rejects.toThrow('fails once built')
+    expect(await readFile(join(outDir, 'module.mjs'), 'utf8')).toContain('fails once built')
+    await expect(finishBuild(plan, { outputs: [], builder: {} })).rejects.toThrow('fails once built')
+    expect(await readdir(cwd)).toEqual([])
+  })
+
+  it('should find literal dynamic imports with comments, template literals and options', () => {
+    const code = [
+      `import(/* @vite-ignore */ './a')`,
+      'import(`./b`)',
+      `import('./c', { with: { type: 'json' } })`,
+      'import(`./${name}`)',
+      `import(/* a */ /** b **/ './d')`,
+      `import(/*${'*//*'.repeat(40)}x)`,
+    ].join('\n')
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+  })
+
+  it('should treat a dot-prefixed name as a path inside the directory', () => {
+    expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
+    expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')
+  })
+
+  it('should not follow declaration files when deciding which JSX to compile', async () => {
+    const cwd = await tempDir()
+    await mkdir(join(cwd, 'src/runtime/server'), { recursive: true })
+    await writeFile(join(cwd, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(cwd, 'src/runtime/server/types.d.ts'), `export { default } from '../Button'\n`)
+    await writeFile(join(cwd, 'src/runtime/server/handler.ts'), `export default 'handler'\n`)
+    await writeFile(join(cwd, 'src/runtime/Button.tsx'), `export default () => <button />\n`)
+    const plan = { cwd, entries: { module: './src/module.ts' }, directories: [{ srcDir: join(cwd, 'src/runtime'), outDir: join(cwd, 'dist/runtime'), ext: 'js' }] } as unknown as BuildPlan
+    const { compiledJsx } = analyseSources(plan)
+    expect([...compiledJsx].sort()).toEqual([join(cwd, 'src/module.ts'), join(cwd, 'src/runtime/server/handler.ts')])
   })
 })
