@@ -34,12 +34,9 @@ export async function createTsconfigResolver(dir: string): Promise<TsconfigResol
     root = await rebaseOnOwnBuildDir(root.path, own, dir)
   }
   const projects = allReferencedProjects(root).map(project => ({ project, matches: createFilesMatcher(project) }))
-
-  const scriptPath = (file: string) => file.endsWith('.vue') ? `${file}.ts` : file
-
   return {
     root,
-    resolve: file => projects.find(({ matches }) => matches(scriptPath(file)))?.project ?? root,
+    resolve: file => projects.find(({ matches }) => matches(file.endsWith('.vue') ? `${file}.ts` : file))?.project ?? root,
     ...replaced && { replaced },
   }
 }
@@ -47,7 +44,7 @@ export async function createTsconfigResolver(dir: string): Promise<TsconfigResol
 function usesForeignBuildDir(tsconfig: TsConfigResult, dir: string) {
   const targets = Object.values(tsconfigPaths(tsconfig)).flat()
   const projects = allReferencedProjects(tsconfig).map(project => project.path)
-  return [...targets, ...projects].some(file => NUXT_BUILD_DIR_RE.test(file) && !isOwnBuildFile(file, dir))
+  return [...targets, ...projects].some(file => isForeignBuildFile(file, dir))
 }
 
 function isOwnBuildFile(file: string, dir: string) {
@@ -56,6 +53,16 @@ function isOwnBuildFile(file: string, dir: string) {
 
 function isForeignBuildFile(file: string, dir: string) {
   return NUXT_BUILD_DIR_RE.test(file) && !isOwnBuildFile(file, dir)
+}
+
+/** The package a bare specifier names, or `undefined` for an alias or a specifier with a protocol. */
+function packageName(specifier: string) {
+  return specifier.startsWith('#') || /^[~@]\//.test(specifier) || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
+}
+
+function parseProject(ts: typeof import('typescript'), path: string, vue: boolean) {
+  const extraFileExtensions = vue ? [{ extension: 'vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }] : undefined
+  return ts.getParsedCommandLineOfConfigFile(path, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} }, undefined, undefined, extraFileExtensions)
 }
 
 const PATH_OPTIONS = ['baseUrl', 'rootDir', 'outDir', 'declarationDir', 'tsBuildInfoFile'] as const
@@ -69,7 +76,6 @@ const PATH_LIST_OPTIONS = ['rootDirs', 'typeRoots'] as const
  */
 async function rebaseOnOwnBuildDir(tsconfig: string, own: string, dir: string): Promise<TsConfigResult> {
   const { default: ts } = await import('typescript')
-  const read = (file: string) => ts.readConfigFile(file, ts.sys.readFile).config as RawTsconfig | undefined
   const ownConfig = parseTsconfig(own)
   const ownPaths = tsconfigPaths({ path: own, config: ownConfig })
   const { paths, types, ...options } = (await inheritedTsconfig(tsconfig, target => isForeignBuildFile(target, dir))).compilerOptions
@@ -82,7 +88,7 @@ async function rebaseOnOwnBuildDir(tsconfig: string, own: string, dir: string): 
       ...(ownTypes || types) ? { types: [...new Set([...ownTypes ?? [], ...(types ?? []) as string[]])] } : {},
     },
   }
-  const references = (read(tsconfig)?.references ?? [])
+  const references = ((ts.readConfigFile(tsconfig, ts.sys.readFile).config as RawTsconfig | undefined)?.references ?? [])
     .map(reference => ({ path: resolve(dirname(tsconfig), reference.path) }))
     .filter(reference => !isForeignBuildFile(reference.path, dir))
   const file = await writeCached(dir, '.json', JSON.stringify({ ...config, ...references.length && { references } }))
@@ -175,10 +181,7 @@ export function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: stri
 
 /** Whether `file` belongs to the module in `dir`, as {@link projectFiles} decides. */
 export function isModuleFile(file: string, dir: string): boolean {
-  if (!isInside(dir, file) || FOREIGN_DIR_RE.test(relative(dir, file).split('/')[0]!) || NODE_MODULES_RE.test(file)) {
-    return false
-  }
-  return !NUXT_BUILD_DIR_RE.test(file) || isOwnBuildFile(file, dir)
+  return isInside(dir, file) && !FOREIGN_DIR_RE.test(relative(dir, file).split('/')[0]!) && !NODE_MODULES_RE.test(file) && !isForeignBuildFile(file, dir)
 }
 
 /**
@@ -217,11 +220,8 @@ export function hasIsolatedDeclarations(tsconfig: TsConfigResult | undefined): b
 /** The tsconfig's `paths` made absolute. */
 export function tsconfigPaths(tsconfig: TsConfigResult | undefined): Record<string, string[]> {
   const paths = tsconfig?.config.compilerOptions?.paths
-  const matchPath = tsconfig && createPathsMatcher(tsconfig)
-  if (!paths || !matchPath) {
-    return {}
-  }
-  return Object.fromEntries(Object.keys(paths).map(alias => [alias, matchPath(alias)]))
+  const matchPath = paths && createPathsMatcher(tsconfig!)
+  return matchPath ? Object.fromEntries(Object.keys(paths).map(alias => [alias, matchPath(alias)])) : {}
 }
 
 const BUILD_ALIAS_RE = /^#(?:build|internal)(?:\/|$)/
@@ -253,7 +253,7 @@ export function declarationPaths(paths: Record<string, string[]>, cwd: string): 
       result.ambient.push(alias)
       continue
     }
-    const name = /^[#~@]\//.test(alias) || alias.startsWith('#') ? undefined : alias.match(PACKAGE_NAME_RE)?.[0]
+    const name = packageName(alias)
     if (name && targets.every(target => NODE_MODULES_RE.test(target)) && findPackageDir(name, cwd)) {
       continue
     }
@@ -263,13 +263,9 @@ export function declarationPaths(paths: Record<string, string[]>, cwd: string): 
 }
 
 function serverRoutesTable(paths: Record<string, string[]>, cwd: string) {
-  const targets = [...paths[SERVER_ROUTES_ALIAS] ?? [], ...(paths['#build/*'] ?? []).map(target => target.replaceAll('*', 'server-routes'))]
-  for (const target of targets) {
-    const file = target.endsWith('.d.ts') ? target : `${target}.d.ts`
-    if (isOwnBuildFile(file, cwd) && existsSync(file)) {
-      return file
-    }
-  }
+  return [...paths[SERVER_ROUTES_ALIAS] ?? [], ...(paths['#build/*'] ?? []).map(target => target.replaceAll('*', 'server-routes'))]
+    .map(target => target.endsWith('.d.ts') ? target : `${target}.d.ts`)
+    .find(file => isOwnBuildFile(file, cwd) && existsSync(file))
 }
 
 const cacheDir = (cwd: string) => join(cwd, 'node_modules/.cache/transpile-dir')
@@ -284,10 +280,7 @@ function cachedPath(cwd: string, extension: string, contents: string) {
  */
 async function writeCached(cwd: string, extension: string, contents: string) {
   const file = cachedPath(cwd, extension, contents)
-  if (existsSync(file)) {
-    return file
-  }
-  return writeAtomic(file, contents)
+  return existsSync(file) ? file : writeAtomic(file, contents)
 }
 
 /** A path in the cache directory that keeps its name whatever is written to it. */
@@ -308,9 +301,18 @@ async function writeAtomic(file: string, contents: string) {
   return file
 }
 
-/** An ambient declaration file declaring each alias as a module. */
-export function writeAmbientModules(cwd: string, ambient: string[]): Promise<string> {
-  return writeCached(cwd, '.d.ts', ambient.map(alias => `declare module '${alias}'\n`).join(''))
+/**
+ * The {@link declarationPaths} of the `paths` of `tsconfig` plus `paths`, once the files they
+ * rely on are written: the server routes stub, and the `ambient` file that declares each alias
+ * left out as a module.
+ */
+export async function writeDeclarationPaths(cwd: string, tsconfig: TsConfigResult | undefined, paths: Record<string, string[]>): Promise<{ paths: Record<string, string[]>, ambient?: string }> {
+  const declaration = declarationPaths({ ...tsconfigPaths(tsconfig), ...paths }, cwd)
+  await writeServerRoutesStub(cwd)
+  return {
+    paths: declaration.paths,
+    ...declaration.ambient.length && { ambient: await writeCached(cwd, '.d.ts', declaration.ambient.map(alias => `declare module '${alias}'\n`).join('')) },
+  }
 }
 
 /**
@@ -364,14 +366,12 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
     return
   }
   const { default: ts } = await import('typescript')
-  const extraFileExtensions = [{ extension: 'vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }]
-  const host = { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} }
-  const files = new Set(projects.flatMap(project => projectFiles(ts.getParsedCommandLineOfConfigFile(project.path, {}, host, undefined, undefined, extraFileExtensions), cwd)))
+  const files = new Set(projects.flatMap(project => projectFiles(parseProject(ts, project.path, true), cwd)))
   const sources = await Promise.all([...files].sort().map(file => readFile(file, 'utf8').catch(() => '')))
   const specifiers = new Map<string, string>()
   for (const source of sources) {
     for (const { specifier } of moduleSpecifiers(source)) {
-      const name = /^[#~@]\//.test(specifier) || specifier.startsWith('#') || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
+      const name = packageName(specifier)
       if (name && !specifiers.has(name) && findPackageDir(name, cwd)) {
         specifiers.set(name, specifier)
       }
@@ -390,35 +390,27 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
  * With `vue`, single-file components are listed too. `imports` (see {@link writeDependencyImports})
  * is listed in each derived tsconfig that lists files of its own.
  */
-export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult | undefined, paths: Record<string, string[]>, { file, vue, imports }: { file?: string, vue?: boolean, imports?: string } = {}): Promise<string> {
-  const declaration = declarationPaths({ ...tsconfigPaths(tsconfig), ...paths }, cwd)
-  await writeServerRoutesStub(cwd)
+export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult, paths: Record<string, string[]>, { file, vue = false, imports }: { file?: string, vue?: boolean, imports?: string } = {}): Promise<string> {
+  const { default: ts } = await import('typescript')
+  const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
   const compilerOptions: Record<string, unknown> = { paths: declaration.paths, isolatedDeclarations: false }
-  if (declaration.ambient.length) {
+  if (declaration.ambient) {
     compilerOptions.types = [
-      ...tsconfig?.config.compilerOptions?.types ?? await automaticTypes(tsconfig, cwd),
-      await writeAmbientModules(cwd, declaration.ambient),
+      ...tsconfig.config.compilerOptions?.types ?? ts.getAutomaticTypeDirectiveNames({
+        configFilePath: tsconfig.path,
+        typeRoots: tsconfig.config.compilerOptions?.typeRoots?.map(root => resolve(dirname(tsconfig.path), root)),
+      }, ts.sys),
+      declaration.ambient,
     ]
   }
   const references = await Promise.all(referencedProjects(tsconfig).map(async project => ({ path: await writeDerivedTsconfig(cwd, project, paths, { vue, imports }) })))
-  const { default: ts } = await import('typescript')
-  const extraFileExtensions = vue ? [{ extension: 'vue', isMixedContent: true, scriptKind: ts.ScriptKind.Deferred }] : undefined
-  const parsed = tsconfig && ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} }, undefined, undefined, extraFileExtensions)
-  const files = projectFiles(parsed, cwd)
+  const files = projectFiles(parseProject(ts, tsconfig.path, vue), cwd)
   const contents = JSON.stringify({
-    ...tsconfig && { extends: tsconfig.path },
-    ...tsconfig && { files: [...files, ...imports && files.length ? [imports] : []].map(file => relative(cacheDir(cwd), file)), include: [] },
+    extends: tsconfig.path,
+    files: [...files, ...imports && files.length ? [imports] : []].map(file => relative(cacheDir(cwd), file)),
+    include: [],
     compilerOptions,
     ...references.length && { references },
   })
   return file ? writeAtomic(file, contents) : writeCached(cwd, '.json', contents)
-}
-
-async function automaticTypes(tsconfig: TsConfigResult | undefined, cwd: string) {
-  const { default: ts } = await import('typescript')
-  const base = tsconfig ? dirname(tsconfig.path) : cwd
-  return ts.getAutomaticTypeDirectiveNames({
-    configFilePath: tsconfig?.path ?? join(cwd, 'tsconfig.json'),
-    typeRoots: tsconfig?.config.compilerOptions?.typeRoots?.map(root => resolve(base, root)),
-  }, ts.sys)
 }

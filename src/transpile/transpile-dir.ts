@@ -6,7 +6,7 @@ import type { Rolldown } from 'tsdown'
 
 import type { Transform as VueTransform } from 'vue-sfc-transformer/core'
 
-import { DECLARATION_RE, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
+import { getOrCreate, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
 import type { DeclarationProgram } from './declarations.ts'
 import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
@@ -42,22 +42,14 @@ export interface ExternalImport {
   kind: ImportKind
   /** Where the importer is emitted, relative to the output directory. */
   from: string
-  /** Where the plugin would emit the file, relative to the output directory. */
-  output: string
-}
-
-interface MirrorExternal {
-  /** Emit the file alongside the directory: as a script and declaration, or as a declaration only. */
-  mirror: ImportKind
-  /** Where to emit it, relative to the output directory. Defaults to the proposed `output`. */
-  output?: string
 }
 
 /**
  * Decides what happens to a relative import that resolves outside `srcDir`: a replacement
- * specifier, a mirrored copy of the file, or `undefined` to keep the specifier as written.
+ * specifier, a mirrored copy of the file (as a script and declaration, or as a declaration
+ * only), or `undefined` to keep the specifier as written.
  */
-export type ResolveExternal = (specifier: string, importer: string, context: ExternalImport) => string | MirrorExternal | undefined | Promise<string | MirrorExternal | undefined>
+export type ResolveExternal = (specifier: string, importer: string, context: ExternalImport) => string | { mirror: ImportKind } | undefined
 
 export interface TranspileDirOptions {
   /** Absolute path of the directory whose files are transpiled one by one. */
@@ -74,7 +66,7 @@ export interface TranspileDirOptions {
    * JSX compilation for a `.tsx` or `.jsx` source. `'preserve'` emits it as `.jsx` with types
    * stripped, next to a `.d.ts`, for the app's JSX plugin to compile.
    */
-  jsx: (file: string) => TransformOptions['jsx']
+  jsx: (file: string) => NonNullable<TransformOptions['jsx']>
   /** The oxc `transform` of the `rolldown` that tsdown runs. */
   transform: Transform
   /** Emit source maps next to scripts. */
@@ -83,11 +75,8 @@ export interface TranspileDirOptions {
   cacheVersion: string
   /** Relative imports that resolve outside `srcDir`. */
   resolveExternal: ResolveExternal
-}
-
-interface TranspileDirApi {
-  /** Every discovered or mirrored source of the latest build, mapped to the path it is emitted at, relative to the output directory. */
-  readonly outputs: Promise<Map<string, string>>
+  /** Paths relative to the output directory, without extension, that mirrored files are not emitted at. */
+  reserved: string[]
 }
 
 /** `pluginCode` of the warning that lists type errors which do not affect the emitted declarations. */
@@ -101,8 +90,6 @@ interface Edge {
   value: boolean
 }
 
-type Resolution = { specifier: string } | { target: string, kind: ImportKind, output?: string } | undefined
-
 interface Emitted {
   fileName: string
   source: string | Uint8Array
@@ -114,20 +101,14 @@ export const EXCLUDE: string[] = ['**/*.{stories,spec,test}.{js,jsx,ts,tsx,mjs,c
 const STYLESHEET_RE = /\.(?:css|s[ac]ss)$/
 const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
 
-interface Emitter {
-  /** Rewritten declarations keyed by source path. */
-  emitted: Map<string, string>
-  /** The program shared by single-file components and TypeScript sources, when the directory has components. */
-  vue?: () => Promise<VueDeclarations>
-  emit: (files: string[]) => Promise<void>
-}
-
 /**
  * Transpiles the files of a directory one by one: each script keeps its own imports and
  * exports, `.vue` files go through `vue-sfc-transformer`, stylesheets are processed, other
  * files are copied, and declarations come from one TypeScript program over the directory.
+ * `api.outputs` maps every discovered or mirrored source of the latest build to the path it
+ * is emitted at, relative to the output directory.
  */
-export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: TranspileDirApi } {
+export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: { readonly outputs: Promise<Map<string, string>> } } {
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
   let latestBuild: DirectoryBuild | undefined
 
@@ -182,9 +163,14 @@ class DirectoryBuild {
   private assets: string[] = []
   private outside = new Map<string, ImportKind>()
   private edges = new Map<string, Promise<Edge[]>>()
-  private resolutions = new Map<string, Promise<Resolution>>()
+  private resolutions = new Map<string, ReturnType<ResolveExternal>>()
   private references = new Map<string, Set<string>>()
-  private resolver: Promise<TsconfigResolver> | undefined
+  /** Rewritten declarations keyed by source path. */
+  private declarations = new Map<string, string>()
+  private programs = new Map<string | undefined, Promise<DeclarationProgram>>()
+  private vueDeclarations: Promise<VueDeclarations> | undefined
+  private resolver!: TsconfigResolver
+  private imports: string | undefined
   private extension: string
   private dtsExtension: string
   private options: TranspileDirOptions
@@ -199,7 +185,7 @@ class DirectoryBuild {
         this.vue.push(file)
         this.outputs.set(file, path)
       }
-      else if (SCRIPT_RE.test(file) && !DECLARATION_RE.test(file)) {
+      else if (isSourceScript(file)) {
         this.scripts.push(file)
         this.outputs.set(file, path.replace(SCRIPT_RE, this.scriptExtension(file)))
       }
@@ -211,14 +197,15 @@ class DirectoryBuild {
   }
 
   async run(): Promise<Emitted[]> {
+    this.resolver = await createTsconfigResolver(this.options.cwd)
     await this.plan()
-    const valueFiles = [...this.outside].filter(([, kind]) => kind === 'value').map(([file]) => file)
-    const emitter = await this.createEmitter()
+    this.imports = await writeDependencyImports(this.options.cwd, this.resolver.root)
+    const scripts = [...this.scripts, ...[...this.outside].filter(([, kind]) => kind === 'value').map(([file]) => file)]
     const settled = await Promise.allSettled([
-      Promise.all([...this.scripts, ...valueFiles].map(file => this.transpile(file))),
+      Promise.all(scripts.map(file => this.transpile(file))),
       Promise.all(this.assets.map(file => this.asset(file))),
-      this.transformVue(emitter),
-      emitter.emit([...this.scripts, ...valueFiles]),
+      this.transformVue(),
+      this.emitDeclarations(scripts),
     ])
     const failures = settled.flatMap(result => result.status === 'rejected' ? [result.reason as unknown] : [])
     if (failures.length) {
@@ -226,26 +213,22 @@ class DirectoryBuild {
         ? declarationError([...new Set(failures.flatMap(failure => failure.diagnostics))])
         : failures.find(failure => !(failure instanceof DeclarationError))
     }
-    const [scripts, assets, vue] = settled.map(result => (result as PromiseFulfilledResult<unknown>).value) as [Emitted[], Emitted[], Emitted[]]
-    const requested = new Set([...this.scripts, ...valueFiles])
-    let referenced = this.referencedOutside([...this.scripts, ...valueFiles, ...this.vue], requested)
+    const [transpiled, assets, vue] = settled.map(result => (result as PromiseFulfilledResult<unknown>).value) as [Emitted[], Emitted[], Emitted[]]
+    const requested = new Set(scripts)
+    let referenced = this.referencedOutside([...scripts, ...this.vue], requested)
     while (referenced.length) {
-      await emitter.emit(referenced)
+      await this.emitDeclarations(referenced)
       referenced = this.referencedOutside(referenced, requested)
     }
-    const declarations = [...emitter.emitted].map(([source, text]) => ({ fileName: this.declarationOutput(source), source: text }))
+    const declarations = [...this.declarations].map(([source, text]) => ({ fileName: this.declarationOutput(source), source: text }))
     if (this.typeErrors.length) {
       this.warnings.push({ pluginCode: TYPE_ERRORS_WARNING, message: typeErrorsWarning([...new Set(this.typeErrors)], relative(this.options.cwd, this.options.srcDir)) })
     }
-    return [...scripts, ...assets, ...vue, ...declarations]
-  }
-
-  private jsx(file: string) {
-    return this.options.jsx(file) ?? 'preserve'
+    return [...transpiled, ...assets, ...vue, ...declarations]
   }
 
   private scriptExtension(file: string) {
-    return scriptExtension(file, this.extension, this.jsx(file) === 'preserve')
+    return scriptExtension(file, this.extension, this.options.jsx(file) === 'preserve')
   }
 
   private declarationOutput(source: string) {
@@ -254,54 +237,31 @@ class DirectoryBuild {
   }
 
   private async plan() {
-    const kinds = new Map<string, ImportKind>([...this.scripts, ...this.vue].map(file => [file, 'value']))
-    const queue = [...kinds.keys()]
-    const taken = new Set([...this.outputs.values()].map(stem))
+    const queue = [...this.scripts, ...this.vue]
+    const taken = new Set([...[...this.outputs.values()].map(stem), ...this.options.reserved])
     while (queue.length) {
       const importer = queue.shift()!
-      const importerKind = kinds.get(importer)!
-      for (const edge of await this.edgesOf(importer)) {
+      const importerKind = this.outside.get(importer) ?? 'value'
+      for (const edge of await getOrCreate(this.edges, importer, () => this.readEdges(importer))) {
         if (this.outputs.has(edge.target) && !this.outside.has(edge.target)) {
           continue
         }
         const kind: ImportKind = importerKind === 'value' && edge.value ? 'value' : 'type'
-        const from = this.outputs.get(importer)!
-        const proposed = this.proposedOutput(importer, edge.target, taken)
-        const result = await this.resolveExternal(edge, importer, { file: edge.target, kind, from, output: proposed })
-        if (!result || !('target' in result)) {
-          continue
-        }
+        const context = { file: edge.target, kind, from: this.outputs.get(importer)! }
+        const result = getOrCreate(this.resolutions, `${importer}\0${edge.specifier}\0${kind}`, () => this.options.resolveExternal(edge.specifier, importer, context))
         const existing = this.outside.get(edge.target)
-        if (existing === 'value' || existing === result.kind) {
+        if (!result || typeof result === 'string' || existing === 'value' || existing === result.mirror) {
           continue
         }
         if (!existing) {
-          const output = result.output ?? proposed
+          const output = this.proposedOutput(importer, edge.target, taken)
           this.outputs.set(edge.target, output)
           taken.add(stem(output))
         }
-        this.outside.set(edge.target, result.kind)
-        kinds.set(edge.target, result.kind)
+        this.outside.set(edge.target, result.mirror)
         queue.push(edge.target)
       }
     }
-  }
-
-  private resolveExternal(edge: Edge, importer: string, context: ExternalImport) {
-    const key = `${importer}\0${edge.specifier}\0${context.kind}`
-    let pending = this.resolutions.get(key)
-    if (!pending) {
-      pending = Promise.resolve(this.options.resolveExternal(edge.specifier, importer, context)).then((result): Resolution => {
-        if (typeof result === 'string') {
-          return { specifier: result }
-        }
-        if (result) {
-          return { target: edge.target, kind: result.mirror, output: result.output }
-        }
-      })
-      this.resolutions.set(key, pending)
-    }
-    return pending
   }
 
   /**
@@ -318,42 +278,24 @@ class DirectoryBuild {
     return join('_external', ...segments) + this.scriptExtension(target)
   }
 
-  private edgesOf(importer: string) {
-    let edges = this.edges.get(importer)
-    if (!edges) {
-      edges = this.readEdges(importer)
-      this.edges.set(importer, edges)
-    }
-    return edges
-  }
-
   private async readEdges(importer: string): Promise<Edge[]> {
     const source = await readFile(importer, 'utf8')
-    const values = importer.endsWith('.vue') ? valueSpecifiers(source) : valueSpecifiers((await this.transpileSource(importer, source)).code)
-    const edges: Edge[] = []
-    const seen = new Set<string>()
-    for (const { specifier } of moduleSpecifiers(source)) {
-      if (!RELATIVE_RE.test(specifier) || seen.has(specifier)) {
-        continue
-      }
-      seen.add(specifier)
+    const values = valueSpecifiers(importer.endsWith('.vue') ? source : (await this.transpileSource(importer, source)).code)
+    const specifiers = new Set(moduleSpecifiers(source).map(({ specifier }) => specifier).filter(specifier => RELATIVE_RE.test(specifier)))
+    return [...specifiers].flatMap((specifier) => {
       const target = probe(resolve(dirname(importer), specifier))
-      if (target && SCRIPT_RE.test(target) && !DECLARATION_RE.test(target)) {
-        edges.push({ specifier, target: normalize(target), value: values.has(specifier) })
-      }
-    }
-    return edges
+      return target && isSourceScript(target) ? [{ specifier, target: normalize(target), value: values.has(specifier) }] : []
+    })
   }
 
   private async transpileSource(file: string, source: string, sourcemap = false) {
-    const resolver = await this.tsconfigs()
-    const project = resolver.resolve(file)
+    const project = this.resolver.resolve(file)
     const result = await this.options.transform(file, TYPESCRIPT_RE.test(file) ? source.replace(EMPTY_IMPORT_RE, match => ' '.repeat(match.length)) : source, {
       lang: file.match(/\.[cm]?([jt]sx?)$/)![1],
       sourcemap,
-      jsx: this.jsx(file),
+      jsx: this.options.jsx(file),
       typescript: { onlyRemoveTypeImports: false },
-      ...project && project !== resolver.root && { tsconfig: project.path },
+      ...project && project !== this.resolver.root && { tsconfig: project.path },
     })
     if (result.errors.length) {
       throw new Error(`Failed to transpile ${relative(this.options.cwd, file)}:\n${result.errors.map(error => error.message).join('\n')}`)
@@ -364,7 +306,7 @@ class DirectoryBuild {
   private async transpile(file: string): Promise<Emitted> {
     const fileName = this.outputs.get(file)!
     const result = await this.transpileSource(file, await readFile(file, 'utf8'), this.options.sourcemap)
-    const code = await this.rewriteSpecifiers(file, fileName, result.code)
+    const code = this.rewriteSpecifiers(file, fileName, result.code)
     if (!this.options.sourcemap || !result.map) {
       return { fileName, source: code }
     }
@@ -375,22 +317,16 @@ class DirectoryBuild {
    * `code` of `source`, emitted at `output`, with relative specifiers pointing at planned
    * outputs. For declarations, the files referred to are recorded.
    */
-  private async rewriteSpecifiers(source: string, output: string, code: string, declaration = false) {
-    const replacements = new Map<string, string | undefined>()
+  private rewriteSpecifiers(source: string, output: string, code: string, declaration = false) {
     const referenced = new Set<string>()
-    for (const { specifier } of moduleSpecifiers(code)) {
-      if (!RELATIVE_RE.test(specifier) || replacements.has(specifier)) {
-        continue
-      }
-      replacements.set(specifier, await this.replacement(source, specifier, output, referenced))
-    }
+    const rewritten = rewriteSpecifiers(code, specifier => RELATIVE_RE.test(specifier) ? this.replacement(source, specifier, output, referenced) : undefined)
     if (declaration) {
       this.references.set(source, referenced)
     }
-    return rewriteSpecifiers(code, specifier => replacements.get(specifier))
+    return rewritten
   }
 
-  private async replacement(source: string, specifier: string, output: string, referenced: Set<string>) {
+  private replacement(source: string, specifier: string, output: string, referenced: Set<string>) {
     const target = probe(resolve(dirname(source), specifier))
     if (!target) {
       return
@@ -398,13 +334,13 @@ class DirectoryBuild {
     const file = normalize(target)
     referenced.add(file)
     for (const kind of ['value', 'type'] as const) {
-      const resolution = await this.resolutions.get(`${source}\0${specifier}\0${kind}`)
-      if (resolution && 'specifier' in resolution) {
-        return resolution.specifier
+      const resolution = this.resolutions.get(`${source}\0${specifier}\0${kind}`)
+      if (typeof resolution === 'string') {
+        return resolution
       }
     }
     const planned = this.outputs.get(file)
-    if (planned && !DECLARATION_RE.test(file) && (SCRIPT_RE.test(file) || file.endsWith('.vue') || SASS_RE.test(file))) {
+    if (planned && (isSourceScript(file) || file.endsWith('.vue') || SASS_RE.test(file))) {
       return relativeSpecifier(output, planned)
     }
   }
@@ -420,131 +356,105 @@ class DirectoryBuild {
     return { fileName, source: await readFile(file) }
   }
 
-  private tsconfigs() {
-    return this.resolver ??= createTsconfigResolver(this.options.cwd)
-  }
-
-  private async transformVue(emitter: Emitter): Promise<Emitted[]> {
+  private async transformVue(): Promise<Emitted[]> {
     if (!this.vue.length) {
       return []
     }
     const runtime = await transformVueRuntime(this.vue, this.options.transform as VueTransform)
-    const results: Promise<Emitted>[] = [...runtime].map(async ([file, source]) => {
-      const fileName = this.outputs.get(file)!
-      return { fileName, source: await this.rewriteSpecifiers(file, fileName, source) }
-    })
-    const { declarations, errors, warnings } = await emitter.vue!()
+    const result = await this.vueProgram()
+    const { errors, warnings } = vueEmit(result, this.vue, this.options.cwd, true)
+    if (errors.length) {
+      throw declarationError([...new Set(errors)])
+    }
+    this.typeErrors.push(...warnings)
     const selected = new Set(this.vue)
-    const errorMessages = errors.filter(({ file }) => file === undefined || selected.has(file)).map(({ message }) => message)
-    for (const file of this.vue) {
-      if (!declarations.has(declarationPath(file)) && !errors.some(error => error.file === file)) {
-        errorMessages.push(`${relative(this.options.cwd, file)}: no declaration was emitted`)
-      }
-    }
-    if (errorMessages.length) {
-      throw declarationError([...new Set(errorMessages)])
-    }
-    this.typeErrors.push(...warnings.filter(({ file }) => file !== undefined && selected.has(file)).map(({ message }) => message))
-    for (const [path, source] of declarations) {
+    const declarations = [...result.declarations].flatMap(([path, source]) => {
       const vueFile = path.replace(VUE_DECLARATION_RE, '.vue')
       if (!selected.has(vueFile)) {
-        continue
+        return []
       }
-      const output = this.outputs.get(vueFile)!.replace(/\.vue$/, path.slice(vueFile.length - '.vue'.length))
-      results.push(this.rewriteSpecifiers(vueFile, output, source, true).then(source => ({ fileName: output, source })))
-    }
-    return Promise.all(results)
+      const fileName = this.outputs.get(vueFile)!.replace(/\.vue$/, path.slice(vueFile.length - '.vue'.length))
+      return [{ fileName, source: this.rewriteSpecifiers(vueFile, fileName, source, true) }]
+    })
+    return [...[...runtime].map(([file, source]) => {
+      const fileName = this.outputs.get(file)!
+      return { fileName, source: this.rewriteSpecifiers(file, fileName, source) }
+    }), ...declarations]
+  }
+
+  private program(tsconfig: TsConfigResult | undefined) {
+    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
+  }
+
+  /** The program shared by single-file components and TypeScript sources. */
+  private vueProgram() {
+    return this.vueDeclarations ??= (async () => {
+      const tsconfig = this.resolver.root
+      return emitDeclarations([...this.vue, ...[...this.scripts, ...this.outside.keys()].filter(file => TYPESCRIPT_RE.test(file))], {
+        cwd: this.options.cwd,
+        cacheVersion: this.options.cacheVersion,
+        tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths, { vue: true, imports: this.imports }),
+      })
+    })()
   }
 
   /**
-   * Declarations for the directory's scripts. With single-file components present,
-   * TypeScript sources join their program so that types imported from a component
-   * resolve; other scripts get one program per tsconfig project.
+   * Declarations for `files`. With single-file components present, TypeScript sources join
+   * their program so that types imported from a component resolve; other scripts get one
+   * program per tsconfig project.
    */
-  private async createEmitter(): Promise<Emitter> {
-    const resolver = await this.tsconfigs()
-    const imports = await writeDependencyImports(this.options.cwd, resolver.root)
-    const programs = new Map<string | undefined, Promise<DeclarationProgram>>()
-    const programFor = (tsconfig: TsConfigResult | undefined) => {
-      let program = programs.get(tsconfig?.path)
-      if (!program) {
-        program = createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths }, [...this.scripts, ...this.outside.keys(), ...imports ? [imports] : []])
-        programs.set(tsconfig?.path, program)
-      }
-      return program
+  private async emitDeclarations(files: string[]) {
+    const isShared = (file: string) => this.vue.length > 0 && TYPESCRIPT_RE.test(file)
+    const shared = files.filter(isShared)
+    const groups = new Map<Promise<DeclarationProgram>, string[]>()
+    for (const file of files.filter(file => !isShared(file))) {
+      const program = this.program(this.resolver.resolve(file))
+      groups.set(program, [...groups.get(program) ?? [], file])
     }
-    let vue: Promise<VueDeclarations> | undefined
-    const vueProgram = this.vue.length
-      ? () => vue ??= (async () => {
-          const tsconfig = resolver.root
-          return emitDeclarations([...this.vue, ...[...this.scripts, ...this.outside.keys()].filter(file => TYPESCRIPT_RE.test(file))], {
-            cwd: this.options.cwd,
-            cacheVersion: this.options.cacheVersion,
-            tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths, { vue: true, imports }),
-          })
-        })()
-      : undefined
-    const emitted = new Map<string, string>()
-
-    return {
-      emitted,
-      vue: vueProgram,
-      emit: async (files: string[]) => {
-        const errors: string[] = []
-        const warnings: string[] = []
-        const groups = new Map<Promise<DeclarationProgram>, string[]>()
-        const shared: string[] = []
-        for (const file of files) {
-          if (vueProgram && TYPESCRIPT_RE.test(file)) {
-            shared.push(file)
-            continue
-          }
-          const program = programFor(resolver.resolve(file))
-          groups.set(program, [...groups.get(program) ?? [], file])
-        }
-        if (shared.length) {
-          const result = await vueProgram!()
-          const selected = new Set(shared)
-          errors.push(...result.errors.filter(({ file }) => file !== undefined && selected.has(file)).map(({ message }) => message))
-          warnings.push(...result.warnings.filter(({ file }) => file !== undefined && selected.has(file)).map(({ message }) => message))
-          for (const file of shared) {
-            const text = result.declarations.get(declarationPath(file))
-            if (text === undefined) {
-              if (!result.errors.some(error => error.file === file)) {
-                errors.push(`${relative(this.options.cwd, file)}: no declaration was emitted`)
-              }
-              continue
-            }
-            emitted.set(file, await this.rewriteSpecifiers(file, this.declarationOutput(file), text, true))
-          }
-        }
-        for (const [pending, groupFiles] of groups) {
-          const result = await (await pending).emit(groupFiles)
-          errors.push(...result.errors)
-          warnings.push(...result.warnings)
-          for (const [source, text] of result.declarations) {
-            emitted.set(source, await this.rewriteSpecifiers(source, this.declarationOutput(source), text, true))
-          }
-        }
-        if (errors.length) {
-          throw declarationError([...new Set(errors)])
-        }
-        this.typeErrors.push(...warnings)
-      },
+    const results = shared.length ? [vueEmit(await this.vueProgram(), shared, this.options.cwd, false)] : []
+    for (const [program, groupFiles] of groups) {
+      results.push(await (await program).emit(groupFiles))
     }
+    for (const [source, text] of results.flatMap(result => [...result.declarations])) {
+      this.declarations.set(source, this.rewriteSpecifiers(source, this.declarationOutput(source), text, true))
+    }
+    const errors = results.flatMap(result => result.errors)
+    if (errors.length) {
+      throw declarationError([...new Set(errors)])
+    }
+    this.typeErrors.push(...results.flatMap(result => result.warnings))
   }
 
   private referencedOutside(sources: string[], requested: Set<string>) {
-    const referenced = new Set<string>()
-    for (const source of sources) {
-      for (const target of this.references.get(source) ?? []) {
-        if (this.outside.has(target) && !requested.has(target)) {
-          referenced.add(target)
-          requested.add(target)
-        }
-      }
+    const referenced = [...new Set(sources.flatMap(source => [...this.references.get(source) ?? []]))]
+      .filter(target => this.outside.has(target) && !requested.has(target))
+    for (const target of referenced) {
+      requested.add(target)
     }
-    return [...referenced]
+    return referenced
+  }
+}
+
+/**
+ * The declarations of `files` in `result`, keyed by source path, the diagnostics about them,
+ * and an error for each of them without a declaration or an error of its own. With `global`,
+ * errors that name no file are included.
+ */
+function vueEmit(result: VueDeclarations, files: string[], cwd: string, global: boolean) {
+  const { errors, warnings } = result
+  const selected = new Set(files)
+  const about = ({ file }: { file?: string }) => file === undefined ? global : selected.has(file)
+  const declarations = new Map(files.flatMap((file) => {
+    const text = result.declarations.get(declarationPath(file))
+    return text === undefined ? [] : [[file, text] as const]
+  }))
+  return {
+    declarations,
+    errors: [
+      ...errors.filter(about).map(({ message }) => message),
+      ...files.filter(file => !declarations.has(file) && !errors.some(error => error.file === file)).map(file => `${relative(cwd, file)}: no declaration was emitted`),
+    ],
+    warnings: warnings.filter(({ file }) => file !== undefined && selected.has(file)).map(({ message }) => message),
   }
 }
 

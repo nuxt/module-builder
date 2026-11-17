@@ -6,7 +6,7 @@ import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { createDeclarationProgram } from '../transpile/declarations.ts'
 import { rewriteSpecifiers } from '../transpile/specifiers.ts'
 import { hasIsolatedDeclarations, isModuleFile } from '../transpile/tsconfig.ts'
-import { DECLARATION_RE, isInside, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
+import { isInside, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
 import { loadOxc } from './loader.ts'
 import { writeSourceTypes } from './types.ts'
 
@@ -49,7 +49,7 @@ export interface ModuleDeclarationOptions {
  */
 export async function writeModuleDeclarations(cwd: string, dir: string, { tsconfig, entry, roots, paths }: ModuleDeclarationOptions): Promise<void> {
   await writeSourceTypes(dir, entry, join(dir, relative(cwd, entry)))
-  const isModuleCode = (file: string) => SCRIPT_RE.test(file) && !DECLARATION_RE.test(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
+  const isModuleCode = (file: string) => isSourceScript(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
   const program = await createDeclarationProgram({ cwd, tsconfig, paths }, roots)
   const sources = program.sources().filter(isModuleCode)
   const { declarations, errors } = (hasIsolatedDeclarations(tsconfig) && await isolatedDeclarations(sources, cwd))

@@ -11,13 +11,13 @@ import { isInside, NODE_MODULES_RE, probe, relativeSpecifier, SCRIPT_RE, TYPESCR
 import { guide } from './guide.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
-const ALIAS_SHAPED_RE = /^(?:#|~|@\/)/
+const PATH_ALIAS_RE = /^(?:~|@\/)/
 const JSON_RE = /\.json$/
 const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
 
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
-  cwd?: string
+  cwd: string
   /** Source code to serve in place of these bare specifiers. */
   stubs?: Record<string, string>
   /**
@@ -32,31 +32,27 @@ export interface ImportModuleOptions {
  * Import a file as Node does, with `stubs` for bare specifiers. Module code has to load as
  * Node loads it (see {@link findModuleCodeIssues}).
  */
-export async function importModule(path: string, options: ImportModuleOptions = {}): Promise<Record<string, unknown>> {
-  const cwd = options.cwd ?? process.cwd()
-  const stubs = options.stubs || {}
-
+export async function importModule(path: string, { cwd, stubs = {}, version }: ImportModuleOptions): Promise<Record<string, unknown>> {
+  const versioned = (href: string) => {
+    const url = new URL(href)
+    url.searchParams.set('v', String(version))
+    return url.href
+  }
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (Object.hasOwn(stubs, specifier)) {
         return { url: `data:text/javascript,${encodeURIComponent(stubs[specifier]!)}`, shortCircuit: true }
       }
       const resolved = nextResolve(specifier, context)
-      if (!options.version || !resolved.url.startsWith('file:') || !isInside(cwd, fileURLToPath(resolved.url)) || NODE_MODULES_RE.test(resolved.url)) {
+      if (!version || !resolved.url.startsWith('file:') || !isInside(cwd, fileURLToPath(resolved.url)) || NODE_MODULES_RE.test(resolved.url)) {
         return resolved
       }
-      const url = new URL(resolved.url)
-      url.searchParams.set('v', String(options.version))
-      return { ...resolved, url: url.href }
+      return { ...resolved, url: versioned(resolved.url) }
     },
   })
-
   try {
-    const url = pathToFileURL(path)
-    if (options.version) {
-      url.searchParams.set('v', String(options.version))
-    }
-    return await import(url.href)
+    const url = pathToFileURL(path).href
+    return await import(version ? versioned(url) : url)
   }
   finally {
     hooks.deregister()
@@ -94,15 +90,15 @@ export interface ModuleCodeIssue {
   message: string
 }
 
-const NON_ERASABLE_FIXES: Record<string, string> = {
-  '`enum`': 'use an `as const` object and a union type of its values',
-  '`namespace`': 'use plain exports or an object',
-  'angle-bracket type assertion': 'write `value as Type`',
-  'parameter property': 'declare the field and assign it in the constructor',
-  '`import =`': 'use `import`, or `createRequire` for CommonJS',
-  '`export =`': 'use `export default`',
-  'decorator': 'call the decorator as a function',
-}
+const NON_ERASABLE: Array<[message: string, matches: (ts: typeof import('typescript'), node: ts.Node) => boolean]> = [
+  ['`enum` (use an `as const` object and a union type of its values)', (ts, node) => ts.isEnumDeclaration(node)],
+  ['`namespace` (use plain exports or an object)', (ts, node) => ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (ts.NodeFlags.NestedNamespace | ts.NodeFlags.GlobalAugmentation)) && hasRuntimeCode(ts, node)],
+  ['angle-bracket type assertion (write `value as Type`)', (ts, node) => ts.isTypeAssertionExpression(node)],
+  ['parameter property (declare the field and assign it in the constructor)', (ts, node) => ts.isParameter(node) && ts.isParameterPropertyDeclaration(node, node.parent)],
+  ['`import =` (use `import`, or `createRequire` for CommonJS)', (ts, node) => ts.isImportEqualsDeclaration(node) && !node.isTypeOnly],
+  ['`export =` (use `export default`)', (ts, node) => ts.isExportAssignment(node) && !!node.isExportEquals],
+  ['decorator (call the decorator as a function)', (ts, node) => ts.isDecorator(node)],
+]
 
 /**
  * Everything in `entries` and the sources they import by value, which Node loads with
@@ -121,8 +117,8 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
     checked.add(file)
     const importedBy = importer && runtimeDirs.some(dir => isInside(dir, file)) ? `${relative(cwd, importer.file)}:${importer.line}` : undefined
     const issue = (location: { line: number, column: number }, message: string) => found.push({ file: relative(cwd, file), ...location, ...importedBy && { importedBy }, message })
-    for (const { kind, ...location } of analysis.nonErasable) {
-      issue(location, `${kind} (${NON_ERASABLE_FIXES[kind]})`)
+    for (const { message, ...location } of analysis.nonErasable) {
+      issue(location, message)
     }
     for (const { specifier, typeOnly, json, resolution, ...location } of analysis.imports) {
       if (typeOnly) {
@@ -188,7 +184,7 @@ interface Resolution {
 }
 
 interface SourceAnalysis {
-  nonErasable: Array<{ line: number, column: number, kind: string }>
+  nonErasable: Array<{ line: number, column: number, message: string }>
   imports: Array<{ specifier: string, typeOnly: boolean, json: boolean, line: number, column: number, resolution?: Resolution }>
 }
 
@@ -210,10 +206,8 @@ function walkSources(cwd: string, entries: string[], visit: (file: string, analy
     const analysis = analyseSource(file, readFileSync(file, 'utf8'))
     for (const entry of analysis.imports) {
       entry.resolution = resolveSource(entry.specifier, dirname(file), cwd, matchPath)
-      if (entry.resolution && !entry.typeOnly) {
-        if (!UNLOADABLE_RE.test(entry.resolution.file)) {
-          queue.push({ file: entry.resolution.file, importer: { file, line: entry.line } })
-        }
+      if (entry.resolution && !entry.typeOnly && !UNLOADABLE_RE.test(entry.resolution.file)) {
+        queue.push({ file: entry.resolution.file, importer: { file, line: entry.line } })
       }
     }
     visit(file, analysis, importer)
@@ -247,7 +241,7 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     const file = probe(resolve(parentDir, specifier))
     return file ? { file, via: 'relative' } : undefined
   }
-  const resolved = (specifier.startsWith('#') || !ALIAS_SHAPED_RE.test(specifier)) ? resolvesAsPackage(specifier, parentDir) : undefined
+  const resolved = PATH_ALIAS_RE.test(specifier) ? undefined : resolvesAsPackage(specifier, parentDir)
   if (resolved) {
     return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
   }
@@ -285,7 +279,7 @@ function hasRuntimeCode(ts: typeof import('typescript'), node: ts.ModuleDeclarat
 
 function analyseSource(filename: string, source: string): SourceAnalysis {
   const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
-  const { SyntaxKind, NodeFlags } = ts
+  const { SyntaxKind } = ts
   const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, scriptKind(ts, filename))
   const found: SourceAnalysis = { nonErasable: [], imports: [] }
   const position = (node: ts.Node) => {
@@ -328,36 +322,13 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
       return { specifier: node.arguments[0], typeOnly: false, json: isJsonOptions(node.arguments[1]) }
     }
   }
-  const kindOf = (node: ts.Node) => {
-    if (ts.isEnumDeclaration(node)) {
-      return '`enum`'
-    }
-    if (ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (NodeFlags.NestedNamespace | NodeFlags.GlobalAugmentation)) && hasRuntimeCode(ts, node)) {
-      return '`namespace`'
-    }
-    if (ts.isTypeAssertionExpression(node)) {
-      return 'angle-bracket type assertion'
-    }
-    if (ts.isParameter(node) && ts.isParameterPropertyDeclaration(node, node.parent)) {
-      return 'parameter property'
-    }
-    if (ts.isImportEqualsDeclaration(node) && !node.isTypeOnly) {
-      return '`import =`'
-    }
-    if (ts.isExportAssignment(node) && node.isExportEquals) {
-      return '`export =`'
-    }
-    if (ts.isDecorator(node)) {
-      return 'decorator'
-    }
-  }
   const visit = (node: ts.Node) => {
     if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(modifier => modifier.kind === SyntaxKind.DeclareKeyword)) {
       return
     }
-    const kind = kindOf(node)
-    if (kind) {
-      found.nonErasable.push({ ...position(node), kind })
+    const nonErasable = NON_ERASABLE.find(([, matches]) => matches(ts, node))
+    if (nonErasable) {
+      found.nonErasable.push({ ...position(node), message: nonErasable[0] })
     }
     const imported = specifierOf(node)
     if (imported) {

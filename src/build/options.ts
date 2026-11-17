@@ -138,8 +138,7 @@ export function createOptionsCollector(cwd: string, outDir: string): OptionsColl
     if (name === 'types') {
       throw new Error(`A bundled entry is named \`types\`, whose declarations would replace the generated \`types.d.mts\`. Give \`${input}\` another \`name\`.`)
     }
-    const file = probe(resolve(cwd, input)) ?? resolve(cwd, `${input}.ts`)
-    config.entries[name] = `./${relative(cwd, file)}`
+    config.entries[name] = entryPath(cwd, input)
   }
 
   function replaceValues(values: unknown, path: string, report: Report) {
@@ -242,17 +241,16 @@ export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: stri
 
 /** The output name of an entry without an explicit `name`. */
 export function entryName(input: string, cwd: string): string {
-  let relativeInput = isAbsolute(input) ? relative(cwd, input) : normalize(input)
-  if (relativeInput.startsWith('./')) {
-    relativeInput = relativeInput.slice(2)
-  }
-  return relativeInput.replace(/^src\//, '').replace(/\.(?:js|mjs|cjs|ts|mts|cts|json|jsx|tsx)$/, '')
+  return (isAbsolute(input) ? relative(cwd, input) : normalize(input)).replace(/^\.\//, '').replace(/^src\//, '').replace(/\.(?:js|mjs|cjs|ts|mts|cts|json|jsx|tsx)$/, '')
 }
 
 /** `src/module` plus the extra bundled entries, keyed by output name. */
 export function bundledEntries(cwd: string, config: ModuleConfig): { module: string, [name: string]: string } {
-  const module = probe(resolve(cwd, 'src/module')) ?? resolve(cwd, 'src/module.ts')
-  return { ...config.entries, module: `./${relative(cwd, module)}` }
+  return { ...config.entries, module: entryPath(cwd, 'src/module') }
+}
+
+function entryPath(cwd: string, input: string) {
+  return `./${relative(cwd, probe(resolve(cwd, input)) ?? resolve(cwd, `${input}.ts`))}`
 }
 
 /** Resolves `outDir` against `cwd`, refusing a directory outside the module, which the build would empty. */

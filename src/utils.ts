@@ -12,12 +12,17 @@ export const NODE_MODULES_RE: RegExp = /[\\/]node_modules[\\/]/
 
 const EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
 
+/** Whether `file` is a script other than a declaration. */
+export function isSourceScript(file: string): boolean {
+  return SCRIPT_RE.test(file) && !DECLARATION_RE.test(file)
+}
+
 /**
  * The source file a specifier refers to: the path as written, its TypeScript counterpart for
  * a `.js`-suffixed path, the path with each source extension, then an `index` file.
  */
 export function probe(path: string): string | undefined {
-  if (existsSync(path) && statSync(path).isFile()) {
+  if (isFile(path)) {
     return path
   }
   const source = path.replace(/\.([cm]?)js(x?)$/, '.$1ts$2')
@@ -37,6 +42,10 @@ export function probe(path: string): string | undefined {
       return resolve(path, `index${extension}`)
     }
   }
+}
+
+export function isFile(path: string): boolean {
+  return existsSync(path) && statSync(path).isFile()
 }
 
 /** `path` resolved, with symlinks followed when it exists, as module ids are. */
@@ -59,13 +68,15 @@ export function relativeSpecifier(from: string, to: string): string {
 
 /** The directory of an installed package, found the way Node looks up `node_modules`. */
 export function findPackageDir(name: string, cwd: string): string | undefined {
-  for (let dir = cwd; ; dir = dirname(dir)) {
-    const packageDir = join(dir, 'node_modules', name)
-    if (existsSync(join(packageDir, 'package.json'))) {
-      return packageDir
-    }
-    if (dirname(dir) === dir) {
-      return
+  return findUp(cwd, dir => existsSync(join(dir, 'node_modules', name, 'package.json')) ? join(dir, 'node_modules', name) : undefined)
+}
+
+/** The first result of `find` for `dir` or the closest directory above it. */
+export function findUp<T>(dir: string, find: (dir: string) => T | undefined): T | undefined {
+  for (; ; dir = dirname(dir)) {
+    const found = find(dir)
+    if (found !== undefined || dirname(dir) === dir) {
+      return found
     }
   }
 }
@@ -75,6 +86,14 @@ export async function writeIfChanged(file: string, contents: string): Promise<vo
   if (await readFile(file, 'utf8').catch(() => undefined) !== contents) {
     await writeFile(file, contents, 'utf8')
   }
+}
+
+/** The value of `key` in `map`, created with `create` the first time. */
+export function getOrCreate<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+  if (!map.has(key)) {
+    map.set(key, create())
+  }
+  return map.get(key)!
 }
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {

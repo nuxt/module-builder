@@ -24,7 +24,7 @@ const DEFINE_BUILD_CONFIG_STUB = [
   'export const definePreset = preset => preset',
 ].join('\n')
 
-const ACCEPTED_KEYS = new Set(['declaration', 'failOnWarn', 'name', 'parallel', 'clean', 'rootDir', 'outDir', 'sourcemap'])
+const ACCEPTED_KEYS = new Set(['failOnWarn', 'name', 'parallel'])
 const SUPPORTED_HOOKS: readonly string[] = ['build:before', 'rollup:done', 'build:done'] satisfies BuildHookName[]
 const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
 
@@ -35,8 +35,6 @@ export interface BuildConfigSource {
 }
 
 export interface TranslatedBuildConfig extends ModuleConfig {
-  sourcemap: boolean
-  declaration?: unknown
   hooks: Record<BuildHookName, BuildHook[]>
   /** Hooks that are skipped because there is nothing for them to act on, as `<source>: <hook>`. */
   ignoredHooks: string[]
@@ -103,13 +101,9 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
           }
           break
         case 'rootDir':
-          if (typeof value !== 'string' || resolve(cwd, value) !== cwd) {
-            unsupported('rootDir')
-          }
-          break
         case 'outDir':
-          if (typeof value !== 'string' || resolve(cwd, value) !== outDir) {
-            unsupported('outDir')
+          if (typeof value !== 'string' || resolve(cwd, value) !== (key === 'rootDir' ? cwd : outDir)) {
+            unsupported(key)
           }
           break
         case 'hooks':
@@ -167,7 +161,6 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
   return {
     ...collector.finish(options.pkg ?? {}, { replace: !replaceDisabled }),
     sourcemap,
-    declaration,
     hooks,
     ignoredHooks,
     unsupported: rejected,
@@ -198,13 +191,11 @@ function withoutIgnoredEntryKeys(entry: unknown) {
  * `defineBuildConfig` is replaced with the identity.
  */
 export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: string): Promise<LoadedBuildConfig> {
-  const sources: BuildConfigSource[] = []
-  let configCount = 0
-
   const field = buildConfigField(pkg)
   const fieldSource = field ? [{ name: `package.json "${field}"`, config: pkg[field] }] : []
 
   let importsUnbuild: boolean | undefined
+  let configs: unknown[] = []
   const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
   if (file) {
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
@@ -221,16 +212,12 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     if (typeof config === 'function') {
       throw new TypeError(`\`${file}\` must export a config object, not a function. Replace the function with the object it returns. ${guide('other-options')}`)
     }
-    const configs = (Array.isArray(config) ? config : [config]).filter(Boolean)
-    sources.push(...configs.map(config => ({ name: file, config })))
-    configCount = configs.length
+    configs = (Array.isArray(config) ? config : [config]).filter(Boolean)
   }
 
-  sources.push(...fieldSource)
-
-  const translated = translateBuildConfig(sources, { cwd, outDir, pkg })
-  if (configCount > 1) {
-    translated.unsupported.unshift(`${file}: an array of ${configCount} configs`)
+  const translated = translateBuildConfig([...configs.map(config => ({ name: file!, config })), ...fieldSource], { cwd, outDir, pkg })
+  if (configs.length > 1) {
+    translated.unsupported.unshift(`${file}: an array of ${configs.length} configs`)
   }
   return Object.assign(translated, { file, importsUnbuild, field })
 }

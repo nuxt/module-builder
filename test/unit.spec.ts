@@ -741,7 +741,7 @@ describe('importModule', () => {
     await writeFile(join(dir, 'kind.ts'), `const Kind = { Stub: 'stub' } as const\nexport const kind: string = Kind.Stub\n`)
     await writeFile(join(dir, 'enum.ts'), `export enum Mode { Build }\n`)
     const loader = fileURLToPath(new URL('../src/build/loader.ts', import.meta.url))
-    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}); const rejected = await importModule(${JSON.stringify(join(dir, 'enum.ts'))}).then(() => undefined, error => error.code); console.log(JSON.stringify([m.location, m.kind, rejected]))`
+    const script = `const { importModule } = await import(${JSON.stringify(pathToFileURL(loader).href)}); const m = await importModule(${JSON.stringify(join(dir, 'entry.ts'))}, { cwd: ${JSON.stringify(dir)} }); const rejected = await importModule(${JSON.stringify(join(dir, 'enum.ts'))}, { cwd: ${JSON.stringify(dir)} }).then(() => undefined, error => error.code); console.log(JSON.stringify([m.location, m.kind, rejected]))`
     const { stdout } = await exec('node', ['--input-type=module', '-e', script], { nodeOptions: { env: { ...process.env, CI: '1' } } })
     const [location, kind, rejected] = JSON.parse(stdout) as [string, string, string]
     expect(location).toContain(`entry.ts:1:${line.indexOf('new Error') + 1}`)
@@ -1082,7 +1082,7 @@ describe('writeDerivedTsconfig', () => {
     const diagnostics = (parsed: import('typescript').ParsedCommandLine) => ts.getPreEmitDiagnostics(ts.createProgram(parsed.fileNames, parsed.options))
       .map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
 
-    const derived = parse(await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root, {}))
+    const derived = parse(await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root!, {}))
     expect(derived.fileNames).toEqual([])
     const project = parse(ts.resolveProjectReferencePath(derived.projectReferences![0]!))
     expect(project.fileNames).toEqual([source])
@@ -1108,7 +1108,7 @@ describe('writeDerivedTsconfig', () => {
     await writeFile(join(cwd, 'test/setup.ts'), `export const setup = 1\n`)
     await writeFile(join(cwd, 'node_modules/dep/index.ts'), `export const dep = 1\n`)
     await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: 'ESNext', moduleResolution: 'Bundler' } }))
-    const derived = await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root, {})
+    const derived = await writeDerivedTsconfig(cwd, (await createTsconfigResolver(cwd)).root!, {})
     const names = (files: string[]) => files.map(file => file.slice(cwd.length + 1)).sort()
     expect(names(ts.getParsedCommandLineOfConfigFile(derived, {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} })!.fileNames)).toEqual(['global.d.ts', 'src/use.ts'])
     expect(names(ts.parseJsonConfigFileContent(parseTsconfig(derived), ts.sys, dirname(derived)).fileNames)).toEqual(['global.d.ts', 'src/use.ts'])

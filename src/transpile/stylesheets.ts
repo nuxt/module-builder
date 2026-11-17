@@ -3,6 +3,8 @@ import { pathToFileURL } from 'node:url'
 import { resolvePath } from 'mlly'
 import { join, relative } from 'pathe'
 
+import { getOrCreate } from '../utils.ts'
+
 export const SASS_RE: RegExp = /\.s[ac]ss$/
 
 interface SassCompiler {
@@ -45,13 +47,7 @@ const sassCompilers = new Map<string, Promise<SassCompiler>>()
 
 /** Compile a Sass stylesheet with the `sass` or `sass-embedded` installed under `cwd`. */
 export async function compileSass(file: string, cwd: string): Promise<string> {
-  let compiler = sassCompilers.get(cwd)
-  if (!compiler) {
-    compiler = loadSass(cwd)
-    sassCompilers.set(cwd, compiler)
-  }
-
-  const { compileString } = await compiler
+  const { compileString } = await getOrCreate(sassCompilers, cwd, () => loadSass(cwd))
   return compileString(await fsp.readFile(file, 'utf8'), {
     loadPaths: [join(cwd, 'node_modules')],
     url: pathToFileURL(file),

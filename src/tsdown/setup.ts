@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { dirname, relative, resolve } from 'pathe'
+import { relative, resolve } from 'pathe'
 import { consola } from 'consola'
 import { resolvePath } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
@@ -16,7 +16,7 @@ import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/opti
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
-import { realpath } from '../utils.ts'
+import { findUp, realpath } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
@@ -88,7 +88,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
     consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
-    await prepareModule(cwd, { config: buildConfig, outDir })
+    await prepareModule(cwd, { config: buildConfig, outDir, pkg })
   }
 
   const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })
@@ -102,7 +102,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     sourcemap: plan.sourcemap,
     cacheVersion: plan.generatedTypesHash,
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
-    resolveExternal: resolveDirectoryExternal(plan, directory),
+    resolveExternal: resolveDirectoryExternal(plan),
+    reserved: [...Object.keys(plan.entries), 'types'],
   }))
 
   let watch = false
@@ -137,6 +138,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
+    // `eager` puts every file of the tsconfig in the program, so ambient declarations such
+    // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
     // TODO: allow the parallel worker while watching once https://github.com/sxzz/rolldown-plugin-dts/pull/365 is released.
     // The worker inherits stdin, which tsdown reads while watching, and on Windows it then blocks at startup.
     tsc: { eager: true, parallel: !config.watch },
@@ -279,8 +282,5 @@ function filesIn(dir: string) {
 
 /** `dir`, or the closest directory above it that exists, so a watcher sees `dir` being created. */
 function existingAncestor(dir: string, root: string) {
-  while (!existsSync(dir) && dir !== root && dirname(dir) !== dir) {
-    dir = dirname(dir)
-  }
-  return dir
+  return findUp(dir, ancestor => existsSync(ancestor) || ancestor === root ? ancestor : undefined)!
 }

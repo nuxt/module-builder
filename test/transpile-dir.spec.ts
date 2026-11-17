@@ -87,7 +87,7 @@ const files: Record<string, string> = {
 
 const externals: Array<[string, ExternalImport['kind'], string]> = []
 
-const plugin = (options: Partial<TranspileDirOptions>) => transpileDir({ cwd, srcDir: join(cwd, 'src/lib'), outBase: '', extension: 'js', paths: {}, jsx: () => 'preserve', transform: loadOxc()!.transform, sourcemap: false, cacheVersion: '', resolveExternal: () => undefined, ...options })
+const plugin = (options: Partial<TranspileDirOptions>) => transpileDir({ cwd, srcDir: join(cwd, 'src/lib'), outBase: '', extension: 'js', paths: {}, jsx: () => 'preserve', transform: loadOxc()!.transform, sourcemap: false, cacheVersion: '', resolveExternal: () => undefined, reserved: [], ...options })
 
 describe('transpileDir', () => {
   beforeAll(async () => {

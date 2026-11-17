@@ -3,7 +3,7 @@ import { dirname, relative, resolve } from 'pathe'
 import { findExports, findTypeExports } from 'mlly'
 import type { ESMExport } from 'mlly'
 
-import { probe, writeIfChanged } from '../utils.ts'
+import { getOrCreate, probe, writeIfChanged } from '../utils.ts'
 
 const TYPE_ONLY_DECLARATIONS = new Set(['interface', 'type'])
 const DECLARATION_SUFFIXES: Record<string, string[]> = {
@@ -43,53 +43,24 @@ export async function writeTypes(distDir: string, source?: { exports: Set<string
   const dtsFile = resolve(distDir, 'types.d.mts')
 
   const moduleReExports: ESMExport[] = []
-  const typeOnlyExports = new Set<string>()
+  let typeOnlyExports = new Set<string>()
   if (!source) {
-    // Read generated module types
-    const moduleTypesFile = resolve(distDir, 'module.d.mts')
-    const moduleTypes = await fsp.readFile(moduleTypesFile, 'utf8').catch(() => '')
+    const moduleTypes = await fsp.readFile(resolve(distDir, 'module.d.mts'), 'utf8').catch(() => '')
     const exports = findExports(withoutTypeModifiers(moduleTypes))
     const typeExports = findTypeExports(moduleTypes)
     moduleReExports.push(...exports, ...typeExports)
-
-    const valueExports = new Set<string>()
-    for (const e of findExports(moduleTypes)) {
-      if (e.type === 'named' || e.type === 'default') {
-        for (const name of e.names) {
-          valueExports.add(name)
-        }
-      }
-    }
-    for (const e of typeExports) {
-      const isTypeOnly = e.type === 'named' || (e.type === 'declaration' && e.declarationType !== undefined && TYPE_ONLY_DECLARATIONS.has(e.declarationType))
-      const target = isTypeOnly ? typeOnlyExports : valueExports
-      for (const name of e.names) {
-        target.add(name)
-      }
-    }
-
-    // `findTypeExports` drops a value declaration that shares its name with a type
-    // export, so read those names from the generated declarations too.
-    for (const match of moduleTypes.matchAll(VALUE_DECLARATION_RE)) {
-      valueExports.add(match[1]!)
-    }
-
+    const namedExports = (list: ESMExport[]) => list.filter(e => e.type === 'named' || e.type === 'default').flatMap(e => e.names)
+    const isTypeOnly = (e: ESMExport) => e.type === 'named' || (e.type === 'declaration' && TYPE_ONLY_DECLARATIONS.has(e.declarationType!))
+    const valueExports = new Set([
+      ...namedExports(findExports(moduleTypes)),
+      ...typeExports.filter(e => !isTypeOnly(e)).flatMap(e => e.names),
+      // `findTypeExports` drops a value declaration that shares its name with a type
+      // export, so read those names from the generated declarations too.
+      ...[...moduleTypes.matchAll(VALUE_DECLARATION_RE)].map(match => match[1]!),
+    ])
     // `findExports` only reports `export { type Foo }` after the `type` keyword is removed,
     // so names it finds only in the normalised types are type-only.
-    for (const e of exports) {
-      if (e.type !== 'named' && e.type !== 'default') {
-        continue
-      }
-      for (const name of e.names) {
-        if (!valueExports.has(name)) {
-          typeOnlyExports.add(name)
-        }
-      }
-    }
-
-    for (const name of valueExports) {
-      typeOnlyExports.delete(name)
-    }
+    typeOnlyExports = new Set([...typeExports.filter(isTypeOnly).flatMap(e => e.names), ...namedExports(exports)].filter(name => !valueExports.has(name)))
   }
 
   const appShims: string[] = []
@@ -108,23 +79,16 @@ export async function writeTypes(distDir: string, source?: { exports: Set<string
     moduleExports.push(`export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
   }
 
-  if (hasTypeExport('ModuleHooks')) {
-    moduleImports.push('ModuleHooks')
-    schemaShims.push('  interface NuxtHooks extends ModuleHooks {}')
-  }
-
-  if (hasTypeExport('ModuleRuntimeHooks')) {
-    moduleImports.push('ModuleRuntimeHooks')
-    appShims.push(`  interface RuntimeNuxtHooks extends ModuleRuntimeHooks {}`)
-  }
-
-  if (hasTypeExport('ModuleRuntimeConfig')) {
-    moduleImports.push('ModuleRuntimeConfig')
-    schemaShims.push('  interface RuntimeConfig extends ModuleRuntimeConfig {}')
-  }
-  if (hasTypeExport('ModulePublicRuntimeConfig')) {
-    moduleImports.push('ModulePublicRuntimeConfig')
-    schemaShims.push('  interface PublicRuntimeConfig extends ModulePublicRuntimeConfig {}')
+  for (const [name, shims, augmented] of [
+    ['ModuleHooks', schemaShims, 'NuxtHooks'],
+    ['ModuleRuntimeHooks', appShims, 'RuntimeNuxtHooks'],
+    ['ModuleRuntimeConfig', schemaShims, 'RuntimeConfig'],
+    ['ModulePublicRuntimeConfig', schemaShims, 'PublicRuntimeConfig'],
+  ] as const) {
+    if (hasTypeExport(name)) {
+      moduleImports.push(name)
+      shims.push(`  interface ${augmented} extends ${name} {}`)
+    }
   }
 
   const dtsContents = `
@@ -184,15 +148,10 @@ function withoutTypeModifiers(code: string) {
 function groupNamedReExports(exports: ESMExport[]) {
   const groups = new Map<string, Set<string>>()
   for (const e of exports) {
-    if (e.type !== 'named' && e.type !== 'default' && e.type !== 'declaration') {
-      continue
+    if (e.type === 'named' || e.type === 'default' || e.type === 'declaration') {
+      const names = getOrCreate(groups, e.specifier || './module.mjs', () => new Set<string>())
+      e.names.forEach(name => names.add(name))
     }
-    const specifier = e.specifier || './module.mjs'
-    const names = groups.get(specifier) ?? new Set()
-    for (const name of e.names) {
-      names.add(name)
-    }
-    groups.set(specifier, names)
   }
   return new Map([...groups].map(([specifier, names]) => [
     specifier,
