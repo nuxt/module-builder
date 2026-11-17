@@ -2,7 +2,6 @@ import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { relative, resolve } from 'pathe'
-import { consola } from 'consola'
 import { resolvePath } from 'mlly'
 import { readPackageJSON } from 'pkg-types'
 import type { PackageJson } from 'pkg-types'
@@ -16,7 +15,7 @@ import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/opti
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
-import { findUp, realpath } from '../utils.ts'
+import { findUp, logger, realpath } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
@@ -87,7 +86,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const buildConfig = loadConfig ? await loadConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
-    consola.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
+    logger.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
     await prepareModule(cwd, { config: buildConfig, outDir, pkg })
   }
 

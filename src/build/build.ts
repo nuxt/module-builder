@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
-import { consola } from 'consola'
 import type { NuxtModule } from '@nuxt/schema'
 import type { TsConfigResult } from 'get-tsconfig'
 import type { PackageJson } from 'pkg-types'
@@ -13,7 +12,7 @@ import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
-import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
+import { findPackageDir, findUp, isInside, isSourceScript, logger, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
 import { guide } from './guide.ts'
 import { assertLoadableModuleCode, importModule, loadOxc } from './loader.ts'
@@ -97,7 +96,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
   if (tsconfigs.replaced) {
     const path = relative(cwd, tsconfigs.replaced)
     const advice = !isInside(cwd, tsconfigs.replaced) ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
-    consola.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
+    logger.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
   }
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
@@ -204,10 +203,10 @@ export async function onBuildError(plan: BuildPlan, error: unknown, { directory 
     await rm(plan.outDir, { recursive: true, force: true })
   }
   if (plan.isolatedDeclarations && !directory) {
-    consola.error(ISOLATED_DECLARATIONS_HINT)
+    logger.error(ISOLATED_DECLARATIONS_HINT)
   }
   else if (/\bTS\d{4}\b/.test(String((error as Error | undefined)?.message))) {
-    consola.error(TYPE_ERROR_HINT)
+    logger.error(TYPE_ERROR_HINT)
   }
 }
 
@@ -249,7 +248,7 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
     if (shouldNudge(plan.isolatedDeclarations)) {
       const project = plan.moduleProject && relative(cwd, plan.moduleProject)
       const where = !project ? 'your `tsconfig.json`' : project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${project}\``
-      consola.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
+      logger.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
     }
 
     await checkPublishedPaths(cwd)

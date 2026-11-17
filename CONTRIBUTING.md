@@ -38,7 +38,7 @@ The package has three entry points:
 | `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations. |
 | `src/transpile/` | `transpileDir()`, the internal rolldown plugin that transpiles a directory file by file. It transforms scripts with oxc and `.vue` files with `vue.ts`, compiles stylesheets with `stylesheets.ts`, emits declarations with `declarations.ts`, rewrites import specifiers with `specifiers.ts`, and resolves the tsconfig of each file with `tsconfig.ts`. It imports nothing outside the directory but `src/utils.ts`, so it can be extracted later. |
 | `src/legacy/` | Compatibility with v1 and unbuild (see [Legacy code](#legacy-code)). |
-| `src/utils.ts` | Path, file and regex helpers shared across directories. |
+| `src/utils.ts` | Path, file and regex helpers shared across directories, and `logger`, through which every build message goes. |
 
 ### `tsdown` with `builder()`
 

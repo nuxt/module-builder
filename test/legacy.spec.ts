@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { consola } from 'consola'
 import { findStaticImports } from 'mlly'
 import { join, relative } from 'pathe'
 import ts from 'typescript'
@@ -11,6 +10,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { bundledEntries, entryName } from '../src/build/options.ts'
 import { assertNoLegacyBuildConfig, formatUnsupportedOptions, loadBuildConfig, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/legacy/build-config.ts'
 import { guide } from '../src/build/guide.ts'
+import { logger } from '../src/utils.ts'
 import type { FixtureOptions, Result } from './utils.ts'
 import { cli, exists, fixture, listFiles, read, repoRoot, tsdown } from './utils.ts'
 
@@ -115,7 +115,7 @@ describe('translateBuildConfig', () => {
 
   it('should warn about a deprecated config file and ignored hooks in CI too', () => {
     vi.stubEnv('CI', 'true')
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     try {
       const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
       warnDeprecatedBuildConfig(config)
@@ -508,8 +508,8 @@ export default defineBuildConfig({
 
   it('should warn that `build.config.ts` is deprecated', () => {
     const output = expectBuilt('buildConfig')
-    expect(output).toMatch(new RegExp(`\`?build\\.config\\.ts\`? is deprecated\\. Its options are still applied\\. Move them into \`?builder\\(\\)\`? in \`?tsdown\\.config\\.ts\`?\\. ${guide('moving-from-buildconfigts')}`))
-    expect(output).not.toMatch(/`?unbuild`? field/)
+    expect(output).toContain(`\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`)
+    expect(output).not.toContain('`unbuild` field')
   })
 
   it('should read the `unbuild` field of `package.json` in preference to `build`, with the replacements of `rollup.replace`', async () => {

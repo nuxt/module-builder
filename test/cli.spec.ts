@@ -764,7 +764,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
 
   it('should warn about type errors that do not affect runtime declarations and build anyway', async () => {
     const output = expectBuilt('runtime')
-    expect(output).toMatch(/2 type errors were reported while generating declarations for `?src\/runtime`?; the declarations were emitted\. If the module's own type check \(for example `?nuxt typecheck`? or `?vue-tsc --noEmit`?\) passes/)
+    expect(output).toContain('2 type errors were reported while generating declarations for `src/runtime`; the declarations were emitted. If the module\'s own type check (for example `nuxt typecheck` or `vue-tsc --noEmit`) passes')
     expect(output).toContain('src/runtime/utils/typo.ts(1,14): error TS2322')
     expect(output).toContain('src/runtime/components/Typo.vue(3,7): error TS2322')
     expect(output.match(/type errors? (?:was|were) reported/g)).toHaveLength(1)
@@ -788,7 +788,7 @@ describe('a module with `isolatedDeclarations` and no `.nuxt`', () => {
   const dist = () => join(dirs.isolated!, 'dist')
 
   it('should prepare the module before building it', async () => {
-    expect(expectBuilt('isolated')).toMatch(new RegExp(`\\.nuxt\`? not found, running \`?nuxt-module-build prepare\`? first\\..*${guide('preparing-nuxt')}`))
+    expect(expectBuilt('isolated')).toContain(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
     expect(await read(dist(), 'runtime/composables/useAliasedApp.d.ts')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
   })
 
@@ -1137,7 +1137,7 @@ describe('a module whose code Node cannot load', () => {
 describe('a module whose declarations cannot be generated', () => {
   it('should surface isolated declaration diagnostics when the tsconfig opts in', () => {
     const output = expectFailed('isolatedError')
-    expect(output).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
+    expect(output).toContain('Declaration generation failed under `isolatedDeclarations`.')
     expect(output).toMatch(/TS90\d\d/)
     expect(output).toContain(guide('isolated-declarations'))
     expect(output).not.toMatch(/Type declarations could not be generated/)
@@ -1179,7 +1179,7 @@ describe('tsconfig lookup', () => {
   })
 
   it('should generate declarations with the module\'s own `.nuxt` when the tsconfig takes its types from a playground', async () => {
-    expect(expectBuilt('routes')).toMatch(new RegExp(`\\.\\./tsconfig.json\`? takes its generated types from another app's \`?.nuxt\`?; declarations are generated with \`?.nuxt/tsconfig.json\`? instead. Add a \`?tsconfig.json\`? in the module directory that extends \`?./.nuxt/tsconfig.json\`?. ${guide('module-tsconfig')}`))
+    expect(expectBuilt('routes')).toContain(`\`../tsconfig.json\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. Add a \`tsconfig.json\` in the module directory that extends \`./.nuxt/tsconfig.json\`. ${guide('module-tsconfig')}`)
     expect(await read(dirs.routes!, 'playground/.nuxt/types/nitro-routes.d.ts')).toContain('/api/secret')
     for (const file of await listFiles(join(dirs.routes!, 'dist'))) {
       if (file.includes('.')) {

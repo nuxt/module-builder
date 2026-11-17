@@ -7,7 +7,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
-import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
@@ -15,7 +14,7 @@ import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
 import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
-import { relativeSpecifier } from '../src/utils.ts'
+import { logger, relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -382,7 +381,7 @@ describe('deprecation checks', () => {
   const cwd = fileURLToPath(new URL('..', import.meta.url))
 
   it('should warn about referenced `.d.ts` output that is no longer generated', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyDeclarationPaths(cwd, { exports: { '.': { types: './dist/module.d.ts' } } })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`Replace \`\\.d\\.ts\` with \`\\.d\\.mts\` in these \`package\\.json\` paths: \`\\./dist/module\\.d\\.ts\`\\. ${guide('declaration-paths')}$`)))
     warn.mockClear()
@@ -444,7 +443,7 @@ describe('deprecation checks', () => {
   })
 
   it('should warn about referenced `module.cjs` output that is no longer generated', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.cjs' })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`\`module\\.cjs\`.*Replace it with \`\\./dist/module\\.mjs\`.* ${guide('modulecjs')}$`)))
     warn.mockClear()
@@ -459,7 +458,7 @@ describe('deprecation checks', () => {
     await mkdir(join(root, 'dist'))
     await writeFile(join(root, 'dist/module.mjs'), '')
     await writeFile(join(root, 'package.json'), '{}')
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     const pkg = {
       types: './dist/stale.d.ts',
       main: './dist/module.cjs',
@@ -485,7 +484,7 @@ describe('deprecation checks', () => {
     for (const file of ['dist/util.d.mts', 'dist/util.mjs', 'dist/nested/index.d.mts', 'dist/legacy.d.ts', 'dist/gone.mjs']) {
       await writeFile(join(root, file), '')
     }
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     const pkg = {
       exports: { './util': './dist/util.mjs', './gone': './dist/gone.mjs' },
       typesVersions: { '*': { 'util': ['dist/util'], 'nested': ['./dist/nested'], 'legacy': ['dist/legacy'], 'gone': ['dist/gone'], 'runtime/*': ['dist/runtime/*'] } },
@@ -503,7 +502,7 @@ describe('deprecation checks', () => {
   })
 
   it('should warn about a stale `types` field', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkStaleTypesField(cwd, { types: './dist/nope.d.ts' })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(`\`types\` in \`package.json\` points at \`./dist/nope.d.ts\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
     warn.mockClear()
@@ -764,7 +763,7 @@ describe('declarationPaths', () => {
       '#components': ['/app/.nuxt/components'],
       '#imports': ['/app/.nuxt/imports'],
       '#app': ['/app/node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt/dist/app'],
-      'consola': ['/app/node_modules/.pnpm/consola@3.0.0/node_modules/consola'],
+      'pathe': ['/app/node_modules/.pnpm/pathe@2.0.0/node_modules/pathe'],
       'not-installed-package': ['/app/node_modules/.pnpm/not-installed-package@1.0.0/node_modules/not-installed-package'],
       '~/*': ['/app/*'],
     }, cwd)

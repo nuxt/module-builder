@@ -1,6 +1,13 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
+import { log } from '@clack/prompts'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'pathe'
+
+export const logger = {
+  info: (message: string): void => log.info(message, { spacing: 0 }),
+  warn: (message: string): void => log.warn(message, { spacing: 0, output: process.stderr }),
+  error: (message: string): void => log.error(message, { spacing: 0, output: process.stderr }),
+}
 
 export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
 export const TYPESCRIPT_RE: RegExp = /\.[cm]?tsx?$/

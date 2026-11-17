@@ -1,11 +1,10 @@
 import { existsSync } from 'node:fs'
 import { basename, join, relative, resolve } from 'pathe'
-import { consola } from 'consola'
 import { readPackageJSON } from 'pkg-types'
 import type { PackageJson } from 'pkg-types'
 
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, isLegacyPath } from '../legacy/package-paths.ts'
-import { DECLARATION_RE, isFile, isInside, TYPESCRIPT_RE } from '../utils.ts'
+import { DECLARATION_RE, isFile, isInside, logger, TYPESCRIPT_RE } from '../utils.ts'
 import { guide } from './guide.ts'
 
 /** The fields of `package.json` whose paths are checked for whether they can be published. */
@@ -282,7 +281,7 @@ export async function checkPublishedPaths(cwd: string): Promise<void> {
 /** Warns with `message` when `condition` holds, and returns `condition`. */
 export function warnWhen(condition: boolean, message: string): boolean {
   if (condition) {
-    consola.warn(message)
+    logger.warn(message)
   }
   return condition
 }

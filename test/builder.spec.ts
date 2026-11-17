@@ -300,7 +300,7 @@ describe('with a root tsconfig that only lists references', () => {
     const ownsField = async (dir: string) => (await read(dir, 'dist/module.mjs')).includes('\tvalue;')
     const output = expectBuilt('moduleProject')
     expect(output).toContain('tsconfig: tsconfig.module.json')
-    expect(output).toMatch(/Set `?isolatedDeclarations: true`? in `?tsconfig\.module\.json`?/)
+    expect(output).toContain('Set `isolatedDeclarations: true` in `tsconfig.module.json`')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)

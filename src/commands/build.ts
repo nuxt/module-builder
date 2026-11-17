@@ -1,9 +1,9 @@
 import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
-import { consola } from 'consola'
 
 import pkg from '../../package.json' with { type: 'json' }
 import { guide } from '../build/guide.ts'
+import { logger } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
 
 export const MISSING_TSDOWN_HINT: string = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
@@ -40,7 +40,7 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
     const cwd = resolveCwdArg(context.args)
     const { build } = await import('../tsdown/build.ts').catch((error) => {
       if (isMissingTsdown(error)) {
-        consola.error(MISSING_TSDOWN_HINT)
+        logger.error(MISSING_TSDOWN_HINT)
       }
       throw error
     })

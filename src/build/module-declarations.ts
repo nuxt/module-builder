@@ -1,12 +1,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { consola } from 'consola'
 import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 
 import { createDeclarationProgram } from '../transpile/declarations.ts'
 import { rewriteSpecifiers } from '../transpile/specifiers.ts'
 import { hasIsolatedDeclarations, isModuleFile } from '../transpile/tsconfig.ts'
-import { isInside, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
+import { isInside, isSourceScript, logger, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
 import { loadOxc } from './loader.ts'
 import { writeSourceTypes } from './types.ts'
 
@@ -70,7 +69,7 @@ export async function writeModuleDeclarations(cwd: string, dir: string, { tsconf
     await writeFile(output, code)
   }))
   if (errors.length) {
-    consola.warn([
+    logger.warn([
       `Declarations of module code for the module's own app, server and shared type checks could not be generated for every file. The build reports the same errors:`,
       ...errors,
     ].join('\n'))
