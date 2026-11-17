@@ -346,13 +346,17 @@ describe('findModuleCodeIssues', () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-conditional-imports-'))
     try {
       await mkdir(join(dir, 'src'))
-      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module', imports: { '#helper': { import: './src/esm.ts', require: './src/cjs.cjs' }, '#external': { import: 'external', require: './src/legacy.ts' } } }))
-      await writeFile(join(dir, 'src/module.ts'), `export { Mode } from '#helper'\nexport { value } from '#external'\n`)
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ type: 'module', imports: { '#helper': { import: './src/esm.ts', require: './src/cjs.cjs' }, '#external': { import: 'external', require: './src/legacy.ts' }, '#sync': { 'module-sync': './src/sync.ts', 'default': './src/legacy.ts' }, '#addons': { 'node-addons': './src/addons.ts', 'default': './src/legacy.ts' } } }))
+      await writeFile(join(dir, 'src/module.ts'), `export { Mode } from '#helper'\nexport { value } from '#external'\nexport { Sync } from '#sync'\nexport { Addons } from '#addons'\n`)
+      await writeFile(join(dir, 'src/sync.ts'), `export enum Sync { On }\n`)
+      await writeFile(join(dir, 'src/addons.ts'), `export enum Addons { On }\n`)
       await writeFile(join(dir, 'src/esm.ts'), `export enum Mode { On }\n`)
       await writeFile(join(dir, 'src/cjs.cjs'), `exports.Mode = { On: 0 }\n`)
       await writeFile(join(dir, 'src/legacy.ts'), `export enum Legacy { On }\n`)
       expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/addons.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
         'src/esm.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+        'src/sync.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
       ])
     }
     finally {

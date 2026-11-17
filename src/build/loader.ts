@@ -16,7 +16,7 @@ const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const PATH_ALIAS_RE = /^(?:~|@\/)/
 const JSON_RE = /\.json$/
 const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
-const IMPORT_CONDITIONS = new Set(['import', 'node', 'default'])
+const IMPORT_CONDITIONS = new Set(['import', 'module-sync', 'node', 'node-addons', 'default'])
 
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
