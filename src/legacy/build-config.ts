@@ -4,15 +4,15 @@
  */
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import type { Diagnostic } from 'nostics'
 import { relative, resolve } from 'pathe'
 
 import type { BuildPlan } from '../build/build.ts'
-import { guide } from '../build/guide.ts'
-import type { GuideSection } from '../build/guide.ts'
-import { findModuleCodeIssues, formatModuleCodeIssues, importModule } from '../build/loader.ts'
+import { findModuleCodeIssues, importModule, moduleCodeError } from '../build/loader.ts'
 import { bundledEntries, createOptionsCollector, entryName } from '../build/options.ts'
 import type { BuildHookName, ModuleConfig } from '../build/options.ts'
-import { isPlainObject, logger } from '../utils.ts'
+import { errors, warnings } from '../diagnostics.ts'
+import { isPlainObject } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import type { BuildContext, BuildHook } from './define.ts'
 
@@ -205,11 +205,11 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
       const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
       const entries = bundledEntries(cwd, withoutFile)
       unresolvable.push(...findModuleCodeIssues(cwd, [entries.module], runtimeDirs, Object.values(entries)))
-      throw new Error(formatModuleCodeIssues(unresolvable))
+      throw moduleCodeError(cwd, unresolvable)
     }
     const { default: config } = await importModule(resolve(cwd, file), { cwd, stubs })
     if (typeof config === 'function') {
-      throw new TypeError(`\`${file}\` must export a config object, not a function. Replace the function with the object it returns. ${guide('other-options')}`)
+      throw errors.NUXT_MB_D0003({ file, sources: [resolve(cwd, file)] })
     }
     configs = (Array.isArray(config) ? config : [config]).filter(Boolean)
   }
@@ -225,9 +225,9 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
 export async function loadLegacyModuleConfig(cwd: string, pkg: PackageJson, outDir: string): Promise<ModuleConfig> {
   const config = await loadBuildConfig(cwd, pkg, outDir)
   if (config.unsupported.length) {
-    throw new Error(formatUnsupportedOptions(config.unsupported))
+    throw unsupportedOptionsError(cwd, config.unsupported)
   }
-  warnDeprecatedBuildConfig(config)
+  warnDeprecatedBuildConfig(cwd, config)
   return config
 }
 
@@ -239,26 +239,21 @@ export function assertNoLegacyBuildConfig(cwd: string, pkg: PackageJson): void {
   const file = BUILD_CONFIG_FILES.find(file => existsSync(resolve(cwd, file)))
   const field = buildConfigField(pkg)
   if (file || field) {
-    const source = file ? `\`${file}\`` : `The \`${field}\` field of \`package.json\``
-    const advice = file ? 'delete the file' : 'remove the field'
-    throw new Error(`${source} configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and ${advice}. ${guide('moving-from-buildconfigts')}`)
+    throw errors.NUXT_MB_D0002({ file, field, sources: [resolve(cwd, file ?? 'package.json')] })
   }
 }
 
-export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
+/** Warns about the deprecated parts of the build config of the module in `cwd`. */
+export function warnDeprecatedBuildConfig(cwd: string, config: LoadedBuildConfig): void {
+  const sources = [...config.file ? [resolve(cwd, config.file)] : [], resolve(cwd, 'package.json')]
   for (const hook of config.ignoredHooks) {
-    logger.warn(`Ignoring ${hook}: runtime files are no longer built with mkdist. Remove the hook. ${guide('hooks')}`)
+    warnings.NUXT_MB_D0103({ hook, sources })
   }
   if (config.file) {
-    logger.warn([
-      `\`${config.file}\` is deprecated. Its options are still applied.`,
-      ...config.importsUnbuild ? ['Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`.'] : [],
-      'Move them into `builder()` in `tsdown.config.ts`.',
-      guide('moving-from-buildconfigts'),
-    ].join(' '))
+    warnings.NUXT_MB_D0101({ file: config.file, importsUnbuild: !!config.importsUnbuild, sources })
   }
   if (config.field === 'unbuild') {
-    logger.warn(`The \`unbuild\` field of \`package.json\` is deprecated. Its options are still applied. Rename the field to \`build\`. ${guide('build-configuration')}`)
+    warnings.NUXT_MB_D0102({ sources })
   }
 }
 
@@ -284,15 +279,12 @@ function createBuildContext({ cwd, outDir, pkg, entries, directories, sourcemap 
   }
 }
 
-export function formatUnsupportedOptions(unsupported: string[]): string {
-  return [
-    'The build config uses options that `@nuxt/module-builder` v2 does not support:',
-    ...unsupported.map(option => `  - ${option} (${guide(unsupportedOptionSection(option))})`),
-    `Remove each of them from the file named. ${guide('unsupported-build-options')}`,
-  ].join('\n')
+/** The error for options of a build config without an equivalent, each linked to its section of the upgrade guide. */
+export function unsupportedOptionsError(cwd: string, unsupported: string[]): Diagnostic {
+  return errors.NUXT_MB_D0004({ options: unsupported.map(option => ({ option, section: unsupportedOptionSection(option) })), sources: ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs', 'package.json'].map(file => resolve(cwd, file)) })
 }
 
-function unsupportedOptionSection(option: string): GuideSection {
+function unsupportedOptionSection(option: string) {
   const name = option.slice(option.indexOf(': ') + 2)
   if (name.startsWith('hooks[')) {
     return 'hooks'

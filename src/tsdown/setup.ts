@@ -6,14 +6,14 @@ import { relative, resolve } from 'pathe'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
-import { guide } from '../build/guide.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
+import { errors, formatDiagnostic, warnings } from '../diagnostics.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
-import { findUp, logger, readPackageJson, realpath } from '../utils.ts'
+import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
@@ -67,25 +67,21 @@ const FORBIDDEN: Array<[option: string, isSet: (config: UserConfig) => boolean, 
 export async function setupBuilder(config: UserConfig, inline: InlineConfig, options: BuilderOptions, { loadConfig }: SetupOptions): Promise<BuilderSession> {
   const forbidden = FORBIDDEN.filter(([, isSet]) => isSet(config))
   if (forbidden.length) {
-    throw new Error([
-      '`builder()` sets these tsdown options itself, so the tsdown config must leave them out:',
-      ...forbidden.map(([option, , reason]) => `  - \`${option}\`: ${reason}`),
-      guide('options-builder-sets'),
-    ].join('\n'))
+    throw errors.NUXT_MB_C0001({ options: forbidden.map(([option, , reason]) => ({ option, reason })) })
   }
 
   const cwd = realpath(config.cwd ?? process.cwd())
   const pkg = await readPackageJson(cwd)
   const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
   if (packageError) {
-    throw new Error(packageError)
+    throw packageError
   }
   const outDirOption = config.outDir ?? 'dist'
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
   const buildConfig = loadConfig ? await loadConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
-    logger.info(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
+    warnings.NUXT_MB_B0101(undefined, { method: 'info' })
     await prepareModule(cwd, { config: buildConfig, outDir, pkg })
   }
 
@@ -160,7 +156,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         ...options,
         makeAbsoluteExternalsRelative: false,
         onLog(level, log, handler) {
-          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, message: `${log.message}\n${guide('other-type-errors')}` } : log
+          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message })) } : log
           return options.onLog ? options.onLog(level, linked, handler) : handler(level, linked)
         },
       }
@@ -208,7 +204,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         ...!resolved.fixedExtension || resolved.outExtensions ? ['fixedExtension'] : [],
       ]
       if (changed.length) {
-        throw new Error(`Another tsdown plugin changed ${changed.map(option => `\`${option}\``).join(', ')}, which \`builder()\` sets. ${guide('options-builder-sets')}`)
+        throw errors.NUXT_MB_C0002({ options: changed })
       }
     },
     onBuildStart() {
@@ -230,7 +226,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         return output?.type !== 'chunk' || !output.isEntry
       })
       if (missing.length) {
-        const error = new Error(`The build did not emit ${missing.map(fileName => `\`${fileName}\``).join(', ')}. \`builder()\` sets the file names of the bundled entries, so the tsdown config and its plugins must leave \`outputOptions.entryFileNames\` unchanged. ${guide('options-builder-sets')}`)
+        const error = errors.NUXT_MB_C0003({ files: missing })
         await fail(error)
         throw error
       }

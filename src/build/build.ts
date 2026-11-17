@@ -11,31 +11,15 @@ import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
 import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
-import { findPackageDir, findUp, isInside, isSourceScript, logger, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
+import { errors, warnings } from '../diagnostics.ts'
+import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { rewriteRuntimeDeclarations } from './aliases.ts'
-import { guide } from './guide.ts'
 import { assertLoadableModuleCode, importModule, loadOxc } from './loader.ts'
 import { bundledEntries, NUXT_EXTERNALS } from './options.ts'
 import type { DirectoryEntry, ModuleConfig } from './options.ts'
 import { checkPublishedPaths, importsKeyFor, publishedPackage, selfReferencePaths, unpublishableImportsError } from './package.ts'
 import { writeTypes } from './types.ts'
-
-const ISOLATED_DECLARATIONS_HINT = [
-  'Declaration generation failed under `isolatedDeclarations`.',
-  'Every exported value needs an explicit type annotation. In particular, a module entry has to be written as:',
-  '',
-  '  const module: NuxtModule<ModuleOptions> = defineNuxtModule({ /* ... */ })',
-  '  export default module',
-  '',
-  `rather than \`export default defineNuxtModule<ModuleOptions>({ /* ... */ })\`. ${guide('isolated-declarations')}`,
-].join('\n')
-
-const TYPE_ERROR_HINT = [
-  'Type declarations could not be generated because of TypeScript errors.',
-  `An inferred type that cannot be named (TS2742) needs an explicit type annotation on the export. ${guide('portability-errors')}`,
-  `If \`.nuxt\` is out of date, run \`nuxt-module-build prepare\` and build again. ${guide('declaration-errors')}`,
-].join('\n')
 
 const SERVER_DIR_RE = /(?:^|\/)server\//
 
@@ -88,15 +72,12 @@ export interface PreparedBuild {
   bundledSources: Map<string, string>
   /** Sources whose JSX is compiled because Nitro or Node runs them. */
   compiledJsx: Set<string>
-  startedAt: number
 }
 
 export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {
-    const path = relative(cwd, tsconfigs.replaced)
-    const advice = !isInside(cwd, tsconfigs.replaced) ? 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.' : 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.'
-    logger.info(`\`${path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. ${advice} ${guide('module-tsconfig')}`)
+    warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources: [tsconfigs.replaced, resolve(cwd, '.nuxt/tsconfig.json')] }, { method: 'info' })
   }
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
@@ -163,7 +144,7 @@ export function analyseSources(plan: BuildPlan): PreparedBuild {
     .map(file => normalize(file))
     .filter(file => SCRIPT_RE.test(file) && SERVER_DIR_RE.test(relative(cwd, file)))
   const compiledJsx = valueImports([...serverFiles, ...bundledSources.keys()])
-  return { bundledSources, compiledJsx, startedAt: Date.now() }
+  return { bundledSources, compiledJsx }
 }
 
 /** Whether a JSX source keeps its JSX for the app to compile. */
@@ -203,10 +184,10 @@ export async function onBuildError(plan: BuildPlan, error: unknown, { directory 
     await rm(plan.outDir, { recursive: true, force: true })
   }
   if (plan.isolatedDeclarations && !directory) {
-    logger.error(ISOLATED_DECLARATIONS_HINT)
+    warnings.NUXT_MB_B0202(undefined, { method: 'error' })
   }
   else if (/\bTS\d{4}\b/.test(String((error as Error | undefined)?.message))) {
-    logger.error(TYPE_ERROR_HINT)
+    warnings.NUXT_MB_B0203(undefined, { method: 'error' })
   }
 }
 
@@ -225,17 +206,16 @@ let metaImports = 0
 /** Writes `module.json` and `types.d.mts`, finalises declarations and runs the checks and remaining hooks. */
 export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
-  const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
   try {
     const types = outputs.find(file => file === 'types.mjs' || file === 'types.d.mts')
     if (types) {
-      throw new Error(`A directory entry emits \`${types}\` at the root of \`${relative(cwd, outDir)}\`, which would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
+      throw errors.NUXT_MB_C0011({ file: types, outDir: relative(cwd, outDir), sources: [outDir] })
     }
     const moduleFile = resolve(outDir, 'module.mjs')
     const meta = await importModule(moduleFile, { cwd, version: metaImports++ || undefined })
       .then(exports => ((exports.default ?? exports) as NuxtModule<Record<string, unknown>>).getMeta?.())
       .then(meta => meta || {}, (error) => {
-        throw new Error(`Cannot load \`${relative(cwd, moduleFile)}\` to write \`module.json\`: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+        throw errors.NUXT_MB_B0002({ file: relative(cwd, moduleFile), reason: error instanceof Error ? error.message : String(error), cause: error, sources: [moduleFile] })
       })
     meta.name ||= pkg.name
     meta.version ||= pkg.version
@@ -246,15 +226,13 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
     await rewriteRuntimeDeclarations(outDir, outputs)
 
     if (shouldNudge(plan.isolatedDeclarations)) {
-      const project = plan.moduleProject && relative(cwd, plan.moduleProject)
-      const where = !project ? 'your `tsconfig.json`' : project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${project}\``
-      logger.info(`Built in ${duration}ms. Set \`isolatedDeclarations: true\` in ${where} to use the faster oxc declaration generator. ${guide('isolated-declarations')}`)
+      warnings.NUXT_MB_B0205({ project: plan.moduleProject && relative(cwd, plan.moduleProject), sources: plan.moduleProject ? [plan.moduleProject] : [resolve(cwd, 'tsconfig.json')] }, { method: 'info' })
     }
 
     await checkPublishedPaths(cwd)
     const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))
     if (importsError) {
-      throw new Error(importsError)
+      throw importsError
     }
     await plan.config.callHook?.('build:done', plan)
   }

@@ -28,11 +28,12 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
+import { errorCodes, errors, warningCodes, warnings } from '../src/diagnostics.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
-import buildCommand, { MISSING_TSDOWN_HINT } from '../src/commands/build.ts'
+import buildCommand from '../src/commands/build.ts'
 import prepareCommand from '../src/commands/prepare.ts'
+import { diagnostic, guideAnchors, reported } from './utils.ts'
 
 const runtimeSrcDir = fileURLToPath(new URL('../example/src/runtime', import.meta.url))
 const importer = fileURLToPath(new URL('../example/src/module.ts', import.meta.url))
@@ -130,11 +131,11 @@ describe('runtimeExternals', () => {
 })
 
 describe('upgrade guide', () => {
-  it('should have a heading for every section that build messages link to', async () => {
-    const markdown = await readFile(new URL('../docs/upgrade-v2.md', import.meta.url), 'utf8')
-    const anchors = [...markdown.replace(/^```.*\n[\s\S]*?^```/gm, '').matchAll(/^#{2,6} (.+)$/gm)]
-      .map(([, heading]) => heading!.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replaceAll(' ', '-'))
-    expect(GUIDE_SECTIONS.filter(section => !anchors.includes(section))).toEqual([])
+  it('should have a heading for every section that diagnostics link to', async () => {
+    const anchors = await guideAnchors()
+    const links = Object.entries({ ...errorCodes, ...warningCodes }).flatMap(([code, { docs }]) => docs ? [[code, docs] as const] : [])
+    expect(links.length).toBeGreaterThan(0)
+    expect(links.filter(([, docs]) => !docs.startsWith('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#') || !anchors.includes(docs.split('#')[1]!))).toEqual([])
   })
 })
 
@@ -157,8 +158,8 @@ describe('command docs', () => {
 })
 
 describe('hints', () => {
-  it('should link the missing tsdown hint to the upgrade guide', () => {
-    expect(MISSING_TSDOWN_HINT).toMatch(new RegExp(`pnpm add -D tsdown@"\\^[\\d.]+"\`\\. ${guide('install-tsdown')}$`))
+  it('should suggest installing the peer range of tsdown when it is missing', () => {
+    expect(errors.NUXT_MB_B0003().fix).toMatch(/pnpm add -D tsdown@"\^[\d.]+"`\.$/)
   })
 })
 
@@ -408,7 +409,7 @@ describe('deprecation checks', () => {
   it('should warn about referenced `.d.ts` output that is no longer generated', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyDeclarationPaths(cwd, { exports: { '.': { types: './dist/module.d.ts' } } })).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`Replace \`\\.d\\.ts\` with \`\\.d\\.mts\` in these \`package\\.json\` paths: \`\\./dist/module\\.d\\.ts\`\\. ${guide('declaration-paths')}$`)))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_D0104', '`./dist/module.d.ts`'))
     warn.mockClear()
     expect(checkLegacyDeclarationPaths(cwd, { exports: { '.': './dist/module.mjs' } })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
@@ -426,18 +427,19 @@ describe('deprecation checks', () => {
         imports: { '#shared/*': './dist/runtime/shared/*.js', '#dep': 'some-dependency' },
       },
     }
-    expect(unpublishablePathsError(cwd, pkg)).toBe(`These published fields of \`package.json\` would not work once installed. Pointing at paths that the pack leaves out: \`types\` (\`./src/module.d.ts\`). Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`)
+    expect(unpublishablePathsError(cwd, pkg)).toEqual(diagnostic('NUXT_MB_C0101', 'Pointing at paths that the pack leaves out: `types` (`./src/module.d.ts`).'))
+    expect(unpublishablePathsError(cwd, pkg)?.message).not.toContain('Pointing at TypeScript sources')
     expect(unpublishablePathsError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, types: './dist/types.d.mts' } })).toBeUndefined()
-    expect(unpublishablePathsError(cwd, { ...pkg, publishConfig: undefined })).toContain('would not work once installed. Pointing at TypeScript sources, which Node does not load from `node_modules`: `exports` (`./src/module.ts`, `./src/utils.ts`). Pointing at paths that the pack leaves out: `exports`, `types` (`./.nuxt/module-builder/types.d.mts`, `./src/module.d.ts`). Point')
-    expect(unpublishablePathsError(cwd, { files: ['dist', 'src/module.ts'], main: './src/module.ts' })).toContain('Pointing at TypeScript sources, which Node does not load from `node_modules`: `main` (`./src/module.ts`)')
+    expect(unpublishablePathsError(cwd, { ...pkg, publishConfig: undefined })).toEqual(diagnostic('NUXT_MB_C0101', 'Pointing at TypeScript sources, which Node does not load from `node_modules`: `exports` (`./src/module.ts`, `./src/utils.ts`). Pointing at paths that the pack leaves out: `exports`, `types` (`./.nuxt/module-builder/types.d.mts`, `./src/module.d.ts`).'))
+    expect(unpublishablePathsError(cwd, { files: ['dist', 'src/module.ts'], main: './src/module.ts' })).toEqual(diagnostic('NUXT_MB_C0101', 'Pointing at TypeScript sources, which Node does not load from `node_modules`: `main` (`./src/module.ts`)'))
   })
 
   it('should refuse published `imports` that point at TypeScript sources or that the pack leaves out only when the build output imports them', () => {
     const pkg = { files: ['dist', '.nuxt/ui.static.css'], imports: { '#internal/*': './src/internal/*.ts', '#shared': './shared/index.js', '#build/ui.css': './.nuxt/ui.static.css', '#dep': 'some-dependency' } }
     expect(unpublishablePathsError(cwd, pkg)).toBeUndefined()
     expect(unpublishableImportsError(cwd, pkg, () => false)).toBeUndefined()
-    expect(unpublishableImportsError(cwd, pkg, () => true)).toBe(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#internal/*\` (\`./src/internal/*.ts\`). Pointing at paths that the pack leaves out: \`#shared\` (\`./shared/index.js\`). Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`)
-    expect(unpublishableImportsError(cwd, pkg, key => key === '#shared')).not.toContain('#internal')
+    expect(unpublishableImportsError(cwd, pkg, () => true)).toEqual(diagnostic('NUXT_MB_C0102', 'Pointing at TypeScript sources, which Node does not load from `node_modules`: `#internal/*` (`./src/internal/*.ts`). Pointing at paths that the pack leaves out: `#shared` (`./shared/index.js`).'))
+    expect(unpublishableImportsError(cwd, pkg, key => key === '#shared')?.message).not.toContain('#internal')
     const publishConfig: Record<string, unknown> = { imports: { '#internal/*': './dist/internal/*.mjs', '#shared': './dist/shared.mjs' } }
     expect(unpublishableImportsError(cwd, { ...pkg, publishConfig }, () => true)).toBeUndefined()
   })
@@ -457,20 +459,20 @@ describe('deprecation checks', () => {
     expect(unpublishablePathsError(cwd, { files: ['dist/**/*.mjs'], exports: { './runtime/*': './dist/runtime/*' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { exports: { '.': './dist/module.mjs', './types': './types/index.d.ts' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { files: ['dist'], main: './index.mjs', exports: { '.': './index.mjs', './package.json': './package.json' } })).toBeUndefined()
-    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private': './dist/private/a.mjs' } })).toContain('(`./dist/private/a.mjs`)')
-    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private/*': './dist/private/*' } })).toContain('(`./dist/private/*`)')
-    expect(unpublishablePathsError(cwd, { files: ['dist/module.mjs', 'dist/runtime/*.d.ts'], exports: { './runtime/*': './dist/runtime/*.js' } })).toContain('(`./dist/runtime/*.js`)')
+    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private': './dist/private/a.mjs' } })).toEqual(diagnostic('NUXT_MB_C0101', '(`./dist/private/a.mjs`)'))
+    expect(unpublishablePathsError(cwd, { files: ['dist', '!dist/private'], exports: { './private/*': './dist/private/*' } })).toEqual(diagnostic('NUXT_MB_C0101', '(`./dist/private/*`)'))
+    expect(unpublishablePathsError(cwd, { files: ['dist/module.mjs', 'dist/runtime/*.d.ts'], exports: { './runtime/*': './dist/runtime/*.js' } })).toEqual(diagnostic('NUXT_MB_C0101', '(`./dist/runtime/*.js`)'))
     expect(unpublishablePathsError(cwd, { files: ['dist/module.mjs', 'dist/runtime/**/*.js'], exports: { './runtime/*': './dist/runtime/*.js' } })).toBeUndefined()
     expect(unpublishablePathsError(cwd, { files: ['dist/**/*.[cm]js', 'dist/**/*.d.mts'], exports: { './runtime': './dist/runtime/index.mjs' } })).toBeUndefined()
-    expect(unpublishablePathsError(cwd, { files: ['dist/**/*.[!m]js'], exports: { './runtime': './dist/runtime/index.mjs' } })).toContain('(`./dist/runtime/index.mjs`)')
-    expect(unpublishablePathsError(cwd, { files: ['{dist,lib}'], exports: { './a': './lib/a.js', './b': './other/b.js' } })).toContain('(`./other/b.js`)')
-    expect(unpublishablePathsError(cwd, { exports: { '.': './.nuxt/module.mjs' } })).toContain('paths that the pack leaves out: `exports` (`./.nuxt/module.mjs`)')
+    expect(unpublishablePathsError(cwd, { files: ['dist/**/*.[!m]js'], exports: { './runtime': './dist/runtime/index.mjs' } })).toEqual(diagnostic('NUXT_MB_C0101', '(`./dist/runtime/index.mjs`)'))
+    expect(unpublishablePathsError(cwd, { files: ['{dist,lib}'], exports: { './a': './lib/a.js', './b': './other/b.js' } })).toEqual(diagnostic('NUXT_MB_C0101', '(`./other/b.js`)'))
+    expect(unpublishablePathsError(cwd, { exports: { '.': './.nuxt/module.mjs' } })).toEqual(diagnostic('NUXT_MB_C0101', 'paths that the pack leaves out: `exports` (`./.nuxt/module.mjs`)'))
   })
 
   it('should warn about referenced `module.cjs` output that is no longer generated', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.cjs' })).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`\`module\\.cjs\`.*Replace it with \`\\./dist/module\\.mjs\`.* ${guide('modulecjs')}$`)))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_D0105'))
     warn.mockClear()
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.mjs' })).toBe(false)
     expect(checkLegacyCJSPaths(cwd, { main: './dist/submodule.cjs' })).toBe(false)
@@ -495,7 +497,7 @@ describe('deprecation checks', () => {
       },
     }
     expect(checkMissingPaths(root, pkg)).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`: \`\\./dist/utils\\.d\\.mts\`, \`\\./dist/utils\\.mjs\`\\. Add the entry that produces each one, or remove the path\\. ${guide('paths-the-build-does-not-produce')}$`)))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_C0203', ': `./dist/utils.d.mts`, `./dist/utils.mjs`.\n'))
     warn.mockClear()
     expect(checkMissingPaths(root, { exports: { '.': './dist/module.mjs', './package.json': './package.json' } })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
@@ -515,10 +517,10 @@ describe('deprecation checks', () => {
       typesVersions: { '*': { 'util': ['dist/util'], 'nested': ['./dist/nested'], 'legacy': ['dist/legacy'], 'gone': ['dist/gone'], 'runtime/*': ['dist/runtime/*'] } },
     }
     expect(checkNode10DeclarationPaths(root, pkg)).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`node10 module resolution.*: \`dist/util\` \\(use \`\\./dist/util\\.d\\.mts\`\\), \`\\./dist/nested\` \\(use \`\\./dist/nested/index\\.d\\.mts\`\\)\\. Write each path with its extension\\. ${guide('typesversions-paths')}$`)))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_C0202', ': `dist/util`, `./dist/nested`.\n├▶ fix: Write each path with its extension: `./dist/util.d.mts` for `dist/util`, `./dist/nested/index.d.mts` for `./dist/nested`.'))
     warn.mockClear()
     expect(checkMissingPaths(root, pkg)).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(': `dist/gone`. Add the entry'))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_C0203', ': `dist/gone`.\n'))
     warn.mockClear()
     expect(checkNode10DeclarationPaths(root, { typesVersions: { '*': { util: ['dist/util.d.mts'], legacy: ['dist/legacy'] } } })).toBe(false)
     expect(warn).not.toHaveBeenCalled()
@@ -529,11 +531,59 @@ describe('deprecation checks', () => {
   it('should warn about a stale `types` field', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkStaleTypesField(cwd, { types: './dist/nope.d.ts' })).toBe(true)
-    expect(warn).toHaveBeenCalledExactlyOnceWith(`\`types\` in \`package.json\` points at \`./dist/nope.d.ts\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(reported('NUXT_MB_C0201', '`./dist/nope.d.ts`'))
     warn.mockClear()
     expect(checkStaleTypesField(cwd, {})).toBe(false)
     expect(warn).not.toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('should link the files a warning names that exist, and its docs, where the terminal supports hyperlinks', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-links-'))
+    await mkdir(join(root, 'dist'))
+    await writeFile(join(root, 'package.json'), '{}')
+    await writeFile(join(root, 'dist/util.d.mts'), '')
+    vi.stubEnv('FORCE_HYPERLINK', '1')
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+    try {
+      expect(checkNode10DeclarationPaths(root, { typesVersions: { '*': { util: ['dist/util'] } } })).toBe(true)
+      const message = String(warn.mock.calls[0]![0])
+      const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
+      expect(message).toContain(link(pathToFileURL(join(root, 'package.json')).href, 'package.json'))
+      expect(message).toContain(link(pathToFileURL(join(root, 'dist/util.d.mts')).href, './dist/util.d.mts'))
+      expect(message).toContain('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#typesversions-paths\x07')
+      expect(message).not.toContain(pathToFileURL(join(root, 'dist/util')).href + '\x07')
+    }
+    finally {
+      warn.mockRestore()
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('should dim the code, show inline code in cyan and link paths outside the module where the terminal supports it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-styles-'))
+    await mkdir(join(root, 'mod/.nuxt'), { recursive: true })
+    await writeFile(join(root, 'tsconfig.json'), '{}')
+    await writeFile(join(root, 'mod/.nuxt/tsconfig.json'), '{}')
+    vi.stubEnv('FORCE_COLOR', '1')
+    vi.stubEnv('FORCE_HYPERLINK', '1')
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    try {
+      warnings.NUXT_MB_C0301({ path: '../tsconfig.json', inside: false, sources: [join(root, 'tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.json')] }, { method: 'info' })
+      const message = String(info.mock.calls[0]![0])
+      const link = (file: string, label: string) => `\x1B]8;;${pathToFileURL(file).href}\x07${label}\x1B]8;;\x07`
+      expect(message.startsWith('\x1B[2m[NUXT_MB_C0301]\x1B[22m ')).toBe(true)
+      expect(message).toContain(`\x1B[36m${link(join(root, 'tsconfig.json'), '../tsconfig.json')}\x1B[39m takes`)
+      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), '.nuxt/tsconfig.json'))
+      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), './.nuxt/tsconfig.json'))
+      expect(message).not.toContain('`')
+    }
+    finally {
+      info.mockRestore()
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
 
@@ -572,32 +622,33 @@ describe('sourcePathsPackError', () => {
   })
 
   it('should refuse packs by package managers that publish the source paths as written', () => {
-    const fix = `Point them at \`dist\`, or pack and publish with pnpm or Yarn 4, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`
     const paths = '`./.nuxt/module-builder/types.d.mts`, `./src/module.ts`, `./src/utils.ts`, `./src/runtime/shared/*.ts`'
-    expect(sourcePathsPackError(cwd, pkg, npm)).toBe(`\`npm@11.19.0\` packs these fields of \`package.json\` as written, and they point at TypeScript sources or paths that \`files\` leaves out: \`exports\`, \`imports\`, \`main\`, \`types\` (${paths}). ${fix}`)
-    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_lifecycle_event: 'prepublishOnly' })).toContain('`npm@11.19.0` packs')
-    expect(sourcePathsPackError(cwd, pkg, yarnClassic)).toContain('`yarn@1.22.22` packs')
-    expect(sourcePathsPackError(cwd, pkg, bun)).toContain('`bun@1.3.14` packs')
-    expect(sourcePathsPackError(cwd, pkg, { npm_lifecycle_event: 'prepack' })).toContain('This package manager packs')
+    expect(sourcePathsPackError(cwd, pkg, npm)).toEqual(diagnostic('NUXT_MB_C0104', `\`npm@11.19.0\` packs these fields of \`package.json\` as written, and they point at TypeScript sources or paths that \`files\` leaves out: \`exports\`, \`imports\`, \`main\`, \`types\` (${paths}).`))
+    expect(sourcePathsPackError(cwd, pkg, npm)?.fix).toContain('pack and publish with pnpm or Yarn 4')
+    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_lifecycle_event: 'prepublishOnly' })).toEqual(diagnostic('NUXT_MB_C0104', '`npm@11.19.0` packs'))
+    expect(sourcePathsPackError(cwd, pkg, yarnClassic)).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@1.22.22` packs'))
+    expect(sourcePathsPackError(cwd, pkg, bun)).toEqual(diagnostic('NUXT_MB_C0104', '`bun@1.3.14` packs'))
+    expect(sourcePathsPackError(cwd, pkg, { npm_lifecycle_event: 'prepack' })).toEqual(diagnostic('NUXT_MB_C0104', 'This package manager packs'))
   })
 
   it('should name the package manager that packs when a script of another one runs it', () => {
-    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_config_user_agent: pnpm.npm_config_user_agent })).toContain('`npm` packs')
-    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: pnpm.npm_execpath })).toContain('`yarn@1.22.22` packs')
-    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: npm.npm_execpath })).toContain('`yarn@1.22.22` packs')
-    expect(sourcePathsPackError(cwd, pkg, { ...yarn, npm_execpath: npm.npm_execpath })).toContain('`npm` packs')
+    expect(sourcePathsPackError(cwd, pkg, { ...npm, npm_config_user_agent: pnpm.npm_config_user_agent })).toEqual(diagnostic('NUXT_MB_C0104', '`npm` packs'))
+    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: pnpm.npm_execpath })).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@1.22.22` packs'))
+    expect(sourcePathsPackError(cwd, pkg, { ...yarnClassic, npm_execpath: npm.npm_execpath })).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@1.22.22` packs'))
+    expect(sourcePathsPackError(cwd, pkg, { ...yarn, npm_execpath: npm.npm_execpath })).toEqual(diagnostic('NUXT_MB_C0104', '`npm` packs'))
   })
 
   it('should refuse source paths that `publishConfig` does not replace', () => {
     const { types: _, ...publishConfig } = pkg.publishConfig
-    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`package.json\` point at TypeScript sources or paths that \`files\` leaves out, and \`publishConfig\` does not replace them, so they would be published as written: \`types\` (\`./.nuxt/module-builder/types.d.mts\`). Set \`publishConfig.types\` to the \`dist\` paths. ${guide('publishing-source-exports')}`)
-    expect(sourcePathsPackError(cwd, { exports: pkg.exports }, pnpm)).toContain('Set `publishConfig.exports` to the `dist` paths.')
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toEqual(diagnostic('NUXT_MB_C0105', 'so they would be published as written: `types` (`./.nuxt/module-builder/types.d.mts`).'))
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)?.fix).toBe('Set `publishConfig.types` to the `dist` paths.')
+    expect(sourcePathsPackError(cwd, { exports: pkg.exports }, pnpm)?.fix).toBe('Set `publishConfig.exports` to the `dist` paths.')
   })
 
   it('should refuse `publishConfig` fields that point at sources', () => {
     const publishConfig = { ...pkg.publishConfig, main: './src/module.ts' }
-    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toBe(`These fields of \`publishConfig\` point at TypeScript sources or paths that \`files\` leaves out, so they would be published that way: \`main\` (\`./src/module.ts\`). Point them at \`dist\`. ${guide('publishing-source-exports')}`)
-    expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toContain('These fields of `publishConfig` point at TypeScript sources')
+    expect(sourcePathsPackError(cwd, { ...pkg, publishConfig }, pnpm)).toEqual(diagnostic('NUXT_MB_C0103', 'so they would be published that way: `main` (`./src/module.ts`).'))
+    expect(sourcePathsPackError(cwd, { main: './dist/module.mjs', publishConfig: { main: './src/module.ts' } }, yarn)).toEqual(diagnostic('NUXT_MB_C0103'))
     expect(sourcePathsPackError(cwd, { ...pkg, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./src/utils.ts'] } } } }, yarn)).toBeUndefined()
     expect(sourcePathsPackError(cwd, { files: ['dist/*.d.mts'], main: './dist/module.mjs', exports: './src/module.ts', publishConfig: { exports: './dist/module.mjs' } }, pnpm)).toBeUndefined()
   })
@@ -606,16 +657,17 @@ describe('sourcePathsPackError', () => {
     const typesVersions = { '*': { utils: ['./src/utils.ts'] } }
     const sourceTypesVersions = { ...pkg, typesVersions, publishConfig: { ...pkg.publishConfig, typesVersions: { '*': { utils: ['./dist/utils.d.mts'] } } } }
     expect(sourcePathsPackError(cwd, sourceTypesVersions, pnpm)).toBeUndefined()
-    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)).toBe(`\`yarn@4.18.1\` packs these fields of \`package.json\` as written, and they point at TypeScript sources or paths that \`files\` leaves out: \`typesVersions\` (\`./src/utils.ts\`). Point them at \`dist\`, or pack and publish with pnpm, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`)
+    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@4.18.1` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `typesVersions` (`./src/utils.ts`).'))
+    expect(sourcePathsPackError(cwd, sourceTypesVersions, yarn)?.fix).toContain('pack and publish with pnpm, which')
   })
 
   it('should refuse the fields that Yarn 2 and 3 pack as written', () => {
     const yarn2 = pack('yarn/2.4.2', '/tmp/xfs-b1b0ae8e/yarn')
     const yarn3 = pack('yarn/3.8.7', '/tmp/xfs-e94f6087/yarn')
-    expect(sourcePathsPackError(cwd, pkg, yarn2)).toContain('`yarn@2.4.2` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `imports`, `types` (')
-    expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `types` (`./.nuxt/module-builder/types.d.mts`)')
+    expect(sourcePathsPackError(cwd, pkg, yarn2)).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@2.4.2` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `imports`, `types` ('))
+    expect(sourcePathsPackError(cwd, pkg, yarn3)).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@3.8.7` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `types` (`./.nuxt/module-builder/types.d.mts`)'))
     expect(sourcePathsPackError(cwd, { main: pkg.main, publishConfig: { main: pkg.publishConfig.main } }, yarn2)).toBeUndefined()
-    expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toContain('`yarn@5.0.0` packs')
+    expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toEqual(diagnostic('NUXT_MB_C0104', '`yarn@5.0.0` packs'))
   })
 })
 
@@ -867,17 +919,17 @@ describe('builder options', () => {
   })
 
   it('should refuse options it does not accept', () => {
-    expect(() => resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never)).toThrow(`\`builder()\` does not support these options:\n  - outDir\n  - entries[0].ext\n${guide('tsdown-config')}`)
+    expect(() => resolveModuleOptions(cwd, {}, outDir, { outDir: 'lib', entries: [{ input: 'src/x/', ext: 'cjs' }] } as never)).toThrow(diagnostic('NUXT_MB_C0009', '`builder()` does not support these options:\n  - outDir\n  - entries[0].ext'))
   })
 
   it('should refuse a bundled entry named `types`', () => {
     for (const entries of [[{ input: './src/utils', name: 'types' }], [{ input: './src/utils', name: 'Types' }], ['./src/types']]) {
-      expect(() => resolveModuleOptions(cwd, {}, outDir, { entries })).toThrow('named `types`, whose declarations would replace the generated `types.d.mts`')
+      expect(() => resolveModuleOptions(cwd, {}, outDir, { entries })).toThrow(diagnostic('NUXT_MB_C0010'))
     }
   })
 
   it('should refuse `hooks` and point at tsdown\'s own', () => {
-    expect(() => resolveModuleOptions(cwd, {}, outDir, { hooks: { 'build:before': () => {} } } as never)).toThrow(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+    expect(() => resolveModuleOptions(cwd, {}, outDir, { hooks: { 'build:before': () => {} } } as never)).toThrow(diagnostic('NUXT_MB_C0008'))
   })
 
   it('should list every tsdown option it sets that the config sets too', async () => {
@@ -896,8 +948,8 @@ describe('builder options', () => {
       noExternal: ['b'],
       deps: { neverBundle: true },
     }
-    await expect(setupBuilder(config, {}, {}, { legacy: false })).rejects.toThrow([
-      '`builder()` sets these tsdown options itself, so the tsdown config must leave them out:',
+    await expect(setupBuilder(config, {}, {}, { legacy: false })).rejects.toThrow(diagnostic('NUXT_MB_C0001', [
+      '`builder()` sets these tsdown options itself, and the tsdown config sets them too:',
       '  - `entry`: list bundled entries besides `src/module` in `builder({ entries })`',
       '  - `format`: modules are built as ES modules only',
       '  - `dts`: declarations are generated with the module\'s own tsconfig',
@@ -911,8 +963,7 @@ describe('builder options', () => {
       '  - `external`: use `builder({ externals })` or `deps.neverBundle`',
       '  - `noExternal`: use `deps.alwaysBundle`',
       '  - `deps.neverBundle`: list the imports that are never bundled',
-      guide('options-builder-sets'),
-    ].join('\n'))
+    ].join('\n')))
   })
 })
 
@@ -1035,7 +1086,7 @@ describe('resolveOutDir', () => {
     expect(resolveOutDir('/repo/mod', '/repo/mod/.stub')).toBe('/repo/mod/.stub')
     expect(resolveOutDir('/repo/mod', '..dist')).toBe('/repo/mod/..dist')
     for (const outDir of ['.', '..', '/repo', '/repo/mod', '../mod', '../sibling', '/elsewhere/dist']) {
-      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(`is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+      expect(() => resolveOutDir('/repo/mod', outDir)).toThrow(diagnostic('NUXT_MB_C0012', 'is not inside the module root'))
     }
   })
 

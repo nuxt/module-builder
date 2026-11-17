@@ -6,9 +6,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'pathe'
 import { exec } from 'tinyexec'
 import ts from 'typescript'
-import { onTestFailed } from 'vitest'
+import { expect, onTestFailed } from 'vitest'
 
 import { publishedPackage } from '../src/build/package.ts'
+import { escapeRegExp } from '../src/utils.ts'
 import type { PackageJson } from '../src/utils.ts'
 
 export const repoRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -207,4 +208,24 @@ export async function waitFor(check: () => Promise<boolean> | boolean, timeout =
     }
     await delay(250)
   }
+}
+
+/** Matches a diagnostic with `code`, whose message contains `part`. */
+export function diagnostic(code: string, part?: string) {
+  return expect.objectContaining({ code, ...part !== undefined && { message: expect.stringContaining(part) } })
+}
+
+/** Matches a diagnostic with `code` as `logger` prints it, containing `part`. */
+export function reported(code: string, part = '') {
+  return expect.stringMatching(new RegExp(`^\\[${code}\\] [\\s\\S]*${escapeRegExp(part)}`))
+}
+
+/** `output` without the guide that `logger` prints to the left of the lines after the first of a message. */
+export const withoutGuide = (output: string) => output.replace(/^│(?: {2}|$)/gm, '')
+
+/** The anchors of the headings of the upgrade guide. */
+export async function guideAnchors(): Promise<string[]> {
+  const markdown = await readFile(join(repoRoot, 'docs/upgrade-v2.md'), 'utf8')
+  return [...markdown.replace(/^```.*\n[\s\S]*?^```/gm, '').matchAll(/^#{2,6} (.+)$/gm)]
+    .map(([, heading]) => heading!.trim().toLowerCase().replace(/[^\p{L}\p{N} _-]/gu, '').replaceAll(' ', '-'))
 }

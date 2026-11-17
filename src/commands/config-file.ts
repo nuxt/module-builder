@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import type { Diagnostic } from 'nostics'
 import { basename, dirname, resolve } from 'pathe'
 
 import { BUILDER_OPTIONS } from '../build/options.ts'
 import type { BuilderOptions } from '../build/options.ts'
-import { guide } from '../build/guide.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
+import { errors } from '../diagnostics.ts'
 
 const TSDOWN_CONFIG_FILES = ['ts', 'mts', 'cts', 'js', 'mjs', 'cjs', 'json'].map(extension => `tsdown.config.${extension}`)
 
@@ -15,19 +16,8 @@ export function findTsdownConfig(cwd: string): string | undefined {
   return file && resolve(cwd, file)
 }
 
-export function missingBuilderError(file: string): Error {
-  return new Error([
-    `\`${basename(file)}\` does not build the module with \`builder()\`. Add the plugin:`,
-    '',
-    `  import { builder } from '@nuxt/module-builder/tsdown'`,
-    `  import { defineConfig } from 'tsdown'`,
-    '',
-    `  export default defineConfig({`,
-    `    plugins: [builder()],`,
-    `  })`,
-    '',
-    guide('tsdown-config'),
-  ].join('\n'))
+export function missingBuilderError(file: string): Diagnostic {
+  return errors.NUXT_MB_C0005({ file: basename(file), sources: [file] })
 }
 
 export interface BuilderConfig {
@@ -57,14 +47,14 @@ async function loadBuilderConfig(cwd: string, file: string): Promise<BuilderConf
     for (const plugin of await flattenPlugins(config?.plugins)) {
       if (plugin && typeof plugin === 'object' && BUILDER_OPTIONS in plugin) {
         if (config?.cwd !== undefined && resolve(dirname(file), config.cwd) !== resolve(cwd)) {
-          throw new Error(`\`${basename(file)}\` sets \`cwd\`, but \`prepare\` reads the module in the directory of the tsdown config. Move the tsdown config into the module, or remove \`cwd\`. ${guide('tsdown-config')}`)
+          throw errors.NUXT_MB_C0007({ file: basename(file), sources: [file] })
         }
         found.push({ options: plugin[BUILDER_OPTIONS] as BuilderOptions, outDir: config?.outDir })
       }
     }
   }
   if (found.length > 1) {
-    throw new Error(`\`${basename(file)}\` uses \`builder()\` in more than one config. Build the module with one of them. ${guide('tsdown-config')}`)
+    throw errors.NUXT_MB_C0006({ file: basename(file), sources: [file] })
   }
   if (!found[0]) {
     throw missingBuilderError(file)
