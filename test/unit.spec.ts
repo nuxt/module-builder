@@ -1290,6 +1290,11 @@ describe('build plan', () => {
     expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
   })
 
+  it('should escape a rewritten specifier for its quotes', () => {
+    const code = `import './it\\'s'\nimport "./say \\"hi\\""\nconst lazy = import(\`./back\\\`tick\`)\n`
+    expect(rewriteSpecifiers(code, specifier => `${specifier}.js`)).toBe(`import './it\\'s.js'\nimport "./say \\"hi\\".js"\nconst lazy = import(\`./back\\\`tick.js\`)\n`)
+  })
+
   it('should find the imports of a script block with `>` in a quoted attribute', () => {
     const sfc = `<script setup lang="ts" generic="T extends Array<string>">import { x } from './x'\n</script>\n`
     expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./x'`, `'./x.js'`))

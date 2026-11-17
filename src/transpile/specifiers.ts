@@ -97,7 +97,7 @@ export function rewriteSpecifiers(code: string, replace: (specifier: string) => 
     if (replacement === undefined || replacement === specifier) {
       continue
     }
-    result += code.slice(cursor, start) + code[start] + replacement + code[end - 1]
+    result += code.slice(cursor, start) + code[start] + replacement.replace(/[\\'"`]|\$\{/g, match => `\\${match}`) + code[end - 1]
     cursor = end
   }
   return result + code.slice(cursor)
