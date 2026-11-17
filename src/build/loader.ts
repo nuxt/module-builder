@@ -237,7 +237,8 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
   }
   const name = packageName(specifier)
-  if (name && findPackageDir(name, parentDir)) {
+  const packageDir = name && findPackageDir(name, parentDir)
+  if (packageDir && exportsSubpath(packageDir, `.${specifier.slice(name.length)}`)) {
     return
   }
   for (const candidate of matchPath?.(specifier) || []) {
@@ -246,6 +247,16 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
       return { file, via: 'paths' }
     }
   }
+}
+
+/** Whether the package in `dir` exposes `subpath`, `.` or `./` followed by a path, to importers. */
+function exportsSubpath(dir: string, subpath: string) {
+  const { exports } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8').replace(/^\uFEFF/, '')) as PackageJson
+  if (exports === undefined) {
+    return subpath === '.' || !!probe(join(dir, subpath))
+  }
+  const keys = isPlainObject(exports) ? Object.keys(exports).filter(key => key.startsWith('.')) : []
+  return keys.length ? !!importsKeyFor(keys, subpath) : subpath === '.'
 }
 
 /** The file that `specifier` maps to through the `imports` of the closest `package.json`, with the conditions of `import`. */

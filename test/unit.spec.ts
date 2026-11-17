@@ -359,17 +359,20 @@ describe('findModuleCodeIssues', () => {
     }
   })
 
-  it('should not report an installed package with only an `import` condition as a tsconfig `paths` alias', async () => {
+  it('should only report the tsconfig `paths` aliases of an installed package with only an `import` condition that it does not export', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-import-only-'))
     try {
       await mkdir(join(dir, 'src'))
       await mkdir(join(dir, 'node_modules/esm-only'), { recursive: true })
-      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { 'esm-only': ['./src/esm-only.ts'] } } }))
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { 'esm-only': ['./src/esm-only.ts'], 'esm-only/local': ['./src/local.ts'] } } }))
       await writeFile(join(dir, 'node_modules/esm-only/package.json'), JSON.stringify({ name: 'esm-only', type: 'module', exports: { '.': { import: './index.js' } } }))
       await writeFile(join(dir, 'node_modules/esm-only/index.js'), `export const value = 1\n`)
       await writeFile(join(dir, 'src/esm-only.ts'), `export const value = 1\n`)
-      await writeFile(join(dir, 'src/module.ts'), `import { value } from 'esm-only'\nexport default value\n`)
-      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([])
+      await writeFile(join(dir, 'src/local.ts'), `export const local = 1\n`)
+      await writeFile(join(dir, 'src/module.ts'), `import { value } from 'esm-only'\nimport { local } from 'esm-only/local'\nexport default value + local\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        expect.stringMatching(/^src\/module\.ts:2:23: `esm-only\/local` is a tsconfig `paths` alias/),
+      ])
     }
     finally {
       await rm(dir, { recursive: true, force: true })
