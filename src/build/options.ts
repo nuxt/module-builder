@@ -255,9 +255,11 @@ function entryPath(cwd: string, input: string) {
 
 /** Resolves `outDir` against `cwd`, refusing a directory outside the module, which the build would empty. */
 export function resolveOutDir(cwd: string, outDir: string, label: string = `--outDir ${outDir}`): string {
-  const resolved = realpath(resolve(cwd, outDir))
-  if (resolved === cwd || !isInside(cwd, resolved)) {
-    throw new Error(`\`${label}\` resolves to \`${resolved}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+  const resolved = resolve(cwd, outDir)
+  const root = realpath(cwd)
+  const real = realpath(resolved)
+  if (real === root || !isInside(root, real)) {
+    throw new Error(`\`${label}\` resolves to \`${real}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
   }
   return resolved
 }
