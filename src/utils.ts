@@ -1,6 +1,34 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { log } from '@clack/prompts'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'pathe'
+
+export const logger = {
+  info: (message: string): void => log.info(message, { spacing: 0 }),
+  warn: (message: string): void => log.warn(message, { spacing: 0, output: process.stderr }),
+  error: (message: string): void => log.error(message, { spacing: 0, output: process.stderr }),
+}
+
+/** A `package.json`, typed for the fields that the builder reads and the dependency fields. */
+export interface PackageJson {
+  name?: string
+  version?: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+  main?: string
+  module?: string
+  types?: string
+  typings?: string
+  exports?: unknown
+  imports?: unknown
+  typesVersions?: unknown
+  files?: string[]
+  publishConfig?: Record<string, unknown>
+  [key: string]: unknown
+}
 
 export const SCRIPT_RE: RegExp = /\.[cm]?[jt]sx?$/
 export const TYPESCRIPT_RE: RegExp = /\.[cm]?tsx?$/
@@ -68,6 +96,24 @@ export function isInside(dir: string, path: string): boolean {
 export function relativeSpecifier(from: string, to: string): string {
   const path = relative(dirname(from), to)
   return RELATIVE_RE.test(path) ? path : `./${path}`
+}
+
+/** The `package.json` in `dir`. */
+export async function readPackageJson(dir: string): Promise<PackageJson> {
+  return JSON.parse((await readFile(join(dir, 'package.json'), 'utf8')).replace(/^\uFEFF/, '')) as PackageJson
+}
+
+/**
+ * The file that `specifier` resolves to from `parent`, a file or a directory path ending in
+ * `/`, with the conditions of `require`.
+ */
+export function resolveFrom(parent: string | URL, specifier: string): string | undefined {
+  try {
+    return createRequire(parent).resolve(specifier)
+  }
+  catch {
+    return undefined
+  }
 }
 
 /** The directory of an installed package, found the way Node looks up `node_modules`. */

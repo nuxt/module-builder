@@ -7,15 +7,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
-import { consola } from 'consola'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
-import { moduleSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
-import { relativeSpecifier } from '../src/utils.ts'
+import { moduleSpecifiers, rewriteSpecifiers, valueSpecifiers } from '../src/transpile/specifiers.ts'
+import { logger, readPackageJson, relativeSpecifier } from '../src/utils.ts'
 import { setupBuilder } from '../src/tsdown/setup.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/report.ts'
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
@@ -27,7 +26,7 @@ import { transformCss } from '../src/transpile/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
-import { writeSourceTypes } from '../src/build/types.ts'
+import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { GUIDE_SECTIONS, guide } from '../src/build/guide.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
@@ -360,6 +359,26 @@ describe('findModuleCodeIssues', () => {
     }
   })
 
+  it('should only report the tsconfig `paths` aliases of an installed package with only an `import` condition that it does not export', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-import-only-'))
+    try {
+      await mkdir(join(dir, 'src'))
+      await mkdir(join(dir, 'node_modules/esm-only'), { recursive: true })
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { 'esm-only': ['./src/esm-only.ts'], 'esm-only/local': ['./src/local.ts'] } } }))
+      await writeFile(join(dir, 'node_modules/esm-only/package.json'), JSON.stringify({ name: 'esm-only', type: 'module', exports: { '.': { import: './index.js' } } }))
+      await writeFile(join(dir, 'node_modules/esm-only/index.js'), `export const value = 1\n`)
+      await writeFile(join(dir, 'src/esm-only.ts'), `export const value = 1\n`)
+      await writeFile(join(dir, 'src/local.ts'), `export const local = 1\n`)
+      await writeFile(join(dir, 'src/module.ts'), `import { value } from 'esm-only'\nimport { local } from 'esm-only/local'\nexport default value + local\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        expect.stringMatching(/^src\/module\.ts:2:23: `esm-only\/local` is a tsconfig `paths` alias/),
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('should follow the `imports` of `package.json` into the module\'s sources', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'module-builder-imports-'))
     try {
@@ -382,7 +401,7 @@ describe('deprecation checks', () => {
   const cwd = fileURLToPath(new URL('..', import.meta.url))
 
   it('should warn about referenced `.d.ts` output that is no longer generated', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyDeclarationPaths(cwd, { exports: { '.': { types: './dist/module.d.ts' } } })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`Replace \`\\.d\\.ts\` with \`\\.d\\.mts\` in these \`package\\.json\` paths: \`\\./dist/module\\.d\\.ts\`\\. ${guide('declaration-paths')}$`)))
     warn.mockClear()
@@ -444,7 +463,7 @@ describe('deprecation checks', () => {
   })
 
   it('should warn about referenced `module.cjs` output that is no longer generated', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkLegacyCJSPaths(cwd, { main: './dist/module.cjs' })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(new RegExp(`\`module\\.cjs\`.*Replace it with \`\\./dist/module\\.mjs\`.* ${guide('modulecjs')}$`)))
     warn.mockClear()
@@ -459,7 +478,7 @@ describe('deprecation checks', () => {
     await mkdir(join(root, 'dist'))
     await writeFile(join(root, 'dist/module.mjs'), '')
     await writeFile(join(root, 'package.json'), '{}')
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     const pkg = {
       types: './dist/stale.d.ts',
       main: './dist/module.cjs',
@@ -485,7 +504,7 @@ describe('deprecation checks', () => {
     for (const file of ['dist/util.d.mts', 'dist/util.mjs', 'dist/nested/index.d.mts', 'dist/legacy.d.ts', 'dist/gone.mjs']) {
       await writeFile(join(root, file), '')
     }
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     const pkg = {
       exports: { './util': './dist/util.mjs', './gone': './dist/gone.mjs' },
       typesVersions: { '*': { 'util': ['dist/util'], 'nested': ['./dist/nested'], 'legacy': ['dist/legacy'], 'gone': ['dist/gone'], 'runtime/*': ['dist/runtime/*'] } },
@@ -503,7 +522,7 @@ describe('deprecation checks', () => {
   })
 
   it('should warn about a stale `types` field', () => {
-    const warn = vi.spyOn(consola, 'warn').mockImplementation(() => {})
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     expect(checkStaleTypesField(cwd, { types: './dist/nope.d.ts' })).toBe(true)
     expect(warn).toHaveBeenCalledExactlyOnceWith(`\`types\` in \`package.json\` points at \`./dist/nope.d.ts\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
     warn.mockClear()
@@ -592,6 +611,32 @@ describe('sourcePathsPackError', () => {
     expect(sourcePathsPackError(cwd, pkg, yarn3)).toContain('`yarn@3.8.7` packs these fields of `package.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `types` (`./.nuxt/module-builder/types.d.mts`)')
     expect(sourcePathsPackError(cwd, { main: pkg.main, publishConfig: { main: pkg.publishConfig.main } }, yarn2)).toBeUndefined()
     expect(sourcePathsPackError(cwd, pkg, pack('yarn/5.0.0', '/tmp/xfs-0/yarn'))).toContain('`yarn@5.0.0` packs')
+  })
+})
+
+describe('writeTypes', () => {
+  it('should re-export every declaration and star re-export of `module.d.mts` as written', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-types-'))
+    await writeFile(join(dir, 'module.d.mts'), [
+      'export declare abstract class Base {}',
+      'export declare namespace Helpers { const x: number }',
+      'export declare const a: string, b: number',
+      'export declare const { c, d: [e] }: { c: 1, d: [2] }',
+      `export * as ns from './ns.mjs'`,
+      `export type * from './types.mjs'`,
+      `export type { Options as ModuleOptions } from './options.mjs'`,
+      `export { t as shared } from './chunk.mjs'`,
+      `export { a as "kebab-name" }`,
+      'declare const _default: unknown',
+      'export { _default as default }',
+    ].join('\n'))
+    await writeTypes(dir)
+    expect((await readFile(join(dir, 'types.d.mts'), 'utf-8')).split('\n').filter(line => line.startsWith('export'))).toEqual([
+      `export { a, b, Base, c, e, Helpers, "kebab-name", type ModuleOptions, shared, default } from './module.mjs'`,
+      `export * as ns from './ns.mjs'`,
+      `export type * from './types.mjs'`,
+    ])
+    await rm(dir, { recursive: true, force: true })
   })
 })
 
@@ -764,7 +809,7 @@ describe('declarationPaths', () => {
       '#components': ['/app/.nuxt/components'],
       '#imports': ['/app/.nuxt/imports'],
       '#app': ['/app/node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt/dist/app'],
-      'consola': ['/app/node_modules/.pnpm/consola@3.0.0/node_modules/consola'],
+      'pathe': ['/app/node_modules/.pnpm/pathe@2.0.0/node_modules/pathe'],
       'not-installed-package': ['/app/node_modules/.pnpm/not-installed-package@1.0.0/node_modules/not-installed-package'],
       '~/*': ['/app/*'],
     }, cwd)
@@ -1240,11 +1285,52 @@ describe('build plan', () => {
     ].join('\n')
     expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
     expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+    expect(rewriteSpecifiers(`const load = () => import/* lazy */('./d')`, specifier => `${specifier}.js`)).toBe(`const load = () => import/* lazy */('./d.js')`)
+  })
+
+  it('should find imports with comments inside or before them, and imports of string names', () => {
+    const code = [
+      `import {\n  a, // the a's value\n} from './a'`,
+      `/* b */import b from './b'`,
+      `import { 'c-c' as c } from './c'`,
+      `import type from './d'`,
+    ].join('\n')
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+  })
+
+  it('should ignore import statements inside strings', () => {
+    const template = 'const template = `\nimport x from \'./in-string\'\n`\n'
+    expect(moduleSpecifiers(`@decorate\nclass A {}\n${template}`)).toEqual([])
+    const sfc = `<template>\n  <p>Don't</p>\n</template>\n\n<script setup lang="ts">\nimport A from './a'\n${template}</script>\n`
+    expect(moduleSpecifiers(sfc, 'Component.vue').map(({ specifier }) => specifier)).toEqual(['./a'])
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
+  })
+
+  it('should find the imports of a script block whose end tag has whitespace or attributes', () => {
+    const sfc = `<script setup lang="ts">\nimport A from './a'\n</script\t\n bar>\n<template><A /></template>\n`
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./a'`, `'./a.js'`))
+  })
+
+  it('should escape a rewritten specifier for its quotes', () => {
+    const code = `import './it\\'s'\nimport "./say \\"hi\\""\nconst lazy = import(\`./back\\\`tick\`)\n`
+    expect(rewriteSpecifiers(code, specifier => `${specifier}.js`)).toBe(`import './it\\'s.js'\nimport "./say \\"hi\\".js"\nconst lazy = import(\`./back\\\`tick.js\`)\n`)
+  })
+
+  it('should find the imports of a script block with `>` in a quoted attribute', () => {
+    const sfc = `<script setup lang="ts" generic="T extends Array<string>">import { x } from './x'\n</script>\n`
+    expect(rewriteSpecifiers(sfc, specifier => `${specifier}.js`, 'Component.vue')).toBe(sfc.replace(`'./x'`, `'./x.js'`))
   })
 
   it('should treat a dot-prefixed name as a path inside the directory', () => {
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/src/.generated/types.ts')).toBe('./.generated/types.ts')
     expect(relativeSpecifier('/mod/src/module.ts', '/mod/shared.ts')).toBe('../shared.ts')
+  })
+
+  it('should read a `package.json` that starts with a byte order mark', async () => {
+    const cwd = await tempDir()
+    await writeFile(join(cwd, 'package.json'), `\uFEFF${JSON.stringify({ name: 'bom' })}`)
+    expect(await readPackageJson(cwd)).toEqual({ name: 'bom' })
   })
 
   it('should not follow declaration files when deciding which JSX to compile', async () => {

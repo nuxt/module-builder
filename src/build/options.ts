@@ -1,8 +1,8 @@
 import { isAbsolute, normalize, relative, resolve } from 'pathe'
-import type { PackageJson } from 'pkg-types'
 
 import { assertNoLegacyBuildConfig } from '../legacy/build-config.ts'
 import { escapeRegExp, isInside, isPlainObject, probe, realpath } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import type { BuildPlan } from './build.ts'
 import { guide } from './guide.ts'
 

@@ -1,18 +1,17 @@
 import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { findStaticImports } from 'mlly'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { join, relative, resolve } from 'pathe'
-import { readPackageJSON } from 'pkg-types'
-import type { PackageJson } from 'pkg-types'
+import { version as tsdownVersion } from 'tsdown/package.json'
 import { satisfies } from 'verkit'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { version } from '../package.json'
 import { guide } from '../src/build/guide.ts'
+import type { PackageJson } from '../src/utils.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 import type { Result } from './utils.ts'
-import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
+import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, staticImports, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
 
 const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '**/tsdown.config.ts'] }
 const ISOLATED = {
@@ -65,7 +64,7 @@ void [light, dark, options]
   }),
 }
 
-const runtimeSpecifiers = (code: string) => findStaticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
+const runtimeSpecifiers = (code: string) => staticImports(code).map(i => i.specifier).filter(s => s.includes('runtime')).sort()
 
 const dirs: Record<string, string> = {}
 let sourceWithoutDist = false
@@ -680,8 +679,8 @@ describe('a module that imports runtime code, built through a symlink, under a p
       './runtime/utils/name.js',
     ])
     const moduleDts = await read(dist(), 'module.d.mts')
-    expect(findStaticImports(moduleDts).find(i => i.specifier.includes('plugins'))!.code.trim()).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
-    expect(findStaticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
+    expect(staticImports(moduleDts).find(i => i.specifier.includes('plugins'))!.code).toBe(`import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";`)
+    expect(staticImports(moduleDts).map(i => i.specifier)).toContain('./runtime/components/JsxComponent.jsx')
     expect(moduleDts).toContain('from "nuxt/app"')
     expect(moduleDts).not.toContain('#app')
   })
@@ -720,7 +719,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
   })
 
   it('should keep every non-relative runtime import as written', async () => {
-    expect(findStaticImports(await read(dist(), 'runtime/server/handler.js')).map(i => i.specifier)).toEqual([
+    expect(staticImports(await read(dist(), 'runtime/server/handler.js')).map(i => i.specifier)).toEqual([
       '#internal/nuxt.config.mjs',
       '~/app.config',
       '@/root',
@@ -729,7 +728,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
       '#fixture-cache',
       '../utils/local.js',
     ])
-    expect(findStaticImports(await read(dist(), 'runtime/utils/options.d.ts')).map(i => i.specifier)).toEqual(['fake-types'])
+    expect(staticImports(await read(dist(), 'runtime/utils/options.d.ts')).map(i => i.specifier)).toEqual(['fake-types'])
   })
 
   it('should not emit dependencies or bundler helpers into the runtime directory', async () => {
@@ -764,7 +763,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
 
   it('should warn about type errors that do not affect runtime declarations and build anyway', async () => {
     const output = expectBuilt('runtime')
-    expect(output).toMatch(/2 type errors were reported while generating declarations for `?src\/runtime`?; the declarations were emitted\. If the module's own type check \(for example `?nuxt typecheck`? or `?vue-tsc --noEmit`?\) passes/)
+    expect(output).toContain('2 type errors were reported while generating declarations for `src/runtime`; the declarations were emitted. If the module\'s own type check (for example `nuxt typecheck` or `vue-tsc --noEmit`) passes')
     expect(output).toContain('src/runtime/utils/typo.ts(1,14): error TS2322')
     expect(output).toContain('src/runtime/components/Typo.vue(3,7): error TS2322')
     expect(output.match(/type errors? (?:was|were) reported/g)).toHaveLength(1)
@@ -788,7 +787,7 @@ describe('a module with `isolatedDeclarations` and no `.nuxt`', () => {
   const dist = () => join(dirs.isolated!, 'dist')
 
   it('should prepare the module before building it', async () => {
-    expect(expectBuilt('isolated')).toMatch(new RegExp(`\\.nuxt\`? not found, running \`?nuxt-module-build prepare\`? first\\..*${guide('preparing-nuxt')}`))
+    expect(expectBuilt('isolated')).toContain(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
     expect(await read(dist(), 'runtime/composables/useAliasedApp.d.ts')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
   })
 
@@ -1137,7 +1136,7 @@ describe('a module whose code Node cannot load', () => {
 describe('a module whose declarations cannot be generated', () => {
   it('should surface isolated declaration diagnostics when the tsconfig opts in', () => {
     const output = expectFailed('isolatedError')
-    expect(output).toMatch(/Declaration generation failed under `?isolatedDeclarations/)
+    expect(output).toContain('Declaration generation failed under `isolatedDeclarations`.')
     expect(output).toMatch(/TS90\d\d/)
     expect(output).toContain(guide('isolated-declarations'))
     expect(output).not.toMatch(/Type declarations could not be generated/)
@@ -1179,7 +1178,7 @@ describe('tsconfig lookup', () => {
   })
 
   it('should generate declarations with the module\'s own `.nuxt` when the tsconfig takes its types from a playground', async () => {
-    expect(expectBuilt('routes')).toMatch(new RegExp(`\\.\\./tsconfig.json\`? takes its generated types from another app's \`?.nuxt\`?; declarations are generated with \`?.nuxt/tsconfig.json\`? instead. Add a \`?tsconfig.json\`? in the module directory that extends \`?./.nuxt/tsconfig.json\`?. ${guide('module-tsconfig')}`))
+    expect(expectBuilt('routes')).toContain(`\`../tsconfig.json\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. Add a \`tsconfig.json\` in the module directory that extends \`./.nuxt/tsconfig.json\`. ${guide('module-tsconfig')}`)
     expect(await read(dirs.routes!, 'playground/.nuxt/types/nitro-routes.d.ts')).toContain('/api/secret')
     for (const file of await listFiles(join(dirs.routes!, 'dist'))) {
       if (file.includes('.')) {
@@ -1493,9 +1492,8 @@ describe('the example', () => {
     })
 
     it('should generate module metadata as separate JSON file', async () => {
-      const tsdownPkg = await readPackageJSON('tsdown')
       expect(JSON.parse(await read(dist(), 'module.json'))).toMatchObject({
-        builder: { '@nuxt/module-builder': version, 'tsdown': tsdownPkg.version },
+        builder: { '@nuxt/module-builder': version, 'tsdown': tsdownVersion },
         configKey: 'myModule',
         name: 'my-module',
         version: '1.0.0',
@@ -1524,7 +1522,7 @@ describe('the example', () => {
     })
 
     it('should correctly add extensions to imports from runtime/ directory', async () => {
-      const runtimeImport = findStaticImports(await read(dist(), 'module.d.mts')).find(i => i.specifier.includes('runtime'))
+      const runtimeImport = staticImports(await read(dist(), 'module.d.mts')).find(i => i.specifier.includes('runtime'))
       expect(runtimeImport!.code.trim()).toMatchInlineSnapshot(`"import { SharedTypeFromRuntime } from "./runtime/plugins/plugin.js";"`)
     })
 

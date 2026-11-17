@@ -5,8 +5,6 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { relative, resolve } from 'pathe'
-import { consola } from 'consola'
-import type { PackageJson } from 'pkg-types'
 
 import type { BuildPlan } from '../build/build.ts'
 import { guide } from '../build/guide.ts'
@@ -14,7 +12,8 @@ import type { GuideSection } from '../build/guide.ts'
 import { findModuleCodeIssues, formatModuleCodeIssues, importModule } from '../build/loader.ts'
 import { bundledEntries, createOptionsCollector, entryName } from '../build/options.ts'
 import type { BuildHookName, ModuleConfig } from '../build/options.ts'
-import { isPlainObject } from '../utils.ts'
+import { isPlainObject, logger } from '../utils.ts'
+import type { PackageJson } from '../utils.ts'
 import type { BuildContext, BuildHook } from './define.ts'
 
 const BUILD_CONFIG_FILES = ['build.config.ts', 'build.config.mts', 'build.config.js', 'build.config.mjs']
@@ -248,10 +247,10 @@ export function assertNoLegacyBuildConfig(cwd: string, pkg: PackageJson): void {
 
 export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
   for (const hook of config.ignoredHooks) {
-    consola.warn(`Ignoring ${hook}: runtime files are no longer built with mkdist. Remove the hook. ${guide('hooks')}`)
+    logger.warn(`Ignoring ${hook}: runtime files are no longer built with mkdist. Remove the hook. ${guide('hooks')}`)
   }
   if (config.file) {
-    consola.warn([
+    logger.warn([
       `\`${config.file}\` is deprecated. Its options are still applied.`,
       ...config.importsUnbuild ? ['Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`.'] : [],
       'Move them into `builder()` in `tsdown.config.ts`.',
@@ -259,7 +258,7 @@ export function warnDeprecatedBuildConfig(config: LoadedBuildConfig): void {
     ].join(' '))
   }
   if (config.field === 'unbuild') {
-    consola.warn(`The \`unbuild\` field of \`package.json\` is deprecated. Its options are still applied. Rename the field to \`build\`. ${guide('build-configuration')}`)
+    logger.warn(`The \`unbuild\` field of \`package.json\` is deprecated. Its options are still applied. Rename the field to \`build\`. ${guide('build-configuration')}`)
   }
 }
 

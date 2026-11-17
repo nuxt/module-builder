@@ -1,9 +1,8 @@
 import { promises as fsp } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { resolvePath } from 'mlly'
 import { join, relative } from 'pathe'
 
-import { getOrCreate } from '../utils.ts'
+import { getOrCreate, resolveFrom } from '../utils.ts'
 
 export const SASS_RE: RegExp = /\.s[ac]ss$/
 
@@ -57,7 +56,7 @@ export async function compileSass(file: string, cwd: string): Promise<string> {
 
 async function loadSass(cwd: string): Promise<SassCompiler> {
   for (const name of ['sass', 'sass-embedded']) {
-    const path = await resolvePath(name, { url: pathToFileURL(join(cwd, 'package.json')) }).catch(() => undefined)
+    const path = resolveFrom(join(cwd, 'package.json'), name)
     if (path) {
       const sass = await import(pathToFileURL(path).href)
       return sass.compileString ? sass : sass.default
