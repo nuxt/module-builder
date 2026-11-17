@@ -6,7 +6,7 @@ import { join } from 'pathe'
 import { exec } from 'tinyexec'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
-import { analyseSources, hashGeneratedTypes } from '../src/build/build.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { selfReferencePaths } from '../src/build/package.ts'
@@ -53,6 +53,11 @@ describe('regressions', () => {
     for (const entries of [[{ input: './src/utils', name: 'types' }], ['./src/types']]) {
       expect(() => resolveModuleOptions(cwd, {}, join(cwd, 'dist'), { entries })).toThrow('named `types`, whose declarations would replace the generated `types.d.mts`')
     }
+  })
+
+  it('should refuse a directory entry that emits `types.mjs` at the root of the output', async () => {
+    const plan = { cwd: '/mod', outDir: '/mod/dist' } as BuildPlan
+    await expect(finishBuild(plan, { outputs: ['types.mjs', 'types.d.mts'], builder: {} })).rejects.toThrow('emits `types.mjs` at the root of `dist`, whose declarations would replace the generated `types.d.mts`')
   })
 
   it('should find literal dynamic imports with comments, template literals and options', () => {

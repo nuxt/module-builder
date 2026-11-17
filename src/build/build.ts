@@ -250,6 +250,9 @@ let metaImports = 0
 export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutput }: FinishBuildOptions): Promise<void> {
   const { cwd, outDir, pkg } = plan
   const duration = Date.now() - (plan.prepared?.startedAt ?? Date.now())
+  if (outputs.includes('types.mjs')) {
+    throw new Error(`A directory entry emits \`types.mjs\` at the root of \`${relative(cwd, outDir)}\`, whose declarations would replace the generated \`types.d.mts\`. Rename the file, or give the directory entry another \`outDir\`.`)
+  }
   const moduleFile = resolve(outDir, 'module.mjs')
   const meta = await readModuleMeta(moduleFile, cwd).catch(async (error) => {
     if (!keepOutput) {
