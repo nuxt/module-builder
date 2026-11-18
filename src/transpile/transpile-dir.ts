@@ -4,7 +4,7 @@ import { basename, dirname, join, normalize, relative, resolve } from 'pathe'
 import { glob } from 'tinyglobby'
 import type { Rolldown } from 'tsdown'
 
-import type { Transform as VueTransform } from 'vue-sfc-transformer/core'
+import type { VueDeclarationSession, Transform as VueTransform } from 'vue-sfc-transformer/core'
 
 import { getOrCreate, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
@@ -13,7 +13,7 @@ import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers }
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, typeResolutionFs, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
 import type { TsconfigResolver } from './tsconfig.ts'
-import { declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
+import { createDeclarationSession, declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
 import type { VueDeclarations } from './vue.ts'
 
 interface TransformResult {
@@ -106,11 +106,13 @@ const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
  * exports, `.vue` files go through `vue-sfc-transformer`, stylesheets are processed, other
  * files are copied, and declarations come from one TypeScript program over the directory.
  * `api.outputs` maps every discovered or mirrored source of the latest build to the path it
- * is emitted at, relative to the output directory.
+ * is emitted at, relative to the output directory. Under watch, the declaration program of
+ * single-file components reuses the sources the previous build parsed, until the watcher closes.
  */
 export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: { readonly outputs: Promise<Map<string, string>> } } {
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
   let latestBuild: DirectoryBuild | undefined
+  let session: Promise<VueDeclarationSession> | undefined
 
   return {
     name: 'transpile-dir',
@@ -124,7 +126,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
       for (const file of files) {
         this.addWatchFile(file)
       }
-      const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort())
+      const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort(), this.meta.watchMode ? () => session ??= createDeclarationSession() : undefined)
       work = build.run().then(files => ({ build, files }), (error: unknown) => ({ error }))
     },
     async buildEnd() {
@@ -150,6 +152,9 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
         }
       }
     },
+    closeWatcher() {
+      session = undefined
+    },
   }
 }
 
@@ -174,9 +179,11 @@ class DirectoryBuild {
   private extension: string
   private dtsExtension: string
   private options: TranspileDirOptions
+  private session: (() => Promise<VueDeclarationSession>) | undefined
 
-  constructor(options: TranspileDirOptions, files: string[]) {
+  constructor(options: TranspileDirOptions, files: string[], session?: () => Promise<VueDeclarationSession>) {
     this.options = options
+    this.session = session
     this.extension = `.${options.extension}`
     this.dtsExtension = options.extension === 'mjs' ? '.d.mts' : '.d.ts'
     for (const file of files) {
@@ -394,6 +401,7 @@ class DirectoryBuild {
         cwd: this.options.cwd,
         cacheVersion: this.options.cacheVersion,
         tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths, { vue: true, imports: this.imports }),
+        session: await this.session?.(),
       })
     })()
   }

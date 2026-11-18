@@ -70,7 +70,7 @@ Then, once per build:
   - Checks the package `imports` that the output uses.
   - Runs the `build:done` hook.
 
-In watch mode the output directory is kept, unchanged files aren't rewritten (`unchanged.ts`), and files a rebuild no longer emits are removed.
+In watch mode the output directory is kept, unchanged files aren't rewritten (`unchanged.ts`), and files a rebuild no longer emits are removed. Each `transpileDir()` passes one declaration session to the `.vue` declaration program of every rebuild, so unchanged sources aren't parsed again, and drops it when the watcher closes.
 
 ### `nuxt-module-build build`
 
