@@ -1154,7 +1154,7 @@ describe('createTsconfigResolver', () => {
     await rm(cwd, { recursive: true, force: true })
   })
 
-  it('should give each component a `tsconfig.json` with the options of its project, in its directory or above one that a component of another project has', async () => {
+  it('should give each component a `tsconfig.json` with the options of its project, in its directory or above one that a component of another project has or that held other options', async () => {
     const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-sfc-types-')))
     await mkdir(join(cwd, '.nuxt'))
     await mkdir(join(cwd, 'src/runtime'), { recursive: true })
@@ -1176,6 +1176,14 @@ describe('createTsconfigResolver', () => {
     expect(options(files[0]!)).toEqual(app)
     expect(options(files[1]!)).toEqual({ path: join(cwd, 'src/tsconfig.json'), compilerOptions: { paths: { '#other-types': [join(cwd, 'src/other')] } } })
     expect(options(files[2]!)).toEqual(app)
+
+    await write('tsconfig.other.json', { compilerOptions: { paths: { '#other-types': ['./src/changed'] } } })
+    projects['tsconfig.other.json']!.config = parseTsconfig(join(cwd, 'tsconfig.other.json'))
+    const rebuilt = await typeResolutionFs([files[1]!], () => projects['tsconfig.other.json'])
+    const host = rebuilt.get(files[1]!)!
+    const path = ts.findConfigFile(files[1]!, host.fileExists)!
+    expect(path).toBe(join(cwd, 'tsconfig.json'))
+    expect(ts.readConfigFile(path, host.readFile).config).toEqual({ compilerOptions: { paths: { '#other-types': [join(cwd, 'src/changed')] } } })
     await rm(cwd, { recursive: true, force: true })
   })
 

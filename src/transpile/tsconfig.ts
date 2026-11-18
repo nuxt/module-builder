@@ -48,10 +48,14 @@ export interface TypeResolutionFs {
   realpath?: (file: string) => string
 }
 
+/** The contents given to each virtual `tsconfig.json` in this process, which `@vue/compiler-sfc` caches by path. */
+const presented = new Map<string, string>()
+
 /**
  * A file system for each of `files` with a `tsconfig.json` holding the merged `compilerOptions`
  * of its `project`, paths made absolute, in its directory or the closest one above that no file
- * of another project uses. The `tsconfig.json` files below that one are hidden.
+ * of another project uses and that has not held other contents. The `tsconfig.json` files below
+ * that one are hidden.
  */
 export async function typeResolutionFs(files: string[], project: (file: string) => TsConfigResult | undefined): Promise<Map<string, TypeResolutionFs>> {
   const { default: ts } = await import('typescript')
@@ -63,7 +67,8 @@ export async function typeResolutionFs(files: string[], project: (file: string) 
     if (!tsconfig) {
       continue
     }
-    const taken = (path: string) => (owners.get(path) ?? tsconfig.path) !== tsconfig.path
+    const contents = await getOrCreate(configs, tsconfig.path, async () => JSON.stringify({ compilerOptions: (await inheritedTsconfig(tsconfig.path, () => false)).compilerOptions }))
+    const taken = (path: string) => (owners.get(path) ?? tsconfig.path) !== tsconfig.path || (presented.get(path) ?? contents) !== contents
     const hidden = new Set<string>()
     let path = join(dirname(file), 'tsconfig.json')
     while (taken(path) && dirname(dirname(path)) !== dirname(path)) {
@@ -74,7 +79,7 @@ export async function typeResolutionFs(files: string[], project: (file: string) 
       continue
     }
     owners.set(path, tsconfig.path)
-    const contents = await getOrCreate(configs, tsconfig.path, async () => JSON.stringify({ compilerOptions: (await inheritedTsconfig(tsconfig.path, () => false)).compilerOptions }))
+    presented.set(path, contents)
     result.set(file, {
       fileExists: name => name === path || (!hidden.has(name) && ts.sys.fileExists(name)),
       readFile: name => name === path ? contents : hidden.has(name) ? undefined : ts.sys.readFile(name),
