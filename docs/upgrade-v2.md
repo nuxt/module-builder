@@ -384,10 +384,11 @@ Each of them needs a subcommand. Without one they print their usage, so a comman
 
 In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack` and `dev:prepare`, and any other script or CI workflow that runs `nuxt-module-build`, `nuxt-build-module` or `nuxt build-module`, such as `build`, `stub` or `release`. The rules below name `nuxt-module-build`, and apply to the other names in the same way:
 
-- `nuxt-module-build build` becomes `tsdown`.
+- `nuxt-module-build build` becomes `tsdown`. `tsdown` takes no module directory: its arguments are entry files, so `nuxt-module-build build .` becomes `tsdown` too. For another directory, run `tsdown` there, as `cd packages/my-module && tsdown`, or keep `nuxt-module-build build packages/my-module`, which builds with that directory's tsdown config.
 - `nuxt-module-build build --stub` is removed when `package.json` points at the module's sources, as in [Source exports](#source-exports). When it points at `dist`, as in [Developing against dist](#developing-against-dist), it becomes `tsdown`, after `nuxt-module-build prepare` and before the first `nuxt prepare`.
 - `nuxt-module-build prepare --stub` becomes `nuxt-module-build prepare`.
 - `nuxt-module-build prepare` runs before the build and before every `nuxt prepare` in `dev:prepare`. Add it where the script doesn't run it.
+- A script that only ran the stub build, such as `"stub": "nuxt-module-build build --stub ."`, has nothing left to run. Delete it, and remove it from the scripts that run it, such as `"dev:prepare": "pnpm stub && nuxt prepare playground"`.
 
 For example, these scripts also minify a script into `dist` and prepare a docs app:
 
@@ -720,6 +721,7 @@ Auto-imports are off in the module's own `.nuxt`, so runtime code imports what i
 
 - The app's tsconfig covers `src/runtime` and the module's other runtime directories rather than the whole module root, less the root's `exclude`.
 - The root's `compilerOptions`, with those of the tsconfigs it extends, are copied into all four, apart from path options such as `paths` and `rootDir`. Its `types` are added to those Nuxt sets. Put options that every part needs there, such as `"types": ["youtube"]` for a global namespace. Leave out `types` that only tests or other tools use, such as `"vitest/globals"`, as they would apply to every part too.
+- All five, `.nuxt/tsconfig.json` included, set `allowImportingTsExtensions`, which Nuxt versions before 4.5 leave out, unless the root's `compilerOptions` set it.
 - The module's `.d.ts` files are added as well, apart from those in the runtime directories, in the output directory (`dist` by default), in the root's `exclude`, and in the `playground*`, `docs`, `test`, `tests`, `fixtures`, `example` and `examples` directories. Those that only declare globals and ambient modules, with no top-level `import` or `export`, go to all four. Module augmentations, with a top-level `import` or `export` and a `declare module` or `declare global`, go to the app and to module code, the parts that Nuxt gives an installed module's types. Other `.d.ts` modules only apply to the files that import them.
 - Module code gets the app's aliases, declarations (with the type templates that the app's tsconfig includes) and JSX options, for the runtime files it imports.
 - Module code also gets `.nuxt/module-builder/types.d.mts`, so the augmentations for the `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` that `src/module.ts` exports apply to it, as they do in an app that installs the module.
@@ -994,22 +996,23 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Move value imports of `#app`, `#imports`, and `#build/*` into runtime files.
    - Rewrite any `enum`, `namespace` with values, parameter property, or `<T>value` assertion in these files.
    - If module code imports files that a build hook generates, generate them before `prepare`, as described in [Hooks in a tsdown config](#hooks-in-a-tsdown-config).
+   - In a monorepo whose module has no tsconfig of its own, create its `tsconfig.json` and `tsconfig.module.json` first, as shown in step 6. Otherwise `prepare` reads the repository root's tsconfig, which can extend a `.nuxt` that only the root's own `nuxt prepare` writes.
    - Run `nuxt-module-build prepare`. Until module code loads with Node, it lists each problem with its fix, and doesn't generate `.nuxt`. Fix them all and run it again, until it generates `.nuxt`.
 6. Move the module to the tsconfigs in [Module tsconfig](#module-tsconfig):
    - Replace `tsconfig.json` with the root shown there: `"files": []`, the `references` to `./tsconfig.module.json` and to `./.nuxt/tsconfig.app.json`, `tsconfig.server.json` and `tsconfig.shared.json`, and the old `exclude`.
    - Keep the old `compilerOptions` in the root, apart from `types` that only tests or other tools use, such as `"vitest/globals"`: `prepare` copies the root's options, `types` included, into every part. Path options such as `paths` and `baseUrl` aren't copied: move an alias from `paths` into the `imports` of `package.json`, as described in [Source exports](#source-exports). Move `erasableSyntaxOnly` and any other option for module code only into `tsconfig.module.json`.
    - Create `tsconfig.module.json` as shown there, with `"erasableSyntaxOnly": true` and `tsBuildInfoFile`.
    - Drop the old `include`. The generated tsconfigs cover `src`, and the module's `.d.ts` files are added to them, as described in [Generated tsconfigs](#generated-tsconfigs). A `.d.ts` that an `include` named in an excluded directory, such as `test/`, applies to none of them: move it into `src` or the module root.
-   - In a monorepo whose module has no tsconfig of its own, create both files in the module's directory, as described in [Other tsconfig layouts](#other-tsconfig-layouts).
+   - In a monorepo, both files are in the module's directory, as created in step 5 and described in [Other tsconfig layouts](#other-tsconfig-layouts).
    - In the type-check script, replace the module's own `vue-tsc --noEmit` or `tsc --noEmit` with `vue-tsc -b --noEmit`, and keep the rest of the script. `vue-tsc --noEmit && nuxt typecheck playground` becomes `vue-tsc -b --noEmit && nuxt typecheck playground`. Replace a `nuxt typecheck` of the module root, without a directory, the same way: it regenerates `.nuxt` as an app's. Without a type-check script, add `"test:types": "vue-tsc -b --noEmit"`.
-   - If `vue-tsc` isn't in `devDependencies`, run `pnpm add -D vue-tsc`.
+   - If `vue-tsc` isn't in `devDependencies`, run `pnpm add -D vue-tsc`. At the root of a pnpm workspace, add `-w`: `pnpm add -D -w vue-tsc`.
    - Run `nuxt-module-build prepare` and the type-check script. It checks each part with the types that part has in an app, so it can report errors that a single-program check didn't. [Type checking each part](#type-checking-each-part) lists them, with their fixes.
 
    To keep a `tsconfig.json` that extends `./.nuxt/tsconfig.json`, set `erasableSyntaxOnly` in it instead, and keep `vue-tsc --noEmit`, as described in [Extending .nuxt/tsconfig.json](#extending-nuxttsconfigjson).
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
 8. Set up the scripts, and build. In every script that runs the builder, under any of its names (`nuxt-module-build`, `nuxt-build-module` or `nuxt build-module`, see [Commands](#commands)), change only the builder's commands, as shown in [Scripts](#scripts), and keep the others:
    - `nuxt-module-build build` becomes `tsdown`, in `prepack` and in any other script or CI workflow that runs it.
-   - With pnpm or Yarn 4, point `package.json` at the module's sources, and the same fields in `publishConfig` at `dist`. See [Source exports](#source-exports). Remove `nuxt-module-build build --stub` from `dev:prepare`.
+   - With pnpm or Yarn 4, point `package.json` at the module's sources, and the same fields in `publishConfig` at `dist`. See [Source exports](#source-exports). Remove `nuxt-module-build build --stub` from `dev:prepare`. A subpath that code outside Nuxt loads with Node, such as a Vite plugin at `my-module/vite` that a plain Vite app imports, keeps pointing at `dist`, as described in [Source exports](#source-exports): step 5 only checks the files that module code imports, so Node can fail on that subpath's source, with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, after every step passes.
    - With npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. See [Developing against dist](#developing-against-dist). In `dev:prepare`, replace `nuxt-module-build build --stub` with `tsdown`, or add `tsdown` before the first `nuxt prepare`.
    - Put `nuxt-module-build prepare` in `dev:prepare` before the build and every `nuxt prepare`, if it isn't there.
    - Keep commands that write into `dist` after `tsdown`, as the build empties `dist` first.
