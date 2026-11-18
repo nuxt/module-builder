@@ -6,7 +6,7 @@ import { relative, resolve } from 'pathe'
 import { globalLogger } from 'tsdown'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
-import { analyseSources, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
+import { analyseSources, directoryPluginName, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
@@ -89,6 +89,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })
   const directoryPlugins = plan.directories.map(directory => transpileDir({
+    name: directoryPluginName(plan, directory),
     cwd,
     srcDir: directory.srcDir,
     outBase: relative(outDir, directory.outDir),
@@ -131,6 +132,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userNeverBundle = config.deps?.neverBundle as Array<string | RegExp> | string | RegExp | undefined
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
+  const typeCheck = plan.rootTsconfig?.config.references?.length ? 'vue-tsc -b --noEmit' : 'vue-tsc --noEmit'
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
@@ -158,7 +160,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         ...options,
         makeAbsoluteExternalsRelative: false,
         onLog(level, log, handler) {
-          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message })) } : log
+          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, plugin: undefined, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message, command: typeCheck })) } : log
           return options.onLog ? options.onLog(level, linked, handler) : handler(level, linked)
         },
       }

@@ -566,17 +566,18 @@ describe('deprecation checks', () => {
     await mkdir(join(root, 'mod/.nuxt'), { recursive: true })
     await writeFile(join(root, 'tsconfig.json'), '{}')
     await writeFile(join(root, 'mod/.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(root, 'mod/.nuxt/tsconfig.app.json'), '{}')
     vi.stubEnv('FORCE_COLOR', '1')
     vi.stubEnv('FORCE_HYPERLINK', '1')
     const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
     try {
-      warnings.NUXT_MB_C0301({ path: '../tsconfig.json', inside: false, sources: [join(root, 'tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.json')] }, { method: 'info' })
+      warnings.NUXT_MB_C0301({ path: '../tsconfig.json', inside: false, sources: [join(root, 'tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.app.json')] }, { method: 'info' })
       const message = String(info.mock.calls[0]![0])
       const link = (file: string, label: string) => `\x1B]8;;${pathToFileURL(file).href}\x07${label}\x1B]8;;\x07`
       expect(message.startsWith('\x1B[2m[NUXT_MB_C0301]\x1B[22m ')).toBe(true)
       expect(message).toContain(`\x1B[36m${link(join(root, 'tsconfig.json'), '../tsconfig.json')}\x1B[39m takes`)
       expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), '.nuxt/tsconfig.json'))
-      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), './.nuxt/tsconfig.json'))
+      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.app.json'), './.nuxt/tsconfig.app.json'))
       expect(message).not.toContain('`')
     }
     finally {

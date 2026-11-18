@@ -13,7 +13,7 @@ import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
-import { createTsconfigResolver, isModuleFile, rootTsconfig } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -80,7 +80,8 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
   const sourceTypesDir = resolve(cwd, '.nuxt/module-builder')
   const declarationsDir = join(sourceTypesDir, 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
-  const ownPaths = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : {}
+  const own = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : { paths: {}, sources: [] }
+  const ownPaths = own.paths
   let perContext = false
   const isOwnTypes = (reference: { path: string } | { types: string }) => 'types' in reference && (reference.types === name || reference.types === entryPath)
   const compilerOptions = Object.fromEntries(Object.entries(rootConfig.compilerOptions).filter(([key]) => !PATH_OPTIONS.has(key)))
@@ -213,12 +214,13 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
   await writeSourceTypes(sourceTypesDir, entryPath)
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
   if (name && perContext) {
-    const roots = Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file)))
+    const roots = [...Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file))), ...own.sources]
     const tsconfigs = await createTsconfigResolver(cwd)
     const project = tsconfigs.resolve(entryPath)
     const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
     const tsconfig = project && project !== tsconfigs.root ? project : { path: nodeTsconfig, config: parseTsconfig(nodeTsconfig) }
-    await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths })
+    const imports = await writeDependencyImports(cwd, tsconfigs.root)
+    await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths, imports })
   }
   return result
 }

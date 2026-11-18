@@ -77,7 +77,8 @@ export interface PreparedBuild {
 export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
   const tsconfigs = await createTsconfigResolver(cwd)
   if (tsconfigs.replaced) {
-    warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources: [tsconfigs.replaced, resolve(cwd, '.nuxt/tsconfig.json')] }, { method: 'info' })
+    const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', 'tsconfig.module.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
+    warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })
   }
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
@@ -179,7 +180,7 @@ export interface BuildErrorOptions {
 }
 
 /** Removes a partial output directory and explains declaration failures. */
-export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(error), keepOutput }: BuildErrorOptions): Promise<void> {
+export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(plan, error), keepOutput }: BuildErrorOptions): Promise<void> {
   if (!keepOutput) {
     await rm(plan.outDir, { recursive: true, force: true })
   }
@@ -279,9 +280,15 @@ function valueImports(roots: string[]) {
   return found
 }
 
-function isDirectoryError(error: unknown) {
+/** The name of the plugin that transpiles `directory`, which rolldown prints with its errors. */
+export function directoryPluginName(plan: BuildPlan, directory: DirectoryEntry): string {
+  return `nuxt-module-builder:${relative(plan.cwd, directory.srcDir)}`
+}
+
+function isDirectoryError(plan: BuildPlan, error: unknown) {
+  const names = new Set(plan.directories.map(directory => directoryPluginName(plan, directory)))
   const errors = (error as { errors?: Array<{ plugin?: string }> } | undefined)?.errors
-  return Array.isArray(errors) && errors.some(nested => nested.plugin === 'transpile-dir')
+  return Array.isArray(errors) && errors.some(nested => nested.plugin !== undefined && names.has(nested.plugin))
 }
 
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb']

@@ -22,8 +22,6 @@ interface DeclarationEmit {
 
 export interface DeclarationProgram {
   emit: (files: string[]) => Promise<DeclarationEmit>
-  /** The program's source files other than declaration files. */
-  sources: () => string[]
   /** The file `specifier` resolves to from `importer`, with the program's options. */
   resolve: (specifier: string, importer: string) => string | undefined
 }
@@ -59,7 +57,6 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
   const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, projectReferences: parsed?.projectReferences })
 
   return {
-    sources: () => createProgram().getSourceFiles().filter(source => !source.isDeclarationFile).map(source => source.fileName),
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
       const program = createProgram()

@@ -521,15 +521,15 @@ Syntax errors, and files for which no declaration could be emitted, fail the bui
 
 ### Other type errors
 
-Type errors that don't change the declarations, such as a wrong argument type or a missing property, don't fail the build. This applies to `.ts` and `.vue` files alike. One warning per directory gives their number and the first three. Run your module's own type check, for example:
+Type errors that don't change the declarations, such as a wrong argument type or a missing property, don't fail the build. This applies to `.ts` and `.vue` files alike. One warning per directory gives their number and the first three, and names your module's own type check: `vue-tsc -b --noEmit` with the tsconfigs in [Module tsconfig](#module-tsconfig), or `vue-tsc --noEmit` with a `tsconfig.json` that extends `./.nuxt/tsconfig.json`. Run it:
 
 ```bash
-nuxt typecheck
-# or
 vue-tsc -b --noEmit
 ```
 
 If the type check reports the same errors, fix them there. If it passes, the warning is safe to ignore.
+
+`nuxt typecheck` in the module root type checks it as an app, and regenerates `.nuxt` without the changes that `prepare` makes. Use `vue-tsc` for the module, and `nuxt typecheck playground` for the playground.
 
 Its errors come from build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`), which are typed as `any` while declarations are generated. The types in your module's `.nuxt` also reflect the module's default options. Code that only type-checks under a playground's configuration (a provider the playground enables, for example) warns here as well. An explicit annotation on the export removes that warning.
 
@@ -661,7 +661,7 @@ Auto-imports are off in the module's own `.nuxt`, so runtime code imports what i
 - The module's `.d.ts` files are added as well, apart from those in the runtime directories, in the output directory (`dist` by default), in the root's `exclude`, and in the `playground*`, `docs`, `test`, `tests`, `fixtures`, `example` and `examples` directories. Those that only declare globals and ambient modules, with no top-level `import` or `export`, go to all four. Module augmentations, with a top-level `import` or `export` and a `declare module` or `declare global`, go to the app and to module code, the parts that Nuxt gives an installed module's types. Other `.d.ts` modules only apply to the files that import them.
 - Module code gets the app's aliases, declarations (with the type templates that the app's tsconfig includes) and JSX options, for the runtime files it imports.
 - Module code also gets `.nuxt/module-builder/types.d.mts`, so the augmentations for the `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` that `src/module.ts` exports apply to it, as they do in an app that installs the module.
-- In the app, server and shared tsconfigs, the module's own package name resolves to declarations of module code that `prepare` writes into `.nuxt/module-builder/declarations`, with a `types.d.mts` that has the same augmentations, and the subpath of each other bundled entry resolves to that entry's declarations. A type template or a runtime file that imports from the module's own name then gets the types an app that installs the module gets, without type checking module code in that part. A declaration error there, such as an export whose type can't be named, is a warning: the build reports it as an error.
+- In the app, server and shared tsconfigs, the module's own package name resolves to declarations of module code that `prepare` writes into `.nuxt/module-builder/declarations`, with a `types.d.mts` that has the same augmentations, and the subpath of each other bundled entry resolves to that entry's declarations. A type template or a runtime file that imports from the module's own name then gets the types an app that installs the module gets, without type checking module code in that part. `prepare` writes the declarations of the module code that those of the bundled entries refer to. A declaration error there, such as an export whose type can't be named, is a warning. Fix it as described in [Portability errors](#portability-errors).
 
 Other files, such as most tests and fixtures, are in none of them. Reference a tsconfig of your own to type check them.
 
