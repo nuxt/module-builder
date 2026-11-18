@@ -648,8 +648,6 @@ To change the options of one part, reference a tsconfig of your own that extends
 
 `vue-tsc -b` writes a `.tsbuildinfo` file for each project, next to its tsconfig unless `tsBuildInfoFile` says otherwise. Those of the generated tsconfigs go in `.nuxt`, and `tsBuildInfoFile` puts this one there too.
 
-Keep `./.nuxt/tsconfig.app.json` itself in `references`, and put options for the runtime in the root's `compilerOptions`, as described in [Generated tsconfigs](#generated-tsconfigs). The build infers the runtime types of single-file component props, such as a prop typed through one of the module's aliases, through the generated app tsconfig itself.
-
 Type check with `vue-tsc -b --noEmit`. It checks each part as its own program, so it takes longer than `vue-tsc --noEmit` with a single tsconfig: between about 1.1 and 2.4 times as long, for the modules it was measured on. The build generates each file's declarations with the project that includes it, trying the module's own tsconfigs before the generated ones and the app's last. tsdown reads the project that includes `src/module.ts`, unless the tsdown config sets `tsconfig`.
 
 Auto-imports are off in the module's own `.nuxt`, so runtime code imports what it uses, such as `defineEventHandler` from `h3` or `useNuxtApp` from `#imports`.

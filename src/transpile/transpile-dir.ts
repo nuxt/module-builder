@@ -11,7 +11,7 @@ import { createDeclarationProgram, DeclarationError, declarationError } from './
 import type { DeclarationProgram } from './declarations.ts'
 import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
-import { createTsconfigResolver, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
+import { createTsconfigResolver, typeResolutionFs, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
 import type { TsconfigResolver } from './tsconfig.ts'
 import { declarationPath, emitDeclarations, transformVueRuntime } from './vue.ts'
 import type { VueDeclarations } from './vue.ts'
@@ -360,7 +360,7 @@ class DirectoryBuild {
     if (!this.vue.length) {
       return []
     }
-    const runtime = await transformVueRuntime(this.vue, this.options.transform as VueTransform)
+    const runtime = await transformVueRuntime(this.vue, this.options.transform as VueTransform, await typeResolutionFs(this.vue, file => this.resolver.resolve(file)))
     const result = await this.vueProgram()
     const { errors, warnings } = vueEmit(result, this.vue, this.options.cwd, true)
     if (errors.length) {

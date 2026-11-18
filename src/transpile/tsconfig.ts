@@ -6,7 +6,7 @@ import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, join, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
-import { findPackageDir, isInside, NODE_MODULES_RE } from '../utils.ts'
+import { findPackageDir, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
 import { moduleSpecifiers } from './specifiers.ts'
 
 export interface TsconfigResolver {
@@ -39,6 +39,54 @@ export async function createTsconfigResolver(dir: string): Promise<TsconfigResol
     resolve: file => projects.find(({ matches }) => matches(file.endsWith('.vue') ? `${file}.ts` : file))?.project ?? root,
     ...replaced && { replaced },
   }
+}
+
+/** The file system that `@vue/compiler-sfc` resolves the types of script setup macros through. */
+export interface TypeResolutionFs {
+  fileExists: (file: string) => boolean
+  readFile: (file: string) => string | undefined
+  realpath?: (file: string) => string
+}
+
+/** The contents given to each virtual `tsconfig.json` in this process, which `@vue/compiler-sfc` caches by path. */
+const presented = new Map<string, string>()
+
+/**
+ * A file system for each of `files` with a `tsconfig.json` holding the merged `compilerOptions`
+ * of its `project`, paths made absolute, in its directory or the closest one above that no file
+ * of another project uses and that has not held other contents. The `tsconfig.json` files below
+ * that one are hidden.
+ */
+export async function typeResolutionFs(files: string[], project: (file: string) => TsConfigResult | undefined): Promise<Map<string, TypeResolutionFs>> {
+  const { default: ts } = await import('typescript')
+  const configs = new Map<string, Promise<string>>()
+  const owners = new Map<string, string>()
+  const result = new Map<string, TypeResolutionFs>()
+  for (const file of files) {
+    const tsconfig = project(file)
+    if (!tsconfig) {
+      continue
+    }
+    const contents = await getOrCreate(configs, tsconfig.path, async () => JSON.stringify({ compilerOptions: (await inheritedTsconfig(tsconfig.path, () => false)).compilerOptions }))
+    const taken = (path: string) => (owners.get(path) ?? tsconfig.path) !== tsconfig.path || (presented.get(path) ?? contents) !== contents
+    const hidden = new Set<string>()
+    let path = join(dirname(file), 'tsconfig.json')
+    while (taken(path) && dirname(dirname(path)) !== dirname(path)) {
+      hidden.add(path)
+      path = join(dirname(dirname(path)), 'tsconfig.json')
+    }
+    if (taken(path)) {
+      continue
+    }
+    owners.set(path, tsconfig.path)
+    presented.set(path, contents)
+    result.set(file, {
+      fileExists: name => name === path || (!hidden.has(name) && ts.sys.fileExists(name)),
+      readFile: name => name === path ? contents : hidden.has(name) ? undefined : ts.sys.readFile(name),
+      realpath: ts.sys.realpath,
+    })
+  }
+  return result
 }
 
 function usesForeignBuildDir(tsconfig: TsConfigResult, dir: string) {
@@ -115,12 +163,13 @@ export function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
 
 /**
  * The `compilerOptions` and `exclude` of `file` and of the tsconfigs it extends, apart from
- * those `skip` matches, merged as TypeScript merges them, with paths made absolute.
+ * those `skip` matches, merged as TypeScript merges them, with paths made absolute. `paths`
+ * resolve against the merged `baseUrl`, or else the directory of the tsconfig that sets them.
  */
 async function inheritedTsconfig(file: string, skip: (file: string) => boolean): Promise<InheritedTsconfig> {
   const { default: ts } = await import('typescript')
   const configDir = dirname(file)
-  const layer = (path: string, ancestors: string[]): InheritedTsconfig => {
+  const layer = (path: string, ancestors: string[]): InheritedTsconfig & { pathsBase?: string } => {
     const raw = ts.readConfigFile(path, ts.sys.readFile).config as RawTsconfig | undefined
     const bases = [raw?.extends ?? []].flat()
       .map(target => resolveExtends(ts, target, dirname(path)))
@@ -129,9 +178,16 @@ async function inheritedTsconfig(file: string, skip: (file: string) => boolean):
     return {
       compilerOptions: Object.assign({}, ...bases.map(base => base.compilerOptions), absoluteOptions(raw?.compilerOptions ?? {}, dirname(path), configDir)),
       exclude: raw?.exclude?.map(pattern => resolve(dirname(path), pattern.replace('${configDir}', configDir))) ?? bases.findLast(base => base.exclude)?.exclude,
+      pathsBase: raw?.compilerOptions?.paths ? dirname(path) : bases.findLast(base => base.pathsBase)?.pathsBase,
     }
   }
-  return layer(file, [])
+  const { pathsBase, ...result } = layer(file, [])
+  const { paths, baseUrl } = result.compilerOptions
+  if (paths && typeof paths === 'object') {
+    const base = typeof baseUrl === 'string' ? baseUrl : pathsBase!
+    result.compilerOptions.paths = Object.fromEntries(Object.entries(paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target))]))
+  }
+  return result
 }
 
 const RELATIVE_RE = /^\.\.?[\\/]/
@@ -144,7 +200,7 @@ function resolveExtends(ts: typeof import('typescript'), target: string, from: s
   return source.extendedSourceFiles?.[0]
 }
 
-/** Path options resolved against `from`, the layer's directory; `${configDir}` and relative `types` are the leaf tsconfig's. */
+/** Path options resolved against `from`, the layer's directory; `${configDir}` and relative `types` are the leaf tsconfig's. `paths` are resolved once merged. */
 function absoluteOptions(options: Record<string, unknown>, from: string, configDir: string) {
   const dir = (value: string) => resolve(from, value.replace('${configDir}', configDir))
   const result = { ...options }
@@ -162,8 +218,7 @@ function absoluteOptions(options: Record<string, unknown>, from: string, configD
     result.types = result.types.map(value => typeof value === 'string' && (RELATIVE_RE.test(value) || value.includes('${configDir}')) ? resolve(configDir, value.replace('${configDir}', configDir)) : value)
   }
   if (result.paths && typeof result.paths === 'object') {
-    const base = typeof options.baseUrl === 'string' ? dir(options.baseUrl) : from
-    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target.replace('${configDir}', configDir)))]))
+    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => target.replace('${configDir}', configDir))]))
   }
   return result
 }
