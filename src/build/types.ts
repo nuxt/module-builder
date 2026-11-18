@@ -20,6 +20,8 @@ interface ModuleExport {
 
 const IDENTIFIER_RE = /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u
 
+const exportName = (name: string) => IDENTIFIER_RE.test(name) ? name : JSON.stringify(name)
+
 const DECLARATION_SUFFIXES: Record<string, string[]> = {
   '': ['.d.ts', '.d.mts', '.d.cts', '/index.d.ts', '/index.d.mts'],
   '.js': ['.d.ts'],
@@ -103,8 +105,8 @@ ${appShims.length ? `declare module '#app' {\n${appShims.join('\n')}\n}\n` : ''}
 ${schemaShims.length ? `declare module '@nuxt/schema' {\n${schemaShims.join('\n')}\n}\n` : ''}
 ${moduleExports.length ? `\n${moduleExports.join('\n')}` : ''}
 ${source ? 'export * from "./module.mjs"\nexport { default } from "./module.mjs"' : ''}
-${namedReExports.length ? `\nexport { ${namedReExports.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + (IDENTIFIER_RE.test(n) ? n : JSON.stringify(n))).join(', ')} } from './module.mjs'` : ''}
-${moduleReExports.filter(e => e.star).map(e => `\nexport ${e.star!.typeOnly ? 'type ' : ''}*${e.names[0] ? ` as ${e.names[0].name}` : ''} from '${e.specifier}'`).join('\n')}
+${namedReExports.length ? `\nexport { ${namedReExports.map(n => (n === 'default' || !typeOnlyExports.has(n) ? '' : 'type ') + exportName(n)).join(', ')} } from './module.mjs'` : ''}
+${moduleReExports.filter(e => e.star).map(e => `\nexport ${e.star!.typeOnly ? 'type ' : ''}*${e.names[0] ? ` as ${exportName(e.names[0].name)}` : ''} from '${e.specifier!.replace(/[\\']/g, '\\$&')}'`).join('\n')}
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await writeIfChanged(dtsFile, dtsContents)

@@ -16,7 +16,7 @@ const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
 const PATH_ALIAS_RE = /^(?:~|@\/)/
 const JSON_RE = /\.json$/
 const UNLOADABLE_RE = /\.(?:vue|[jt]sx)$/
-const IMPORT_CONDITIONS = new Set(['import', 'node', 'default'])
+const IMPORT_CONDITIONS = new Set(['import', 'module-sync', 'node', 'node-addons', 'default'])
 
 export interface ImportModuleOptions {
   /** Module root, inside which `version` applies. */
@@ -230,11 +230,14 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, matchP
     const file = probe(resolve(parentDir, specifier))
     return file ? { file, via: 'relative' } : undefined
   }
-  const resolved = PATH_ALIAS_RE.test(specifier)
-    ? undefined
-    : (specifier.startsWith('#') && resolvePackageImport(specifier, parentDir)) || resolveFrom(resolve(parentDir, 'index.js'), specifier)
-  if (resolved) {
-    return specifier.startsWith('#') && isInside(cwd, resolved) && !NODE_MODULES_RE.test(resolved) ? { file: resolved, via: 'imports' } : undefined
+  if (specifier.startsWith('#')) {
+    const imported = resolvePackageImport(specifier, parentDir)
+    if (imported) {
+      return imported.file && isInside(cwd, imported.file) && !NODE_MODULES_RE.test(imported.file) ? { file: imported.file, via: 'imports' } : undefined
+    }
+  }
+  else if (!PATH_ALIAS_RE.test(specifier) && resolveFrom(resolve(parentDir, 'index.js'), specifier)) {
+    return
   }
   const name = packageName(specifier)
   const packageDir = name && findPackageDir(name, parentDir)
@@ -259,8 +262,8 @@ function exportsSubpath(dir: string, subpath: string) {
   return keys.length ? !!importsKeyFor(keys, subpath) : subpath === '.'
 }
 
-/** The file that `specifier` maps to through the `imports` of the closest `package.json`, with the conditions of `import`. */
-function resolvePackageImport(specifier: string, parentDir: string) {
+/** Whether `specifier` matches the `imports` of the closest `package.json`, and the source file it maps to with the conditions of `import`. */
+function resolvePackageImport(specifier: string, parentDir: string): { file?: string } | undefined {
   const scope = findUp(parentDir, dir => existsSync(join(dir, 'package.json')) ? dir : undefined)
   const { imports } = scope ? JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8').replace(/^\uFEFF/, '')) as PackageJson : {}
   const key = isPlainObject(imports) ? importsKeyFor(Object.keys(imports), specifier) : undefined
@@ -270,7 +273,7 @@ function resolvePackageImport(specifier: string, parentDir: string) {
   const star = key.indexOf('*')
   const target = importTarget((imports as Record<string, unknown>)[key], star === -1 ? undefined : specifier.slice(star, specifier.length - key.length + star + 1))
   const file = target?.startsWith('./') ? resolve(scope, target) : undefined
-  return file && isFile(file) ? file : undefined
+  return { file: file && isFile(file) ? file : undefined }
 }
 
 function importTarget(target: unknown, match: string | undefined): string | undefined {
