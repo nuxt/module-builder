@@ -352,7 +352,7 @@ With `"moduleResolution": "bundler"`, which Nuxt projects use, TypeScript reads 
 TypeScript resolves with `node10` in a project whose tsconfig sets `"moduleResolution": "node"` or `"node10"`, or sets `"module": "commonjs"` without a `moduleResolution`. Every tsconfig that Nuxt 4 generates for an app uses `bundler`, so an app on Nuxt 4 reads `exports` only. Your module supports `node10` consumers if other projects that type check with such a tsconfig import it, such as a library or a tool with an older setup:
 
 - If it does, set `types` to `./dist/types.d.mts`, and add `typesVersions` for subpath exports, as described in [typesVersions paths](#typesversions-paths).
-- Otherwise, remove `types` and `typesVersions`. The root import still resolves under `node10`, through `main`, but subpath exports don't. `attw` then reports a resolution failure (`NoResolution`) in its `node10` column for each subpath export, and passes with `--profile esm-only`, which leaves `node10` out.
+- Otherwise, remove `types` and `typesVersions`. The root import still resolves under `node10`, through `main`, but subpath exports don't. `attw` then reports a resolution failure (`NoResolution`) in its `node10` column for each subpath export, which `--profile esm-only` leaves out, as described in [Checking the package](#checking-the-package).
 
 ### typesVersions paths
 
@@ -376,11 +376,13 @@ Any other path in `exports`, `main`, `module`, `types`, or `typesVersions` that 
 
 ## Commands
 
-`nuxt-module-build` and `nuxt build-module` need a subcommand. Without one they print their usage, so a command such as `nuxt-module-build` in `prepack` becomes `tsdown`, or `nuxt-module-build build`.
+The builder's command has three names: `nuxt-module-build`, its alias `nuxt-build-module`, and `nuxt build-module` (or `nuxi build-module`) through the Nuxt CLI. This guide writes `nuxt-module-build`, and everything it says about that command applies to the other names too.
+
+Each of them needs a subcommand. Without one they print their usage, so a command such as `nuxt-module-build` in `prepack` becomes `tsdown`, or `nuxt-module-build build`.
 
 ## Scripts
 
-In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack` and `dev:prepare`, and any other script or CI workflow that runs `nuxt-module-build`, such as `build` or `release`:
+In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack` and `dev:prepare`, and any other script or CI workflow that runs `nuxt-module-build`, `nuxt-build-module` or `nuxt build-module`, such as `build`, `stub` or `release`. The rules below name `nuxt-module-build`, and apply to the other names in the same way:
 
 - `nuxt-module-build build` becomes `tsdown`.
 - `nuxt-module-build build --stub` is removed when `package.json` points at the module's sources, as in [Source exports](#source-exports). When it points at `dist`, as in [Developing against dist](#developing-against-dist), it becomes `tsdown`, after `nuxt-module-build prepare` and before the first `nuxt prepare`.
@@ -905,6 +907,36 @@ A playground that installs the module by name lists it as `"my-module": "workspa
 
 While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --watch` leaves `dist` in place while its first build runs, so the two can start together. Each change under `src` rebuilds `dist`, in about a second for a small module, or less with [isolated declarations](#isolated-declarations). A rebuild only writes the files whose content changed, so the playground updates an edited component in place, and reloads the page for an edited plugin. The playground loads `dist/module.mjs` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
+## Checking the package
+
+[attw](https://arethetypeswrong.github.io) checks the types of the packed tarball. It reports three kinds of problem for a module that is correct:
+
+- `CJSResolvesToESM`, under `node16` from CommonJS. The module is an ES module, which `require` can't load.
+- `NoResolution`, under `node10`, for each subpath export of a module without `typesVersions`, as described in [The types field](#the-types-field).
+- `InternalResolutionError`, for an import in a declaration file that doesn't resolve from the package alone. The declarations keep imports of `#app`, `#imports`, `#build/*` and the module's other build-time aliases as written, as described in [Other type errors](#other-type-errors), and only a Nuxt app resolves them. Under `node10`, the package's own `imports`, such as `#my-module/types`, don't resolve either.
+
+`--profile esm-only` leaves out `node10` and `require` under `node16`, which covers the first two. It doesn't cover the third: attw reports an `InternalResolutionError` under `node10` even with that profile, and exits with an error when every resolution it shows is green.
+
+`--ignore-rules internal-resolution-error` leaves out every import that doesn't resolve, a wrong relative import included. Before you ignore them, list them, and check that each one is an alias that only a Nuxt app provides:
+
+```bash
+pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --profile esm-only --format json | jq -r '.analysis.problems[] | select(.kind == "InternalResolutionError") | "\(.resolutionOption) \(.moduleSpecifier) \(.fileName)"' | sort -u
+```
+
+Then check the package with the rule ignored:
+
+```bash
+pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --profile esm-only --ignore-rules internal-resolution-error
+```
+
+A module that sets `types` and `typesVersions` for `node10` consumers checks `node10` as well:
+
+```bash
+pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --ignore-rules cjs-resolves-to-esm internal-resolution-error
+```
+
+`attw --pack .` only works with npm, and `npm pack` fails on packages with `devEngines`, so pack the module with its own package manager first.
+
 ## Output size
 
 Every tsdown build reports the size of its output. A module with runtime directories gets a summary, followed by one line for each bundled entry and runtime directory. Each line gives the size of the code and of the declarations. Other modules get a line for each file.
@@ -975,7 +1007,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
 
    To keep a `tsconfig.json` that extends `./.nuxt/tsconfig.json`, set `erasableSyntaxOnly` in it instead, and keep `vue-tsc --noEmit`, as described in [Extending .nuxt/tsconfig.json](#extending-nuxttsconfigjson).
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
-8. Set up the scripts, and build. In every script that runs the builder, change only the builder's commands, as shown in [Scripts](#scripts), and keep the others:
+8. Set up the scripts, and build. In every script that runs the builder, under any of its names (`nuxt-module-build`, `nuxt-build-module` or `nuxt build-module`, see [Commands](#commands)), change only the builder's commands, as shown in [Scripts](#scripts), and keep the others:
    - `nuxt-module-build build` becomes `tsdown`, in `prepack` and in any other script or CI workflow that runs it.
    - With pnpm or Yarn 4, point `package.json` at the module's sources, and the same fields in `publishConfig` at `dist`. See [Source exports](#source-exports). Remove `nuxt-module-build build --stub` from `dev:prepare`.
    - With npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. See [Developing against dist](#developing-against-dist). In `dev:prepare`, replace `nuxt-module-build build --stub` with `tsdown`, or add `tsdown` before the first `nuxt prepare`.
@@ -989,6 +1021,6 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Annotate exports whose type is inferred through a `#build/*` alias. Otherwise, `dist` declares them as `any`.
 10. Check the package:
     - Run `pnpm dlx publint`.
-    - Run `pnpm pack`, then run attw on the tarball it writes, such as `my-module-1.0.0.tgz`: `pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --profile esm-only`. `--profile esm-only` leaves out `node10`, and `require` under `node16`, which can't load the module's ES module output. If you kept `types` and `typesVersions` in step 4, check `node10` as well, with `--ignore-rules cjs-resolves-to-esm` in place of `--profile esm-only`.
-    - Fix any path that they report. `attw --pack .` only works with npm, and `npm pack` fails on packages with `devEngines`.
+    - Run `pnpm pack`, then run attw on the tarball it writes, such as `my-module-1.0.0.tgz`, as described in [Checking the package](#checking-the-package): list the imports that don't resolve, check that each of them is an alias that only a Nuxt app provides, then run `pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --profile esm-only --ignore-rules internal-resolution-error`. If you kept `types` and `typesVersions` in step 4, check `node10` as well, with `--ignore-rules cjs-resolves-to-esm internal-resolution-error` and no `--profile`.
+    - Fix any path that they report.
 11. Run your module's tests and the playground.
