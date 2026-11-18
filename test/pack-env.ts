@@ -41,6 +41,6 @@ if (process.env.MODULE_BUILDER_PACK_PROBE) {
     read: { npm_lifecycle_event: process.env.npm_lifecycle_event, npm_execpath: process.env.npm_execpath, npm_config_user_agent: process.env.npm_config_user_agent },
     ...extra,
   })}\n`)
-  report('start', { name: pkg.name, unpublishablePaths: unpublishablePaths(cwd, pkg), packError: sourcePathsPackError(cwd, pkg)?.slice(0, 60) ?? null })
+  report('start', { name: pkg.name, unpublishablePaths: unpublishablePaths(cwd, pkg), packError: sourcePathsPackError(cwd, pkg)?.code ?? null })
   process.on('exit', () => report('exit'))
 }

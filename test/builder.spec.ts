@@ -1,7 +1,6 @@
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { guide } from '../src/build/guide.ts'
 import type { Result } from './utils.ts'
 import { bin, cli, exists, fixture, read, repoRoot, run, tsdown, tsdownBin } from './utils.ts'
 
@@ -104,6 +103,11 @@ export default {
     files: { 'src/ext/value.ts': `export const ext: string = 'ext'\n` },
   })
 
+  dirs.warnings = await fixture('.temp-builder/warnings', {
+    config: `export default {\n  plugins: [builder()],\n  inputOptions: { onLog: (level, log, handler) => log.pluginCode === 'TYPE_ERRORS' || handler(level, log) },\n}\n`,
+    pkg: pkg => ({ ...pkg, types: './dist/nope.d.ts' }),
+  })
+
   for (const [name, exports] of Object.entries({ source: './src/module.ts', files: './lib/module.mjs' })) {
     dirs[`unpublishable-${name}`] = await fixture(`.temp-builder/unpublishable-${name}`, { config: PLUGIN, pkg: pkg => ({ ...pkg, exports: { '.': exports } }) })
   }
@@ -180,6 +184,9 @@ export default {
   await Promise.all([
     step('compose', tsdown(dirs.compose)),
     step('packageImports', tsdown(dirs.packageImports)),
+    step('warnings', tsdown(dirs.warnings))
+      .then(() => step('warnings:silent', tsdown(dirs.warnings!, ['--logLevel', 'error'])))
+      .then(() => step('warnings:fail', tsdown(dirs.warnings!, ['--fail-on-warn']))),
     ...['source', 'files'].flatMap(name => [
       step(`unpublishable-${name}:tsdown`, tsdown(dirs[`unpublishable-${name}`]!)),
       step(`unpublishable-${name}:cli`, cli(['build', dirs[`unpublishable-${name}`]!])),
@@ -216,6 +223,7 @@ describe('builder', () => {
   })
 
   it('should refuse package `imports` that the output imports and that would not work once installed', async () => {
+    expect(expectFailed('packageImports')).toContain('NUXT_MB_C0102')
     expect(expectFailed('packageImports')).toContain(`The build output imports these \`imports\` of \`package.json\`, which would not work once installed. Pointing at TypeScript sources, which Node does not load from \`node_modules\`: \`#ext/*\` (\`./src/ext/*.ts\`).`)
     expect(exists(dirs.packageImports!, 'dist')).toBe(false)
     const module = await read(dirs.compose!, 'dist/module.mjs')
@@ -231,10 +239,20 @@ describe('builder', () => {
     }
     for (const [name, message] of Object.entries(messages)) {
       for (const command of ['tsdown', 'cli']) {
-        expect(expectFailed(`unpublishable-${name}:${command}`), command).toContain(message)
+        const output = expectFailed(`unpublishable-${name}:${command}`)
+        expect(output, command).toContain('NUXT_MB_C0101')
+        expect(output, command).toContain(message)
+        expect(output, command).toContain('├▶ fix: Point them at the build output')
+        expect(output, command).toContain('╰▶ see: https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports')
       }
       expect(exists(dirs[`unpublishable-${name}`]!, 'dist')).toBe(false)
     }
+  })
+
+  it('should print its warnings with tsdown\'s logger, so `logLevel` and `failOnWarn` apply to them', () => {
+    expect(expectBuilt('warnings')).toContain('WARN  [NUXT_MB_C0201] `types` in `package.json` points at `./dist/nope.d.ts`')
+    expect(expectBuilt('warnings:silent')).not.toContain('NUXT_MB_C0201')
+    expect(expectFailed('warnings:fail')).toContain('ERROR  [NUXT_MB_C0201]')
   })
 
   it('should be published at `@nuxt/module-builder/tsdown`, not at the package root', () => {
@@ -243,16 +261,16 @@ describe('builder', () => {
   })
 
   it('should reject one plugin instance shared by two configs', () => {
-    expect(expectFailed('shared')).toContain('The same `builder()` plugin is used in more than one tsdown config.')
+    expect(expectFailed('shared')).toContain('NUXT_MB_C0004')
   })
 
   it.each(['format', 'entry', 'platform'])('should fail when another plugin changes `%s`, which it sets', (option) => {
-    expect(expectFailed(option)).toMatch(new RegExp(`Another tsdown plugin changed \`${option}\`.*, which \`builder\\(\\)\` sets\\. ${guide('options-builder-sets')}`))
+    expect(expectFailed(option)).toMatch(new RegExp(`NUXT_MB_C0002: Another tsdown plugin changed \`${option}\``))
     expect(exists(dirs[option]!, 'dist')).toBe(false)
   })
 
   it('should fail when `outputOptions` changes the file names of the bundled entries, and remove the partial output', () => {
-    expect(expectFailed('entryFileNames')).toMatch(/The build did not emit `(module|utils)\.mjs`, `(module|utils)\.mjs`\./)
+    expect(expectFailed('entryFileNames')).toMatch(/NUXT_MB_C0003: .*: `(module|utils)\.mjs`, `(module|utils)\.mjs`\./)
     expect(exists(dirs.entryFileNames!, 'dist')).toBe(false)
   })
 
@@ -300,7 +318,8 @@ describe('with a root tsconfig that only lists references', () => {
     const ownsField = async (dir: string) => (await read(dir, 'dist/module.mjs')).includes('\tvalue;')
     const output = expectBuilt('moduleProject')
     expect(output).toContain('tsconfig: tsconfig.module.json')
-    expect(output).toContain('Set `isolatedDeclarations: true` in `tsconfig.module.json`')
+    expect(output).toContain('ℹ [NUXT_MB_B0205]')
+    expect(output.match(/fix: Set `isolatedDeclarations: true` in (`[^`]+`)/)?.[1]).toBe('`tsconfig.module.json`')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)

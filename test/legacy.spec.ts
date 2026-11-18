@@ -7,11 +7,12 @@ import ts from 'typescript'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { bundledEntries, entryName } from '../src/build/options.ts'
-import { assertNoLegacyBuildConfig, formatUnsupportedOptions, loadBuildConfig, translateBuildConfig, warnDeprecatedBuildConfig } from '../src/legacy/build-config.ts'
-import { guide } from '../src/build/guide.ts'
+import { assertNoLegacyBuildConfig, loadBuildConfig, translateBuildConfig, unsupportedOptionsError, warnDeprecatedBuildConfig } from '../src/legacy/build-config.ts'
 import { logger } from '../src/utils.ts'
 import type { FixtureOptions, Result } from './utils.ts'
-import { cli, exists, fixture, listFiles, read, repoRoot, staticImports, tsdown } from './utils.ts'
+import { cli, diagnostic, exists, fixture, guideAnchors, listFiles, read, repoRoot, reported, staticImports, tsdown } from './utils.ts'
+
+const GUIDE_URL = 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md'
 
 const exampleDir = fileURLToPath(new URL('../example', import.meta.url))
 
@@ -99,17 +100,17 @@ describe('translateBuildConfig', () => {
     ])
   })
 
-  it('should point each unsupported option at its section of the upgrade guide', () => {
-    const message = formatUnsupportedOptions(['build.config.ts: hooks[\'rollup:options\']', 'build.config.ts: rollup.emitCJS: true', 'build.config.ts: rollup.alias', 'build.config.ts: entries[0].esbuild', 'build.config.ts: stubOptions'])
-    expect(message.split('\n')).toEqual([
-      'The build config uses options that `@nuxt/module-builder` v2 does not support:',
-      `  - build.config.ts: hooks['rollup:options'] (${guide('hooks')})`,
-      `  - build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`,
-      `  - build.config.ts: rollup.alias (${guide('rollup-options')})`,
-      `  - build.config.ts: entries[0].esbuild (${guide('mkdist-options')})`,
-      `  - build.config.ts: stubOptions (${guide('other-options')})`,
-      `Remove each of them from the file named. ${guide('unsupported-build-options')}`,
+  it('should point each unsupported option at its section of the upgrade guide', async () => {
+    const error = unsupportedOptionsError(exampleDir, ['build.config.ts: hooks[\'rollup:options\']', 'build.config.ts: rollup.emitCJS: true', 'build.config.ts: rollup.alias', 'build.config.ts: entries[0].esbuild', 'build.config.ts: stubOptions'])
+    expect(error.code).toBe('NUXT_MB_D0004')
+    expect(error.message.split('\n').slice(1)).toEqual([
+      `  - build.config.ts: hooks['rollup:options'] (${GUIDE_URL}#hooks)`,
+      `  - build.config.ts: rollup.emitCJS: true (${GUIDE_URL}#commonjs-output)`,
+      `  - build.config.ts: rollup.alias (${GUIDE_URL}#rollup-options)`,
+      `  - build.config.ts: entries[0].esbuild (${GUIDE_URL}#mkdist-options)`,
+      `  - build.config.ts: stubOptions (${GUIDE_URL}#other-options)`,
     ])
+    expect(await guideAnchors()).toEqual(expect.arrayContaining(['hooks', 'commonjs-output', 'rollup-options', 'mkdist-options', 'other-options']))
   })
 
   it('should warn about a deprecated config file and ignored hooks in CI too', () => {
@@ -117,14 +118,16 @@ describe('translateBuildConfig', () => {
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
     try {
       const config = { ...translate({}), file: 'build.config.ts', importsUnbuild: true, ignoredHooks: ['build.config.ts: hooks[\'mkdist:entry:options\']'] }
-      warnDeprecatedBuildConfig(config)
-      warnDeprecatedBuildConfig({ ...config, importsUnbuild: false, ignoredHooks: [], field: 'unbuild' })
-      expect(warn.mock.calls.map(([message]) => message)).toEqual([
-        expect.stringMatching(new RegExp(`^Ignoring build\\.config\\.ts: hooks\\['mkdist:entry:options'\\]: .*Remove the hook\\. ${guide('hooks')}$`)),
-        expect.stringMatching(new RegExp(`^\`build\\.config\\.ts\` is deprecated\\. .*instead of \`unbuild\`\\. Move them into \`builder\\(\\)\` in \`tsdown\\.config\\.ts\`\\. ${guide('moving-from-buildconfigts')}$`)),
-        `\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`,
-        expect.stringMatching(new RegExp(`^The \`unbuild\` field of \`package\\.json\` is deprecated\\. .*Rename the field to \`build\`\\. ${guide('build-configuration')}$`)),
+      warnDeprecatedBuildConfig(exampleDir, config)
+      warnDeprecatedBuildConfig(exampleDir, { ...config, importsUnbuild: false, ignoredHooks: [], field: 'unbuild' })
+      const messages = warn.mock.calls.map(([message]) => message)
+      expect(messages).toEqual([
+        reported('NUXT_MB_D0103', 'hooks[\'mkdist:entry:options\']'),
+        reported('NUXT_MB_D0101', 'instead of `unbuild`'),
+        reported('NUXT_MB_D0101', '`build.config.ts`'),
+        reported('NUXT_MB_D0102'),
       ])
+      expect(messages[2]).not.toContain('unbuild')
     }
     finally {
       warn.mockRestore()
@@ -159,7 +162,7 @@ describe('loadBuildConfig', () => {
 
     await rm(join(dir, 'build.config.js'))
     await writeFile(join(dir, 'build.config.mts'), 'export default () => ({})\n')
-    await expect(loadBuildConfig(dir, {}, join(dir, 'dist'))).rejects.toThrow(`not a function. Replace the function with the object it returns. ${guide('other-options')}`)
+    await expect(loadBuildConfig(dir, {}, join(dir, 'dist'))).rejects.toThrow(diagnostic('NUXT_MB_D0003', '`build.config.mts`'))
     await rm(join(dir, 'build.config.mts'))
 
     expect(await loadBuildConfig(dir, {}, join(dir, 'dist'))).toMatchObject({ file: undefined, unsupported: [] })
@@ -180,14 +183,12 @@ describe('loadBuildConfig', () => {
     await writeFile(join(root, 'src/module.ts'), `import { helper } from './helper'\nexport { shared } from './lib'\nexport default helper\n`)
     await writeFile(join(root, 'src/helper.ts'), `export const helper = 1\n`)
     await writeFile(join(root, 'src/lib/index.ts'), `import { shared } from '../../options'\nexport { shared }\n`)
-    await expect(loadBuildConfig(root, { build: { entries: ['src/lib/index'] } }, join(root, 'dist'))).rejects.toThrow([
-      'Module code has to load with Node, which strips types and resolves imports as written:',
+    await expect(loadBuildConfig(root, { build: { entries: ['src/lib/index'] } }, join(root, 'dist'))).rejects.toThrow(diagnostic('NUXT_MB_B0001', [
       '  - build.config.ts:1:21: `./options` (use `./options.ts`)',
       '  - src/lib/index.ts:1:24: `../../options` (use `../../options.ts`)',
       '  - src/module.ts:1:24: `./helper` (use `./helper.ts`)',
       '  - src/module.ts:2:24: `./lib` (use `./lib/index.ts`)',
-      `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
-    ].join('\n'))
+    ].join('\n')))
     await writeFile(join(root, 'build.config.ts'), `import options from './options.ts'\nexport default options\n`)
     expect((await loadBuildConfig(root, {}, join(root, 'dist'))).neverBundle.map(String)).toEqual(['/^o(?:\\/|$)/'])
   })
@@ -195,8 +196,8 @@ describe('loadBuildConfig', () => {
 
 describe('assertNoLegacyBuildConfig', () => {
   it('should refuse a `build` or `unbuild` field of `package.json` alongside `builder()`', () => {
-    expect(() => assertNoLegacyBuildConfig(exampleDir, { build: {} })).toThrow(`The \`build\` field of \`package.json\` configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and remove the field. ${guide('moving-from-buildconfigts')}`)
-    expect(() => assertNoLegacyBuildConfig(exampleDir, { unbuild: {} })).toThrow('The `unbuild` field of `package.json`')
+    expect(() => assertNoLegacyBuildConfig(exampleDir, { build: {} })).toThrow(diagnostic('NUXT_MB_D0002', 'The `build` field of `package.json`'))
+    expect(() => assertNoLegacyBuildConfig(exampleDir, { unbuild: {} })).toThrow(diagnostic('NUXT_MB_D0002', 'The `unbuild` field of `package.json`'))
     expect(() => assertNoLegacyBuildConfig(exampleDir, {})).not.toThrow()
   })
 })
@@ -507,7 +508,7 @@ export default defineBuildConfig({
 
   it('should warn that `build.config.ts` is deprecated', () => {
     const output = expectBuilt('buildConfig')
-    expect(output).toContain(`\`build.config.ts\` is deprecated. Its options are still applied. Move them into \`builder()\` in \`tsdown.config.ts\`. ${guide('moving-from-buildconfigts')}`)
+    expect(output).toContain('[NUXT_MB_D0101] `build.config.ts` is deprecated.')
     expect(output).not.toContain('`unbuild` field')
   })
 
@@ -527,8 +528,8 @@ export default defineBuildConfig({
       expect(output).toContain(`build.config.ts: ${option}`)
     }
     expect(output).not.toContain('build.config.ts: hooks[\'mkdist:entry:options\']')
-    expect(output).toContain(`build.config.ts: rollup.emitCJS: true (${guide('commonjs-output')})`)
-    expect(output).toContain(guide('unsupported-build-options'))
+    expect(output).toContain('NUXT_MB_D0004')
+    expect(output).toContain(`build.config.ts: rollup.emitCJS: true (${GUIDE_URL}#commonjs-output)`)
   })
 
   it('should build the same `dist` as `tsdown` with `builder()` and the same options', async () => {
@@ -543,8 +544,10 @@ export default defineBuildConfig({
 
   it('should fail when `package.json` or `build.config.ts` configures the build alongside `builder()`', () => {
     for (const name of ['withField', 'withField:prepare']) {
-      expect(expectFailed(name), name).toContain('The `build` field of `package.json` configures the build, and so does `builder()` in the tsdown config.')
+      expect(expectFailed(name), name).toContain('NUXT_MB_D0002')
+      expect(expectFailed(name), name).toContain('The `build` field of `package.json`')
     }
-    expect(expectFailed('withFile')).toContain(`\`build.config.ts\` configures the build, and so does \`builder()\` in the tsdown config. Move its options into \`builder()\` and delete the file. ${guide('moving-from-buildconfigts')}`)
+    expect(expectFailed('withFile')).toContain('NUXT_MB_D0002')
+    expect(expectFailed('withFile')).toContain('delete the file')
   })
 })

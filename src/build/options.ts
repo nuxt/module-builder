@@ -1,10 +1,10 @@
 import { isAbsolute, normalize, relative, resolve } from 'pathe'
 
+import { errors } from '../diagnostics.ts'
 import { assertNoLegacyBuildConfig } from '../legacy/build-config.ts'
 import { escapeRegExp, isInside, isPlainObject, probe, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import type { BuildPlan } from './build.ts'
-import { guide } from './guide.ts'
 
 export const NUXT_EXTERNALS: (string | RegExp)[] = [
   '@nuxt/schema',
@@ -136,7 +136,7 @@ export function createOptionsCollector(cwd: string, outDir: string): OptionsColl
 
     const name = typeof normalised.name === 'string' ? normalised.name : entryName(input, cwd)
     if (name.toLowerCase() === 'types') {
-      throw new Error(`A bundled entry is named \`types\`, whose declarations would replace the generated \`types.d.mts\`. Give \`${input}\` another \`name\`.`)
+      throw errors.NUXT_MB_C0010({ input })
     }
     config.entries[name] = entryPath(cwd, input)
   }
@@ -208,7 +208,7 @@ export function createOptionsCollector(cwd: string, outDir: string): OptionsColl
 export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: string, options: BuilderOptions): ModuleConfig {
   assertNoLegacyBuildConfig(cwd, pkg)
   if ('hooks' in options) {
-    throw new Error(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+    throw errors.NUXT_MB_C0008()
   }
   const unsupported: string[] = []
   const report = (option: string) => unsupported.push(option)
@@ -234,7 +234,7 @@ export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: stri
     }
   }
   if (unsupported.length) {
-    throw new Error(['`builder()` does not support these options:', ...unsupported.map(option => `  - ${option}`), guide('tsdown-config')].join('\n'))
+    throw errors.NUXT_MB_C0009({ options: unsupported })
   }
   return collector.finish(pkg)
 }
@@ -259,7 +259,7 @@ export function resolveOutDir(cwd: string, outDir: string, label: string = `--ou
   const root = realpath(cwd)
   const real = realpath(resolved)
   if (real === root || !isInside(root, real)) {
-    throw new Error(`\`${label}\` resolves to \`${real}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+    throw errors.NUXT_MB_C0012({ label, path: real, sources: [real] })
   }
   return resolved
 }

@@ -3,13 +3,14 @@ import { createRequire, registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join, relative, resolve } from 'pathe'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
+import type { Diagnostic } from 'nostics'
 import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
 import { packageName } from '../transpile/tsconfig.ts'
 import { findPackageDir, findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
-import { guide } from './guide.ts'
+import { errors } from '../diagnostics.ts'
 import { importsKeyFor } from './package.ts'
 
 const VIRTUAL_ALIAS_RE = /^#(?:app|imports|build)(?:\/|$)/
@@ -166,18 +167,14 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
 export function assertLoadableModuleCode(cwd: string, entries: string[], runtimeDirs: string[], otherEntries: string[] = []): void {
   const found = findModuleCodeIssues(cwd, entries, runtimeDirs, otherEntries)
   if (found.length) {
-    throw new Error(formatModuleCodeIssues(found))
+    throw moduleCodeError(cwd, found)
   }
 }
 
-/** The error message for {@link findModuleCodeIssues} findings, one line each. */
-export function formatModuleCodeIssues(found: ModuleCodeIssue[]): string {
-  const lines = new Set(found.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`))
-  return [
-    'Module code has to load with Node, which strips types and resolves imports as written:',
-    ...lines,
-    `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
-  ].join('\n')
+/** The error for {@link findModuleCodeIssues} findings in the module in `cwd`, which lists them one per line. */
+export function moduleCodeError(cwd: string, found: ModuleCodeIssue[]): Diagnostic {
+  const sources = found.flatMap(({ file, line, column, importedBy }) => [`${resolve(cwd, file)}:${line}:${column}`, ...importedBy ? [resolve(cwd, importedBy)] : []])
+  return errors.NUXT_MB_B0001({ issues: found, sources: [...new Set(sources)] })
 }
 
 interface Resolution {

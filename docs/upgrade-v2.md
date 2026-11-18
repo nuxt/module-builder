@@ -5,7 +5,7 @@ description: Move a Nuxt module from v1 to v2 of `@nuxt/module-builder`, which b
 
 This guide takes a Nuxt module from v1 to v2 of the module builder. In v2, `@nuxt/module-builder` builds your module with [tsdown](https://tsdown.dev) instead of unbuild. The CLI, the project layout (`src/module.ts` and `src/runtime/`), and the output of your build stay the same.
 
-Most modules upgrade by running the build and following its output. Every message that requires a change links to the matching section of this guide. If you'd rather work through everything up front, use the [checklist](#checklist) at the end.
+Most modules upgrade by running the build and following its output. Every message that requires a change starts with a code, such as `NUXT_MB_D0001`, and links to the matching section of this guide. If you'd rather work through everything up front, use the [checklist](#checklist) at the end.
 
 ## Node engines
 

@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
 import { basename, join, relative, resolve } from 'pathe'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths, isLegacyPath } from '../legacy/package-paths.ts'
-import { DECLARATION_RE, isFile, isInside, logger, readPackageJson, TYPESCRIPT_RE } from '../utils.ts'
+import type { Diagnostic } from 'nostics'
+import { errors, warnings } from '../diagnostics.ts'
+import { DECLARATION_RE, isFile, isInside, readPackageJson, TYPESCRIPT_RE } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
-import { guide } from './guide.ts'
 
 /** The fields of `package.json` whose paths are checked for whether they can be published. */
 const PATH_FIELDS = ['exports', 'imports', 'main', 'module', 'types', 'typings', 'typesVersions'] as const
@@ -19,8 +20,6 @@ const YARN_PUBLISH_CONFIG_FIELDS: Record<number, readonly PathField[]> = {
 }
 
 const PACK_EVENTS = new Set(['prepack', 'prepublishOnly'])
-
-const UNPUBLISHABLE = 'TypeScript sources or paths that `files` leaves out'
 
 /** `pkg` as pnpm publishes it, with the paths in `publishConfig` replacing their top-level fields. */
 export function publishedPackage(pkg: PackageJson): PackageJson {
@@ -109,9 +108,9 @@ function globToRegExp(pattern: string) {
  * Why the paths that `pkg` publishes, with `publishConfig` applied, would not work once the
  * package is installed, or `undefined` when they would.
  */
-export function unpublishablePathsError(cwd: string, pkg: PackageJson): string | undefined {
+export function unpublishablePathsError(cwd: string, pkg: PackageJson): Diagnostic | undefined {
   const paths = unpublishablePaths(cwd, publishedPackage(pkg)).filter(({ field }) => field !== 'imports')
-  return paths.length ? `These published fields of \`package.json\` would not work once installed. ${describeUnpublishable(paths, ({ field }) => field)} ${PUBLISH_FIX}` : undefined
+  return paths.length ? errors.NUXT_MB_C0101({ items: paths.map(({ field, path, reason }) => ({ name: field, path, reason })), sources: packageSources(cwd, paths.map(({ path }) => path)) }) : undefined
 }
 
 /**
@@ -119,9 +118,9 @@ export function unpublishablePathsError(cwd: string, pkg: PackageJson): string |
  * once the package is installed, or `undefined` when they would. Only entries whose key
  * `isImported` reports as imported from the build output are checked.
  */
-export function unpublishableImportsError(cwd: string, pkg: PackageJson, isImported: (key: string) => boolean): string | undefined {
+export function unpublishableImportsError(cwd: string, pkg: PackageJson, isImported: (key: string) => boolean): Diagnostic | undefined {
   const paths = unpublishablePaths(cwd, publishedPackage(pkg)).filter(({ field, key }) => field === 'imports' && isImported(key!))
-  return paths.length ? `The build output imports these \`imports\` of \`package.json\`, which would not work once installed. ${describeUnpublishable(paths, ({ key }) => key!)} ${PUBLISH_FIX}` : undefined
+  return paths.length ? errors.NUXT_MB_C0102({ items: paths.map(({ key, path, reason }) => ({ name: key!, path, reason })), sources: packageSources(cwd, paths.map(({ path }) => path)) }) : undefined
 }
 
 /** The key of `imports` that Node resolves `specifier` with: the same key, or else the matching wildcard key with the longest prefix. */
@@ -137,21 +136,12 @@ export function importsKeyFor(keys: string[], specifier: string): string | undef
     .sort((a, b) => b.indexOf('*') - a.indexOf('*') || b.length - a.length)[0]
 }
 
-const PUBLISH_FIX = `Point them at the build output, in \`publishConfig\` when \`package.json\` points at the sources. To publish a file other than a TypeScript source as it is, add it to \`files\`. ${guide('publishing-source-exports')}`
-
-function describeUnpublishable(paths: UnpublishablePath[], name: (path: UnpublishablePath) => string) {
-  return ([['source', 'TypeScript sources, which Node does not load from `node_modules`'], ['files', 'paths that the pack leaves out']] as const).flatMap(([reason, what]) => {
-    const matching = paths.filter(path => path.reason === reason)
-    return matching.length ? [`Pointing at ${what}: ${list(matching.map(name))} (${list(matching.map(({ path }) => path))}).`] : []
-  }).join(' ')
-}
-
 /**
  * Why packing or publishing `pkg` from the current `prepack` or `prepublishOnly` script
  * would publish paths that do not work once installed (see `unpublishablePaths`), or `undefined`
  * when it would not.
  */
-export function sourcePathsPackError(cwd: string, pkg: PackageJson, env: Record<string, string | undefined> = process.env): string | undefined {
+export function sourcePathsPackError(cwd: string, pkg: PackageJson, env: Record<string, string | undefined> = process.env): Diagnostic | undefined {
   if (!PACK_EVENTS.has(env.npm_lifecycle_event ?? '')) {
     return
   }
@@ -163,18 +153,22 @@ export function sourcePathsPackError(cwd: string, pkg: PackageJson, env: Record<
   if (!published.length) {
     const replacements = unpublishablePaths(cwd, { ...pkg, ...Object.fromEntries(replaced.map(field => [field, publishConfig[field]])) }).filter(({ field }) => replaced.includes(field))
     return replacements.length
-      ? `These fields of \`publishConfig\` point at ${UNPUBLISHABLE}, so they would be published that way: ${list(replacements.map(({ field }) => field))} (${list(replacements.map(({ path }) => path))}). Point them at \`dist\`. ${guide('publishing-source-exports')}`
+      ? errors.NUXT_MB_C0103({ fields: replacements.map(({ field }) => field), paths: replacements.map(({ path }) => path), sources: packageSources(cwd, replacements.map(({ path }) => path)) })
       : undefined
   }
   const unsupported = [...new Set(published.filter(({ field }) => !applied.includes(field)).map(({ field }) => field))]
-  const pathList = list(published.filter(({ field }) => !unsupported.length || unsupported.includes(field)).map(({ path }) => path))
+  const paths = published.filter(({ field }) => !unsupported.length || unsupported.includes(field)).map(({ path }) => path)
   if (unsupported.length) {
     const name = client ? `\`${client.name}${client.version ? `@${client.version}` : ''}\`` : 'This package manager'
     const alternatives = unsupported.every(field => YARN_PUBLISH_CONFIG_FIELDS[4]!.includes(field)) ? 'pnpm or Yarn 4' : 'pnpm'
-    return `${name} packs these fields of \`package.json\` as written, and they point at ${UNPUBLISHABLE}: ${list(unsupported)} (${pathList}). Point them at \`dist\`, or pack and publish with ${alternatives}, which replace them with the \`dist\` paths in \`publishConfig\`. ${guide('publishing-source-exports')}`
+    return errors.NUXT_MB_C0104({ client: name, fields: unsupported, paths, alternatives, sources: packageSources(cwd, paths) })
   }
-  const fields = [...new Set(published.map(({ field }) => field))]
-  return `These fields of \`package.json\` point at ${UNPUBLISHABLE}, and \`publishConfig\` does not replace them, so they would be published as written: ${list(fields)} (${pathList}). Set ${list(fields.map(field => `publishConfig.${field}`))} to the \`dist\` paths. ${guide('publishing-source-exports')}`
+  return errors.NUXT_MB_C0105({ fields: published.map(({ field }) => field), paths, sources: packageSources(cwd, paths) })
+}
+
+/** The `package.json` in `cwd` and `paths` in it, as the `sources` of a diagnostic about them. */
+export function packageSources(cwd: string, paths: string[] = []): string[] {
+  return [resolve(cwd, 'package.json'), ...paths.filter(path => !path.includes('*')).map(path => resolve(cwd, path))]
 }
 
 /**
@@ -202,10 +196,6 @@ function publishConfigFields(name: string, version: string | undefined): readonl
     return YARN_PUBLISH_CONFIG_FIELDS[Number(version?.split('.')[0])] ?? []
   }
   return []
-}
-
-export function list(values: string[]): string {
-  return [...new Set(values)].map(value => `\`${value}\``).join(', ')
 }
 
 function collectStrings(value: unknown): string[] {
@@ -276,16 +266,12 @@ export async function checkPublishedPaths(cwd: string): Promise<void> {
   checkMissingPaths(cwd, pkg)
 }
 
-/** Warns with `message` when `condition` holds, and returns `condition`. */
-export function warnWhen(condition: boolean, message: string): boolean {
-  if (condition) {
-    logger.warn(message)
-  }
-  return condition
-}
-
 export function checkStaleTypesField(cwd: string, pkg: PackageJson): boolean {
-  return warnWhen(!!pkg.types && !resolvesForTypeScript(cwd, pkg.types), `\`types\` in \`package.json\` points at \`${pkg.types}\`, which the build does not produce. Set it to \`./dist/types.d.mts\`, which node10 module resolution reads, or remove it: bundler module resolution reads \`exports\` instead. ${guide('the-types-field')}`)
+  const stale = !!pkg.types && !resolvesForTypeScript(cwd, pkg.types)
+  if (stale) {
+    warnings.NUXT_MB_C0201({ path: pkg.types!, sources: packageSources(cwd, [pkg.types!]) })
+  }
+  return stale
 }
 
 /**
@@ -293,18 +279,24 @@ export function checkStaleTypesField(cwd: string, pkg: PackageJson): boolean {
  * they rely on probing for `.d.ts`, where the build now produces `.d.mts`.
  */
 export function checkNode10DeclarationPaths(cwd: string, pkg: PackageJson): boolean {
-  const entries = typesVersionsPaths(pkg).flatMap((path) => {
+  const paths = typesVersionsPaths(pkg).flatMap((path) => {
     const replacement = node10Replacement(cwd, path)
-    return replacement ? [`\`${path}\` (use \`${replacement}\`)`] : []
+    return replacement ? [{ path, replacement }] : []
   })
-  return warnWhen(entries.length > 0, `These \`typesVersions\` paths in \`package.json\` do not resolve under TypeScript's node10 module resolution, which probes for \`.d.ts\` but not for \`.d.mts\`: ${entries.join(', ')}. Write each path with its extension. ${guide('typesversions-paths')}`)
+  if (paths.length) {
+    warnings.NUXT_MB_C0202({ paths, sources: packageSources(cwd, paths.flatMap(({ path, replacement }) => [path, replacement])) })
+  }
+  return paths.length > 0
 }
 
 /** Warn about paths in `package.json` that the build did not produce, other than those the checks above explain. */
 export function checkMissingPaths(cwd: string, pkg: PackageJson): boolean {
   const paths = [...new Set(missingPaths(cwd, pkg))]
     .filter(path => !path.includes('*') && !isLegacyPath(path) && path !== pkg.types && !node10Replacement(cwd, path))
-  return warnWhen(paths.length > 0, `These paths in \`package.json\` do not exist after the build, so imports that resolve to them will fail: ${list(paths)}. Add the entry that produces each one, or remove the path. ${guide('paths-the-build-does-not-produce')}`)
+  if (paths.length) {
+    warnings.NUXT_MB_C0203({ paths, sources: packageSources(cwd, paths) })
+  }
+  return paths.length > 0
 }
 
 const TS_PROBES = ['', '.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx', '/index.d.ts']

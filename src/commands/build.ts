@@ -1,12 +1,8 @@
 import { defineCommand } from 'citty'
 import type { CommandDef } from 'citty'
 
-import pkg from '../../package.json' with { type: 'json' }
-import { guide } from '../build/guide.ts'
-import { logger } from '../utils.ts'
+import { errors } from '../diagnostics.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
-
-export const MISSING_TSDOWN_HINT: string = `\`${pkg.name}\` builds with \`tsdown\`, which is a peer dependency. Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`. ${guide('install-tsdown')}`
 
 function isMissingTsdown(error: unknown) {
   return error instanceof Error
@@ -38,11 +34,8 @@ const command: CommandDef<typeof sharedArgs & typeof buildArgs> = defineCommand(
   async run(context) {
     assertNoStubArg('build', context.args)
     const cwd = resolveCwdArg(context.args)
-    const { build } = await import('../tsdown/build.ts').catch((error) => {
-      if (isMissingTsdown(error)) {
-        logger.error(MISSING_TSDOWN_HINT)
-      }
-      throw error
+    const { build } = await import('../tsdown/build.ts').catch((error: unknown) => {
+      throw isMissingTsdown(error) ? errors.NUXT_MB_B0003({ cause: error }) : error
     })
     return build(cwd, { outDir: context.args.outDir, sourcemap: context.args.sourcemap })
   },

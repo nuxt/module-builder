@@ -7,11 +7,10 @@ import { satisfies } from 'verkit'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { version } from '../package.json'
-import { guide } from '../src/build/guide.ts'
 import type { PackageJson } from '../src/utils.ts'
 import { npmPackFromPnpmScript, packProbeArgs, packProbeContext } from './pack-env.ts'
 import type { Result } from './utils.ts'
-import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, staticImports, succeed, tsdownBin, unresolvedSpecifiers } from './utils.ts'
+import { bin, builderImport, cli, cliBin, exampleDir, exists, fixture, listFiles, read, repoRoot, run, staticImports, succeed, tsdownBin, unresolvedSpecifiers, withoutGuide } from './utils.ts'
 
 const LEGACY_TSCONFIG = { extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground', '**/tsdown.config.ts'] }
 const ISOLATED = {
@@ -767,7 +766,7 @@ describe('a module that imports runtime code, built through a symlink, under a p
     expect(output).toContain('src/runtime/utils/typo.ts(1,14): error TS2322')
     expect(output).toContain('src/runtime/components/Typo.vue(3,7): error TS2322')
     expect(output.match(/type errors? (?:was|were) reported/g)).toHaveLength(1)
-    expect(output).toContain(guide('other-type-errors'))
+    expect(output).toContain('[NUXT_MB_B0201] 2 type errors were reported')
     expect(output).not.toContain('TS2307')
     expect(await read(dist(), 'runtime/utils/typo.d.ts')).toBe('export declare const count: number;\nexport declare const double: (value: number) => number;\n')
     const component = await read(dist(), 'runtime/components/Typo.vue.d.ts')
@@ -787,7 +786,7 @@ describe('a module with `isolatedDeclarations` and no `.nuxt`', () => {
   const dist = () => join(dirs.isolated!, 'dist')
 
   it('should prepare the module before building it', async () => {
-    expect(expectBuilt('isolated')).toContain(`\`.nuxt\` not found, running \`nuxt-module-build prepare\` first. Add it to the module's \`dev:prepare\` script to skip this step. ${guide('preparing-nuxt')}`)
+    expect(expectBuilt('isolated')).toContain('[NUXT_MB_B0101]')
     expect(await read(dist(), 'runtime/composables/useAliasedApp.d.ts')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
   })
 
@@ -900,13 +899,13 @@ describe('a module without a runtime directory', () => {
   })
 
   it('should refuse an `outDir` outside the module root', () => {
-    expect(expectFailed('minimal:outDir')).toContain(`\`--outDir ..\` resolves to \`${resolve(dirs.minimal!, '..')}\`, which is not inside the module root; the build empties the output directory first. Use a directory inside the module such as \`dist\`. ${guide('output-directory')}`)
+    expect(expectFailed('minimal:outDir')).toContain(`[NUXT_MB_C0012] \`--outDir ..\` resolves to \`${resolve(dirs.minimal!, '..')}\``)
     expect(exists(dirs.minimal!, 'package.json')).toBe(true)
   })
 
   it('should fail on `--stub` and point at what replaces it', () => {
     for (const command of ['build', 'prepare']) {
-      expect(expectFailed(command === 'build' ? 'minimal:stub' : 'minimal:prepare-stub'), command).toContain(`\`nuxt-module-build ${command} --stub\` has been removed. With pnpm or Yarn 4, point \`package.json\` at the module's sources. Otherwise, build \`dist\` with \`tsdown\` and rebuild it with \`tsdown --watch\`. ${guide('stub-builds')}`)
+      expect(expectFailed(command === 'build' ? 'minimal:stub' : 'minimal:prepare-stub'), command).toContain(`[NUXT_MB_D0001] \`nuxt-module-build ${command} --stub\``)
     }
   })
 })
@@ -1107,9 +1106,9 @@ describe('a module whose code Node cannot load', () => {
   it('should fail to build and prepare, with how to rewrite each import and each piece of syntax', async () => {
     const line = (await read(dirs.unloadable!, 'src/module.ts')).split('\n').findIndex(line => line.includes('./utils.js')) + 1
     for (const name of ['unloadable', 'unloadable:prepare']) {
-      const output = expectFailed(name)
+      const output = withoutGuide(expectFailed(name))
+      expect(output, name).toContain('NUXT_MB_B0001')
       expect(output, name).toContain([
-        'Module code has to load with Node, which strips types and resolves imports as written:',
         '  - src/levels.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
         '  - src/module.ts:1:37: `../package.json` is JSON (use `import pkg from \'../package.json\' with { type: \'json\' }` and read `pkg.version`; destructuring `pkg` bundles the whole file)',
         '  - src/module.ts:4:1: `enum` (use an `as const` object and a union type of its values)',
@@ -1120,7 +1119,6 @@ describe('a module whose code Node cannot load', () => {
         `  - src/module.ts:${line}:31: \`./utils.js\` (use \`./utils.ts\`)`,
         `  - src/module.ts:${line + 1}:24: \`./helpers\` (use \`./helpers.ts\`)`,
         `  - src/module.ts:${line + 2}:21: \`./kit\` (use \`./kit/index.ts\`)`,
-        `Change each one as suggested. ${guide('module-code-loads-with-node')}`,
       ].join('\n'))
       expect(output, name).not.toContain(`:${line + 3}:`)
     }
@@ -1128,7 +1126,7 @@ describe('a module whose code Node cannot load', () => {
   })
 
   it('should fail and remove the output when the built module cannot be loaded', () => {
-    expect(expectFailed('unloadableDist')).toContain('Cannot load `dist/module.mjs` to write `module.json`: fails once built')
+    expect(expectFailed('unloadableDist')).toContain('[NUXT_MB_B0002] Cannot load `dist/module.mjs` to write `module.json`: fails once built')
     expect(exists(dirs.unloadableDist!, 'dist')).toBe(false)
   })
 })
@@ -1136,19 +1134,17 @@ describe('a module whose code Node cannot load', () => {
 describe('a module whose declarations cannot be generated', () => {
   it('should surface isolated declaration diagnostics when the tsconfig opts in', () => {
     const output = expectFailed('isolatedError')
-    expect(output).toContain('Declaration generation failed under `isolatedDeclarations`.')
+    expect(output).toContain('NUXT_MB_B0202')
     expect(output).toMatch(/TS90\d\d/)
-    expect(output).toContain(guide('isolated-declarations'))
-    expect(output).not.toMatch(/Type declarations could not be generated/)
+    expect(output).not.toContain('NUXT_MB_B0203')
     expect(exists(dirs.isolatedError!, 'dist')).toBe(false)
   })
 
   it('should explain type errors that prevent declaration generation', () => {
     const output = expectFailed('typeError')
     expect(output).toMatch(/TS4094/)
-    expect(output).toMatch(/Type declarations could not be generated/)
+    expect(output).toContain('NUXT_MB_B0203')
     expect(output).toMatch(/cannot reference by name.*explicit type annotation, such as `ReturnType<typeof fn>` for a value produced by an imported `fn`:\n- `defineCachedHandler` in \S*src\/runtime\/server\/cached\.ts:3\n/)
-    expect(output).toContain(guide('portability-errors'))
     expect(exists(dirs.typeError!, 'dist')).toBe(false)
   })
 
@@ -1158,7 +1154,7 @@ describe('a module whose declarations cannot be generated', () => {
     expect(output).toMatch(/server\/cached\.ts\(3,14\): error TS(?:2742|2883)/)
     expect(output).toMatch(/cannot reference by name.*:\n(?:- `\w+` in \S+\n)*- `cachedHandler` in \S*src\/runtime\/components\/Cached\.vue:4\n/)
     expect(output).toMatch(/\n- `defineCachedHandler` in \S*src\/runtime\/server\/cached\.ts:3\n/)
-    expect(output).toContain(guide('portability-errors'))
+    expect(output).toContain('NUXT_MB_B0203')
     expect(exists(dirs.vueError!, 'dist')).toBe(false)
   })
 })
@@ -1178,7 +1174,8 @@ describe('tsconfig lookup', () => {
   })
 
   it('should generate declarations with the module\'s own `.nuxt` when the tsconfig takes its types from a playground', async () => {
-    expect(expectBuilt('routes')).toContain(`\`../tsconfig.json\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead. Add a \`tsconfig.json\` in the module directory that extends \`./.nuxt/tsconfig.json\`. ${guide('module-tsconfig')}`)
+    expect(expectBuilt('routes')).toContain('[NUXT_MB_C0301] `../tsconfig.json` takes its generated types')
+    expect(expectBuilt('routes')).toContain('fix: Add a `tsconfig.json` in the module directory')
     expect(await read(dirs.routes!, 'playground/.nuxt/types/nitro-routes.d.ts')).toContain('/api/secret')
     for (const file of await listFiles(join(dirs.routes!, 'dist'))) {
       if (file.includes('.')) {
@@ -1237,12 +1234,12 @@ describe('tsdown configs', () => {
 
   it('should refuse `hooks` in `builder()` and point at tsdown\'s own', () => {
     for (const name of ['builderHooks', 'builderHooks:prepare']) {
-      expect(expectFailed(name), name).toContain(`\`builder()\` does not take \`hooks\`. Use tsdown's own \`hooks\` in the tsdown config, or a plugin that emits extra files. ${guide('hooks-in-a-tsdown-config')}`)
+      expect(expectFailed(name), name).toContain('[NUXT_MB_C0008]')
     }
   })
 
   it('should fail to prepare with a tsdown config whose `cwd` is another directory', () => {
-    expect(expectFailed('configCwd')).toContain('`tsdown.config.ts` sets `cwd`, but `prepare` reads the module in the directory of the tsdown config.')
+    expect(expectFailed('configCwd')).toContain('[NUXT_MB_C0007] `tsdown.config.ts` sets `cwd`')
     expectBuilt('configCwd:fixed')
   })
 
@@ -1250,32 +1247,33 @@ describe('tsdown configs', () => {
     for (const name of ['configEnum', 'configEnum:prepare']) {
       const output = expectFailed(name)
       expect(output, name).toContain('tsdown.config.ts:2:1: `enum` (use an `as const` object and a union type of its values)')
-      expect(output, name).toContain(guide('module-code-loads-with-node'))
+      expect(output, name).toContain('[NUXT_MB_B0001]')
     }
   })
 
   it('should fail on a tsdown config without `builder()` and show how to add it', () => {
     for (const name of ['withoutPlugin', 'withoutPlugin:prepare']) {
-      const output = expectFailed(name)
+      const output = name.endsWith(':prepare') ? withoutGuide(expectFailed(name)) : expectFailed(name)
+      expect(output, name).toContain('[NUXT_MB_C0005] `tsdown.config.ts`')
       expect(output, name).toContain([
-        '`tsdown.config.ts` does not build the module with `builder()`. Add the plugin:',
-        '',
-        `  import { builder } from '@nuxt/module-builder/tsdown'`,
-        `  import { defineConfig } from 'tsdown'`,
-        '',
-        `  export default defineConfig({`,
-        `    plugins: [builder()],`,
-        `  })`,
+        '├▶ fix: Add the plugin:',
+        '│',
+        `│    import { builder } from '@nuxt/module-builder/tsdown'`,
+        `│    import { defineConfig } from 'tsdown'`,
+        '│',
+        `│    export default defineConfig({`,
+        `│      plugins: [builder()],`,
+        `│    })`,
+        '╰▶ see: ',
       ].join('\n'))
-      expect(output, name).toContain(guide('tsdown-config'))
     }
-    expect(expectFailed('entriesOnly')).toContain('`tsdown.config.ts` does not build the module with `builder()`.')
+    expect(expectFailed('entriesOnly')).toContain('[NUXT_MB_C0005] `tsdown.config.ts`')
     expect(exists(dirs.entriesOnly!, 'dist')).toBe(false)
   })
 
   it('should load the package root without tsdown, and point at installing it to build', () => {
     expect(expectBuilt('withoutTsdown:root').trim()).toBe('build,defineBuildConfig,prepare')
-    expect(expectFailed('withoutTsdown')).toContain(guide('install-tsdown'))
+    expect(expectFailed('withoutTsdown')).toContain('[NUXT_MB_B0003]')
   })
 })
 
@@ -1397,7 +1395,7 @@ describe('the example', () => {
     const { output, exitCode } = result('source:npm')
     expect(exitCode, `${packProbeContext()}\n${output}`).not.toBe(0)
     expect(output).toMatch(/`npm(?:@[\d.]+)?` packs these fields of `package\.json` as written, and they point at TypeScript sources or paths that `files` leaves out: `exports`, `main`, `types` \(`\.\/\.nuxt\/module-builder\/types\.d\.mts`, `\.\/src\/module\.ts`, `\.\/src\/utils\.ts`\)\./)
-    expect(output).toContain(guide('publishing-source-exports'))
+    expect(output).toContain('[NUXT_MB_C0104]')
   })
 
   it('should pack the `dist` paths in `publishConfig` with pnpm, and `dist` with npm, without warnings', async () => {

@@ -19,7 +19,7 @@ pnpm dev:prepare
 | `pnpm lint` | ESLint |
 | `pnpm nuxt-module-build` | the CLI from source, for example `pnpm nuxt-module-build build ./example` |
 
-Pages in [`docs/`](./docs) are published on [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths. Build messages link to headings of [`docs/upgrade-v2.md`](./docs/upgrade-v2.md) through `guide()` in `src/build/guide.ts`. A unit test checks that every linked heading exists.
+Pages in [`docs/`](./docs) are published on [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths. Build messages link to headings of [`docs/upgrade-v2.md`](./docs/upgrade-v2.md) (see [Diagnostics](#diagnostics)). A unit test checks that every linked heading exists.
 
 ## Architecture
 
@@ -38,7 +38,8 @@ The package has three entry points:
 | `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations. |
 | `src/transpile/` | `transpileDir()`, the internal rolldown plugin that transpiles a directory file by file. It transforms scripts with oxc and `.vue` files with `vue.ts`, compiles stylesheets with `stylesheets.ts`, emits declarations with `declarations.ts`, rewrites import specifiers with `specifiers.ts`, and resolves the tsconfig of each file with `tsconfig.ts`. It imports nothing outside the directory but `src/utils.ts`, so it can be extracted later. |
 | `src/legacy/` | Compatibility with v1 and unbuild (see [Legacy code](#legacy-code)). |
-| `src/utils.ts` | Path, file and regex helpers shared across directories, and `logger`, through which every build message goes. |
+| `src/diagnostics.ts` | The codes of every error and warning the builder reports (see [Diagnostics](#diagnostics)). |
+| `src/utils.ts` | Path, file and regex helpers shared across directories, and `logger`, which prints diagnostics outside a tsdown build. |
 
 ### `tsdown` with `builder()`
 
@@ -110,6 +111,28 @@ Core code doesn't import legacy types. The call sites are:
 - `src/build/package.ts`
 
 Their tests live in `test/legacy.spec.ts`. To drop unbuild compatibility, delete the directory and that spec, then fix the call sites.
+
+### Diagnostics
+
+Errors and warnings that a module author can act on are [nostics](https://www.npmjs.com/package/nostics) diagnostics, defined in `src/diagnostics.ts`. Each has a code: `NUXT_MB_`, then `B` (build), `C` (config) or `D` (v1 and unbuild compatibility), then four digits. Codes are grouped by hundreds within each area, and a published code is never renamed or reused.
+
+There are two catalogs:
+
+- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so the `fix` and docs lines are added to the stack after its first line. `nuxt-module-build` prints a thrown diagnostic without its stack instead.
+- `warnings` for diagnostics that are printed when created, as warnings, or as info or errors when the call passes `{ method }`.
+
+During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`), so the build's `logLevel`, `failOnWarn` and `suppressWarnings` apply to them. `setupBuilder` hands it tsdown's global logger, then the logger of the resolved config. Outside a build, as in `nuxt-module-build prepare`, they are printed with `logger` from `src/utils.ts`. tsdown is a peer dependency, so `src/diagnostics.ts` only imports its types.
+
+To add one, add an entry to `errorCodes` or `warningCodes` with the next free number in its group:
+
+- `why` says what is wrong and becomes the message. `fix` says what to do. Neither repeats the other.
+- `docs` is the URL of the heading of `docs/upgrade-v2.md` that explains it, or `false`.
+- The call passes `sources`: the absolute path of every file that the `why` or `fix` names, with `:line:column` when it names a position. In a terminal, each file that exists is linked where the `why` or `fix` names it, by the end of its path. URLs in the text and the docs link are linked as well.
+- The tsconfig sets `isolatedDeclarations`, so `why` and `fix` are string literals or functions with a `: string` return type, and `docs` is a string literal.
+
+Tests assert the code, such as `diagnostic('NUXT_MB_C0012')` or `reported('NUXT_MB_C0201')` from `test/utils.ts`, and the values that matter, rather than the message.
+
+Errors that only the builder handles, such as `DeclarationError`, and those of `src/transpile/`, which imports nothing outside its directory, are plain errors.
 
 ## Tests
 

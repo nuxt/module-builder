@@ -2,6 +2,7 @@ import type { TsdownPlugin } from 'tsdown'
 
 import { BUILDER_OPTIONS } from '../build/options.ts'
 import type { BuilderOptions } from '../build/options.ts'
+import { errors } from '../diagnostics.ts'
 import type { BuilderSession, SetupOptions } from './setup.ts'
 
 export interface BuilderPlugin extends TsdownPlugin {
@@ -39,7 +40,7 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
     async tsdownConfig(config, inline) {
       // A watcher that restarts resolves the config again once the first build has started.
       if (claimed && !session?.started) {
-        throw new Error('The same `builder()` plugin is used in more than one tsdown config. Call `builder()` in each config that builds the module.')
+        throw errors.NUXT_MB_C0004()
       }
       claimed = true
       const { setupBuilder } = await import('./setup.ts')

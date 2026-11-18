@@ -1,8 +1,9 @@
-import { build as tsdownBuild } from 'tsdown'
+import { globalLogger, build as tsdownBuild } from 'tsdown'
 import type { TsdownPlugin } from 'tsdown'
 
 import { findTsdownConfig, hasBuilder, missingBuilderError } from '../commands/config-file.ts'
 import { assertLoadableModuleCode } from '../build/loader.ts'
+import { useBuildLogger } from '../diagnostics.ts'
 import { loadLegacyModuleConfig } from '../legacy/build-config.ts'
 import { createBuilder } from './plugin.ts'
 
@@ -16,6 +17,7 @@ export interface BuildOptions {
  * and `package.json`.
  */
 export async function build(cwd: string, options: BuildOptions): Promise<void> {
+  useBuildLogger(globalLogger)
   const file = findTsdownConfig(cwd)
   if (file && !file.endsWith('.json')) {
     assertLoadableModuleCode(cwd, [file], [])
