@@ -9,7 +9,7 @@ import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
@@ -1107,6 +1107,16 @@ describe('resolveOutDir', () => {
 })
 
 describe('createTsconfigResolver', () => {
+  it('should fail with a diagnostic naming the module\'s tsconfig, or a project it references, that cannot be read', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-unreadable-'))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ extends: './missing.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.json`, the module\'s tsconfig: '))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: './tsconfig.module.json' }] }))
+    await writeFile(join(cwd, 'tsconfig.module.json'), JSON.stringify({ extends: './.nuxt/tsconfig.node.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.module.json`, the module\'s tsconfig: '))
+  })
+
   it('should rebuild a tsconfig that takes its types from a playground on the module\'s own `.nuxt`, keeping its other options', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'module-builder-foreign-'))
     await mkdir(join(cwd, '.nuxt'))

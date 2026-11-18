@@ -6,7 +6,7 @@ import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, join, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
-import { findPackageDir, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
+import { findPackageDir, findUp, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
 import { moduleSpecifiers } from './specifiers.ts'
 
 export interface TsconfigResolver {
@@ -26,7 +26,13 @@ export interface TsconfigResolver {
  * {@link rebaseOnOwnBuildDir}.
  */
 export async function createTsconfigResolver(dir: string): Promise<TsconfigResolver> {
-  let root = getTsconfig(dir) ?? undefined
+  let root: TsConfigResult | undefined
+  try {
+    root = getTsconfig(dir) ?? undefined
+  }
+  catch (error) {
+    throw new TsconfigError(findUp(dir, ancestor => existsSync(join(ancestor, 'tsconfig.json')) ? join(ancestor, 'tsconfig.json') : undefined) ?? join(dir, 'tsconfig.json'), error)
+  }
   let replaced: string | undefined
   const own = join(dir, '.nuxt/tsconfig.json')
   if (root && usesForeignBuildDir(root, dir) && existsSync(own)) {
@@ -87,6 +93,16 @@ export async function typeResolutionFs(files: string[], project: (file: string) 
     })
   }
   return result
+}
+
+/** The error for a tsconfig that cannot be read, such as one that extends a file that does not exist. */
+export class TsconfigError extends Error {
+  /** The tsconfig that cannot be read. */
+  readonly path: string
+  constructor(path: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause })
+    this.path = path
+  }
 }
 
 function usesForeignBuildDir(tsconfig: TsConfigResult, dir: string) {
@@ -247,7 +263,15 @@ function referencedProjects(tsconfig: TsConfigResult | undefined): TsConfigResul
   return (tsconfig?.config.references ?? []).flatMap((reference) => {
     const path = resolve(dirname(tsconfig!.path), reference.path)
     const config = path.endsWith('.json') ? path : join(path, 'tsconfig.json')
-    return existsSync(config) ? [{ path: config, config: parseTsconfig(config) }] : []
+    if (!existsSync(config)) {
+      return []
+    }
+    try {
+      return [{ path: config, config: parseTsconfig(config) }]
+    }
+    catch (error) {
+      throw new TsconfigError(config, error)
+    }
   }).sort((a, b) => projectRank(a.path) - projectRank(b.path))
 }
 

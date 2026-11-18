@@ -10,7 +10,8 @@ import builderPkg from '../../package.json' with { type: 'json' }
 import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, TsconfigError, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import type { TsconfigResolver } from '../transpile/tsconfig.ts'
 import { errors, warnings } from '../diagnostics.ts'
 import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
@@ -74,8 +75,17 @@ export interface PreparedBuild {
   compiledJsx: Set<string>
 }
 
+/** The tsconfigs of the module in `cwd`, see `createTsconfigResolver`. A tsconfig that cannot be read fails with a diagnostic. */
+export async function moduleTsconfigs(cwd: string): Promise<TsconfigResolver> {
+  return createTsconfigResolver(cwd).catch((error: unknown) => {
+    throw error instanceof TsconfigError
+      ? errors.NUXT_MB_C0302({ path: relative(cwd, error.path), reason: error.message, inside: isInside(cwd, error.path), cause: error, sources: [error.path] })
+      : error
+  })
+}
+
 export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
-  const tsconfigs = await createTsconfigResolver(cwd)
+  const tsconfigs = await moduleTsconfigs(cwd)
   if (tsconfigs.replaced) {
     const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', 'tsconfig.module.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
     warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })

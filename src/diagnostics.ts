@@ -145,8 +145,14 @@ export const errorCodes = {
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
   },
 
+  NUXT_MB_C0302: {
+    why: (p: { path: string, reason: string, inside: boolean }): string => `Cannot read \`${p.path}\`, ${p.inside ? 'the module\'s tsconfig' : 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own'}: ${p.reason}`,
+    fix: (p: { inside: boolean }): string => p.inside ? 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.' : 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.',
+    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
+  },
+
   NUXT_MB_D0001: {
-    why: (p: { command: string }): string => `\`nuxt-module-build ${p.command} --stub\` has been removed.`,
+    why: (p: { command: string }): string => `The \`--stub\` option of \`${p.command}\` has been removed.`,
     fix: 'With pnpm or Yarn 4, point `package.json` at the module\'s sources. Otherwise, build `dist` with `tsdown` and rebuild it with `tsdown --watch`.',
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#stub-builds',
   },

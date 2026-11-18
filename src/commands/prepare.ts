@@ -6,6 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { parseTsconfig } from 'get-tsconfig'
 import { dirname, join, relative, resolve } from 'pathe'
 import { glob } from 'tinyglobby'
+import { moduleTsconfigs } from '../build/build.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
 import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
@@ -13,7 +14,7 @@ import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
-import { createTsconfigResolver, isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
+import { isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -155,7 +156,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
                 tsConfig.exclude &&= tsConfig.exclude.filter(outsideEntryDist)
               }
               if (tsConfig && perContext) {
-                tsConfig.compilerOptions = { ...tsConfig.compilerOptions, paths: { ...tsConfig.compilerOptions?.paths, ...ownPaths } }
+                tsConfig.compilerOptions = withTsExtensions({ ...tsConfig.compilerOptions, paths: { ...tsConfig.compilerOptions?.paths, ...ownPaths } })
               }
             })
           })
@@ -175,7 +176,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
               for (const context of [tsConfig, nodeTsConfig, serverTsConfig, sharedTsConfig].filter(context => context !== undefined)) {
                 context.include &&= context.include.filter(outsideEntryDist)
                 context.exclude &&= context.exclude.filter(outsideEntryDist)
-                context.compilerOptions = withRootOptions(context.compilerOptions)
+                context.compilerOptions = withTsExtensions(withRootOptions(context.compilerOptions))
                 if (ambient.globals.length) {
                   context.files = [...context.files ?? [], ...ambient.globals]
                 }
@@ -215,7 +216,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
   if (name && perContext) {
     const roots = [...Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file))), ...own.sources]
-    const tsconfigs = await createTsconfigResolver(cwd)
+    const tsconfigs = await moduleTsconfigs(cwd)
     const project = tsconfigs.resolve(entryPath)
     const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
     const tsconfig = project && project !== tsconfigs.root ? project : { path: nodeTsconfig, config: parseTsconfig(nodeTsconfig) }
@@ -256,7 +257,18 @@ async function writeCompatibilityTsconfig(file: string, cwd: string, { ownPaths,
   for (const alias of Object.keys(ownPaths)) {
     delete config.compilerOptions?.paths?.[alias]
   }
+  if (config.compilerOptions) {
+    config.compilerOptions = withTsExtensions(config.compilerOptions)
+  }
   await writeFile(file, JSON.stringify(config, null, 2))
+}
+
+/**
+ * `options` with `allowImportingTsExtensions`, which module code needs for its `.ts` imports,
+ * unless they set it or emit JavaScript. Nuxt sets it in the tsconfigs it generates from 4.5 on.
+ */
+function withTsExtensions<T extends Record<string, unknown>>(options: T): T {
+  return options.allowImportingTsExtensions === undefined && (options.noEmit || options.emitDeclarationOnly) ? { ...options, allowImportingTsExtensions: true } : options
 }
 
 /**
