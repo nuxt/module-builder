@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { relative } from 'pathe'
-import type { DeclarationDiagnostic, Transform } from 'vue-sfc-transformer/core'
+import type { DeclarationDiagnostic, Transform, VueDeclarationSession } from 'vue-sfc-transformer/core'
 
 import type { TypeResolutionFs } from './tsconfig.ts'
 
@@ -10,6 +10,8 @@ interface VueDeclarationOptions {
   tsconfig?: string
   /** Extra key for the declaration cache, for inputs the cache cannot see, such as generated type augmentations. */
   cacheVersion: string
+  /** Keeps the parsed sources of this call for the next one with the same session. */
+  session?: VueDeclarationSession
 }
 
 interface DeclarationMessage {
@@ -40,6 +42,12 @@ export async function transformVueRuntime(files: string[], transform: Transform,
   })))
 }
 
+/** A session to pass to each {@link emitDeclarations} call for one program, such as on rebuilds under watch. */
+export async function createDeclarationSession(): Promise<VueDeclarationSession> {
+  const { createVueDeclarationSession } = await import('vue-sfc-transformer/core')
+  return createVueDeclarationSession()
+}
+
 /**
  * Emits declarations for `.vue` files and TypeScript sources from one program over
  * `tsconfig`, so scripts can import types from single-file components.
@@ -52,6 +60,7 @@ export async function emitDeclarations(files: string[], options: VueDeclarationO
     tsconfig: options.tsconfig,
     cacheVersion: options.cacheVersion,
     emitLegacyDeclarationAlias: true,
+    session: options.session,
   })
   const errors = diagnostics.filter(diagnostic => diagnostic.category === 'error')
   const format = (diagnostic: DeclarationDiagnostic): DeclarationMessage => ({ file: diagnostic.file, message: formatDiagnostic(diagnostic, options.cwd) })

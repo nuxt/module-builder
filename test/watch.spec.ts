@@ -140,6 +140,28 @@ describe.concurrent('tsdown --watch', () => {
         await waitFor(async () => (await read(dist(recovered))).includes('recoveredMarker'))
       }))
     }
+
+    it('should keep the previous declarations when a rebuild of a component fails, and recover on the next good save', inOrder(async () => {
+      const file = join(dir, 'src/runtime/components/TestMeSetup.vue')
+      const source = await read(file)
+      const before = await read(dist('runtime/components/TestMeSetup.d.vue.ts'))
+      let seen = watcher.output().length
+      await writeFile(file, source.replace('defineProps<{ count: number }>()', 'defineProps<{ count: number }>(\n'))
+      await waitFor(() => /error/i.test(watcher.output().slice(seen)))
+      await delay(1000)
+      expect(await read(dist('runtime/components/TestMeSetup.d.vue.ts'))).toBe(before)
+      seen = watcher.output().length
+      await writeFile(file, source.replace('count: number', 'count: number, recovered?: boolean'))
+      await waitFor(async () => (await read(dist('runtime/components/TestMeSetup.d.vue.ts'))).includes('recovered') && /Rebuilt in/.test(watcher.output().slice(seen)))
+    }))
+
+    it('should emit the same files as a one-off build of the same sources', inOrder(async () => {
+      await watcher.stop()
+      const copy = await fixture('.temp-watch/module-one-off', { from: dir, config: PLUGIN, remove: ['node_modules/.cache'] })
+      await succeed(tsdown(copy))
+      const hashes = async (root: string) => [...(await outputs(join(root, 'dist'))).entries()].map(([file, { hash }]) => [file, hash]).sort()
+      expect(await hashes(dir)).toEqual(await hashes(copy))
+    }))
   })
 
   it('should rebuild when a file is added to a missing runtime directory', async ({ onTestFailed }) => {
@@ -239,7 +261,7 @@ describe.concurrent('tsdown --watch', () => {
     }
   })
 
-  it('should not keep more memory with each rebuild', async () => {
+  it('should not keep more memory with each rebuild, and release it when the watcher closes', async () => {
     const dir = await fixture('.temp-watch/memory', withoutConfig)
     const file = join(dir, 'src/runtime/composables/useWrappedFetch.ts')
     await mkdir(join(dir, 'src/shared'), { recursive: true })
@@ -259,6 +281,8 @@ describe.concurrent('tsdown --watch', () => {
       `  heap.push(process.memoryUsage().heapUsed)`,
       `}`,
       `await handle.watch.close()`,
+      `globalThis.gc()`,
+      `heap.push(process.memoryUsage().heapUsed)`,
       `console.log(JSON.stringify(heap))`,
       `process.exit(0)`,
       '',
@@ -266,7 +290,9 @@ describe.concurrent('tsdown --watch', () => {
     const { stdout, exitCode, output } = await run('node', ['--expose-gc', 'watch.mjs'], { cwd: dir })
     expect(exitCode, output).toBe(0)
     const heap = JSON.parse(stdout.trim().split('\n').at(-1)!) as number[]
-    expect(heap.at(-1)! - heap[2]!).toBeLessThan(64 * 1024 * 1024)
+    const closed = heap.pop()!
+    expect(heap.at(-1)! - heap[2]!).toBeLessThan(16 * 1024 * 1024)
+    expect(heap.at(-1)! - closed).toBeGreaterThan(64 * 1024 * 1024)
   })
 
   it('should write current metadata from each build session in the same process', async () => {
