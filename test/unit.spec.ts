@@ -21,7 +21,7 @@ import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/externals.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
@@ -1151,6 +1151,31 @@ describe('createTsconfigResolver', () => {
     await write('tsconfig.runtime.json', { extends: './.nuxt/tsconfig.app.json' })
     await write('tsconfig.json', { files: [], references: [{ path: './.nuxt/tsconfig.app.json' }, { path: './.nuxt/tsconfig.server.json' }, { path: './tsconfig.runtime.json' }] })
     expect((await createTsconfigResolver(cwd)).resolve(join(cwd, 'src/runtime/plugin.ts'))?.path).toBe(join(cwd, 'tsconfig.runtime.json'))
+    await rm(cwd, { recursive: true, force: true })
+  })
+
+  it('should give each component a `tsconfig.json` with the options of its project, in its directory or above one that a component of another project has', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-sfc-types-')))
+    await mkdir(join(cwd, '.nuxt'))
+    await mkdir(join(cwd, 'src/runtime'), { recursive: true })
+    const write = (file: string, config: object) => writeFile(join(cwd, file), JSON.stringify(config))
+    await write('.nuxt/tsconfig.app.json', { compilerOptions: { paths: { '#app-types': ['../src/runtime/types'] } }, include: ['../src/runtime'] })
+    await write('tsconfig.app.json', { extends: './.nuxt/tsconfig.app.json', compilerOptions: { strict: true } })
+    await write('tsconfig.other.json', { compilerOptions: { paths: { '#other-types': ['./src/other'] } } })
+    await write('src/runtime/tsconfig.json', { compilerOptions: { paths: { '#unused': ['./unused'] } } })
+    const projects = Object.fromEntries(['tsconfig.app.json', 'tsconfig.other.json'].map(file => [file, { path: join(cwd, file), config: parseTsconfig(join(cwd, file)) }]))
+    const files = ['A.vue', 'B.vue', 'C.vue'].map(name => join(cwd, 'src/runtime', name))
+    const fs = await typeResolutionFs(files, file => projects[file.endsWith('B.vue') ? 'tsconfig.other.json' : 'tsconfig.app.json'])
+    const options = (file: string) => {
+      const host = fs.get(file)!
+      const path = ts.findConfigFile(file, host.fileExists)!
+      const { compilerOptions } = ts.readConfigFile(path, host.readFile).config
+      return { path, compilerOptions }
+    }
+    const app = { path: join(cwd, 'src/runtime/tsconfig.json'), compilerOptions: { paths: { '#app-types': [join(cwd, 'src/runtime/types')] }, strict: true } }
+    expect(options(files[0]!)).toEqual(app)
+    expect(options(files[1]!)).toEqual({ path: join(cwd, 'src/tsconfig.json'), compilerOptions: { paths: { '#other-types': [join(cwd, 'src/other')] } } })
+    expect(options(files[2]!)).toEqual(app)
     await rm(cwd, { recursive: true, force: true })
   })
 

@@ -6,7 +6,7 @@ import type { TsConfigResult } from 'get-tsconfig'
 import { dirname, join, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
-import { findPackageDir, isInside, NODE_MODULES_RE } from '../utils.ts'
+import { findPackageDir, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
 import { moduleSpecifiers } from './specifiers.ts'
 
 export interface TsconfigResolver {
@@ -39,6 +39,49 @@ export async function createTsconfigResolver(dir: string): Promise<TsconfigResol
     resolve: file => projects.find(({ matches }) => matches(file.endsWith('.vue') ? `${file}.ts` : file))?.project ?? root,
     ...replaced && { replaced },
   }
+}
+
+/** The file system that `@vue/compiler-sfc` resolves the types of script setup macros through. */
+export interface TypeResolutionFs {
+  fileExists: (file: string) => boolean
+  readFile: (file: string) => string | undefined
+  realpath?: (file: string) => string
+}
+
+/**
+ * A file system for each of `files` with a `tsconfig.json` holding the merged `compilerOptions`
+ * of its `project`, paths made absolute, in its directory or the closest one above that no file
+ * of another project uses. The `tsconfig.json` files below that one are hidden.
+ */
+export async function typeResolutionFs(files: string[], project: (file: string) => TsConfigResult | undefined): Promise<Map<string, TypeResolutionFs>> {
+  const { default: ts } = await import('typescript')
+  const configs = new Map<string, Promise<string>>()
+  const owners = new Map<string, string>()
+  const result = new Map<string, TypeResolutionFs>()
+  for (const file of files) {
+    const tsconfig = project(file)
+    if (!tsconfig) {
+      continue
+    }
+    const taken = (path: string) => (owners.get(path) ?? tsconfig.path) !== tsconfig.path
+    const hidden = new Set<string>()
+    let path = join(dirname(file), 'tsconfig.json')
+    while (taken(path) && dirname(dirname(path)) !== dirname(path)) {
+      hidden.add(path)
+      path = join(dirname(dirname(path)), 'tsconfig.json')
+    }
+    if (taken(path)) {
+      continue
+    }
+    owners.set(path, tsconfig.path)
+    const contents = await getOrCreate(configs, tsconfig.path, async () => JSON.stringify({ compilerOptions: (await inheritedTsconfig(tsconfig.path, () => false)).compilerOptions }))
+    result.set(file, {
+      fileExists: name => name === path || (!hidden.has(name) && ts.sys.fileExists(name)),
+      readFile: name => name === path ? contents : hidden.has(name) ? undefined : ts.sys.readFile(name),
+      realpath: ts.sys.realpath,
+    })
+  }
+  return result
 }
 
 function usesForeignBuildDir(tsconfig: TsConfigResult, dir: string) {

@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { relative } from 'pathe'
 import type { DeclarationDiagnostic, Transform } from 'vue-sfc-transformer/core'
 
+import type { TypeResolutionFs } from './tsconfig.ts'
+
 interface VueDeclarationOptions {
   cwd: string
   /** The tsconfig to emit declarations from. */
@@ -26,11 +28,14 @@ export interface VueDeclarations {
   warnings: DeclarationMessage[]
 }
 
-/** Transforms `.vue` files into their runtime form with TypeScript stripped, keyed by source path. */
-export async function transformVueRuntime(files: string[], transform: Transform): Promise<Map<string, string>> {
+/**
+ * Transforms `.vue` files into their runtime form with TypeScript stripped, keyed by source
+ * path. The types of script setup macros resolve through `fs` of the file, when it has one.
+ */
+export async function transformVueRuntime(files: string[], transform: Transform, fs: Map<string, TypeResolutionFs>): Promise<Map<string, string>> {
   const { transformVueSfc } = await import('vue-sfc-transformer/core')
   return new Map(await Promise.all(files.map(async (id) => {
-    const { code } = await transformVueSfc(await readFile(id, 'utf8'), id, { transform })
+    const { code } = await transformVueSfc(await readFile(id, 'utf8'), id, { transform, ...fs.has(id) && { script: { fs: fs.get(id) } } })
     return [id, code] as const
   })))
 }

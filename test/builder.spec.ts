@@ -175,6 +175,17 @@ export default {
   }
   dirs.moduleProject = await fixture('.temp-builder/module-project', { config: PLUGIN, module: source => source + FIELDS, files: moduleProject })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
+  dirs.appProject = await fixture('.temp-builder/app-project', {
+    config: PLUGIN,
+    remove: ['.nuxt'],
+    module: source => source.replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    _nuxt.options.alias[\'#my-types\'] = resolver.resolve(\'./runtime/types\')'),
+    files: {
+      'src/runtime/types/index.ts': `export type Trigger = 'onNuxtReady' | string[] | boolean\n`,
+      'src/runtime/components/Triggered.vue': `<script setup lang="ts">\nimport type { Trigger } from '#my-types'\n\ndefineProps<{ trigger?: Trigger }>()\n</script>\n\n<template>\n  <div />\n</template>\n`,
+      'tsconfig.app.json': JSON.stringify({ extends: './.nuxt/tsconfig.app.json' }),
+      'tsconfig.json': JSON.stringify({ files: [], references: ['./.nuxt/tsconfig.node.json', './tsconfig.app.json', './.nuxt/tsconfig.server.json', './.nuxt/tsconfig.shared.json'].map(path => ({ path })) }),
+    },
+  })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
     module: source => source + FIELDS,
@@ -196,6 +207,7 @@ export default {
     step('moduleProject', tsdown(dirs.moduleProject, [], { CI: '' })),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
+    step('appProject', tsdown(dirs.appProject)),
     step('published', run('node', [tsdownBin], { cwd: repoRoot })).then(() => step('published:import', run('node', ['--input-type=module', '-e', `const root = await import('@nuxt/module-builder')\nconst { builder } = await import('@nuxt/module-builder/tsdown')\nconsole.log(JSON.stringify(['builder' in root, builder().name]))`]))),
   ])
 })
@@ -303,6 +315,11 @@ describe('with a root tsconfig that only lists references', () => {
     expect(buildTypes).not.toContain('declare module "#build/my-module-virtual.mjs";')
     expect((await generated('app')).include).not.toContain('../**/*')
     expect(expectBuilt('contexts:typecheck')).toBe('')
+  })
+
+  it('should infer the runtime types of component props with the referenced project that includes the component, when it extends a generated one', async () => {
+    expectBuilt('appProject')
+    expect(await read(dirs.appProject!, 'dist/runtime/components/Triggered.vue')).toMatch(/type: \[\s*String,\s*Array,\s*Boolean\s*\]/)
   })
 
   it('should transform each runtime file with the referenced project that includes it', async () => {
