@@ -6,6 +6,7 @@ import { join, relative } from 'pathe'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { TestContext } from 'vitest'
 
+import { escapeRegExp } from '../src/utils.ts'
 import type { PackageJson } from '../src/utils.ts'
 import { builderImport, exists, fixture, read, repoRoot, run, succeed, tsdown, tsdownBin, waitFor, watch } from './utils.ts'
 
@@ -201,24 +202,26 @@ describe.concurrent('tsdown --watch', () => {
     })
     const watcher = watch(dir, [tsdownBin, '--watch'], onTestFailed)
     const rebuilds = () => watcher.output().match(/Rebuilt in/g)?.length ?? 0
-    const rebuild = async (change: () => Promise<void>) => {
+    const rebuild = async (change: () => Promise<void>, file?: string) => {
       const before = await outputs(distDir)
       const count = rebuilds()
+      const seen = watcher.output().length
+      const rebuilt = file && new RegExp(`Found [^\\n]*${escapeRegExp(file)}[^\\n]* changed[\\s\\S]*Rebuilt in`)
       await change()
-      await waitFor(() => rebuilds() > count)
+      await waitFor(() => rebuilt ? rebuilt.test(watcher.output().slice(seen)) : rebuilds() > count)
       return changes(before, await outputs(distDir))
     }
-    const edit = async (file: string, from: string, to: string) => writeFile(join(dir, file), (await read(dir, file)).replace(from, to))
+    const edit = (file: string, from: string, to: string) => rebuild(async () => writeFile(join(dir, file), (await read(dir, file)).replace(from, to)), file)
     try {
       await waitFor(() => rebuilds() > 0 && exists(distDir, 'module.json') && exists(distDir, 'types.d.mts'))
       expect(await read(distDir, 'user.txt')).toBe('user asset\n')
 
       await rm(join(distDir, 'runtime/plugins/plugin.js'))
-      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: ['runtime/plugins/plugin.js'], removed: [] })
+      expect(await edit('src/runtime/components/TestMe.vue', '', '')).toEqual({ changed: [], added: ['runtime/plugins/plugin.js'], removed: [] })
 
-      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '{{ count }}', 'count: {{ count }}'))).toEqual({ changed: ['runtime/components/TestMe.vue'], added: [], removed: [] })
-      expect(await rebuild(() => edit('src/runtime/components/TestMe.vue', '', ''))).toEqual({ changed: [], added: [], removed: [] })
-      expect(await rebuild(() => edit('src/module.ts', `name: 'my-module'`, `name: 'my-renamed-module'`))).toEqual({ changed: ['module.json', 'module.mjs'], added: [], removed: [] })
+      expect(await edit('src/runtime/components/TestMe.vue', '{{ count }}', 'count: {{ count }}')).toEqual({ changed: ['runtime/components/TestMe.vue'], added: [], removed: [] })
+      expect(await edit('src/runtime/components/TestMe.vue', '', '')).toEqual({ changed: [], added: [], removed: [] })
+      expect(await edit('src/module.ts', `name: 'my-module'`, `name: 'my-renamed-module'`)).toEqual({ changed: ['module.json', 'module.mjs'], added: [], removed: [] })
       expect(await rebuild(() => rm(join(dir, 'src/runtime/composables/useAppNuxt.ts')))).toEqual({ changed: [], added: [], removed: ['runtime/composables/useAppNuxt.d.ts', 'runtime/composables/useAppNuxt.js'] })
 
       const before = await outputs(distDir)
@@ -228,7 +231,7 @@ describe.concurrent('tsdown --watch', () => {
       await writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), `${plugin}\nexport const broken: = 1\n`)
       await waitFor(() => failures() > failed)
       expect(changes(before, await outputs(distDir))).toEqual({ changed: [], added: [], removed: [] })
-      expect(await rebuild(() => writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), plugin))).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(() => writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), plugin), 'src/runtime/plugins/plugin.ts')).toEqual({ changed: [], added: [], removed: [] })
       expect([...(await outputs(distDir)).entries()].map(([file, { hash }]) => [file, hash])).toEqual([...before.entries()].map(([file, { hash }]) => [file, hash]))
     }
     finally {
