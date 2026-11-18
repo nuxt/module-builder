@@ -71,6 +71,7 @@ jobs:
         github.event_name == 'merge_group'
       )
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
