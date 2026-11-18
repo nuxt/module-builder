@@ -158,12 +158,13 @@ export function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
 
 /**
  * The `compilerOptions` and `exclude` of `file` and of the tsconfigs it extends, apart from
- * those `skip` matches, merged as TypeScript merges them, with paths made absolute.
+ * those `skip` matches, merged as TypeScript merges them, with paths made absolute. `paths`
+ * resolve against the merged `baseUrl`, or else the directory of the tsconfig that sets them.
  */
 async function inheritedTsconfig(file: string, skip: (file: string) => boolean): Promise<InheritedTsconfig> {
   const { default: ts } = await import('typescript')
   const configDir = dirname(file)
-  const layer = (path: string, ancestors: string[]): InheritedTsconfig => {
+  const layer = (path: string, ancestors: string[]): InheritedTsconfig & { pathsBase?: string } => {
     const raw = ts.readConfigFile(path, ts.sys.readFile).config as RawTsconfig | undefined
     const bases = [raw?.extends ?? []].flat()
       .map(target => resolveExtends(ts, target, dirname(path)))
@@ -172,9 +173,16 @@ async function inheritedTsconfig(file: string, skip: (file: string) => boolean):
     return {
       compilerOptions: Object.assign({}, ...bases.map(base => base.compilerOptions), absoluteOptions(raw?.compilerOptions ?? {}, dirname(path), configDir)),
       exclude: raw?.exclude?.map(pattern => resolve(dirname(path), pattern.replace('${configDir}', configDir))) ?? bases.findLast(base => base.exclude)?.exclude,
+      pathsBase: raw?.compilerOptions?.paths ? dirname(path) : bases.findLast(base => base.pathsBase)?.pathsBase,
     }
   }
-  return layer(file, [])
+  const { pathsBase, ...result } = layer(file, [])
+  const { paths, baseUrl } = result.compilerOptions
+  if (paths && typeof paths === 'object') {
+    const base = typeof baseUrl === 'string' ? baseUrl : pathsBase!
+    result.compilerOptions.paths = Object.fromEntries(Object.entries(paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target))]))
+  }
+  return result
 }
 
 const RELATIVE_RE = /^\.\.?[\\/]/
@@ -187,7 +195,7 @@ function resolveExtends(ts: typeof import('typescript'), target: string, from: s
   return source.extendedSourceFiles?.[0]
 }
 
-/** Path options resolved against `from`, the layer's directory; `${configDir}` and relative `types` are the leaf tsconfig's. */
+/** Path options resolved against `from`, the layer's directory; `${configDir}` and relative `types` are the leaf tsconfig's. `paths` are resolved once merged. */
 function absoluteOptions(options: Record<string, unknown>, from: string, configDir: string) {
   const dir = (value: string) => resolve(from, value.replace('${configDir}', configDir))
   const result = { ...options }
@@ -205,8 +213,7 @@ function absoluteOptions(options: Record<string, unknown>, from: string, configD
     result.types = result.types.map(value => typeof value === 'string' && (RELATIVE_RE.test(value) || value.includes('${configDir}')) ? resolve(configDir, value.replace('${configDir}', configDir)) : value)
   }
   if (result.paths && typeof result.paths === 'object') {
-    const base = typeof options.baseUrl === 'string' ? dir(options.baseUrl) : from
-    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => resolve(base, target.replace('${configDir}', configDir)))]))
+    result.paths = Object.fromEntries(Object.entries(result.paths as Record<string, string[]>).map(([alias, targets]) => [alias, targets.map(target => target.replace('${configDir}', configDir))]))
   }
   return result
 }

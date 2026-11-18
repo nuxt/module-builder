@@ -1179,7 +1179,7 @@ describe('createTsconfigResolver', () => {
     await rm(cwd, { recursive: true, force: true })
   })
 
-  it('should read the root `compilerOptions` and `exclude` through `extends`, apart from tsconfigs in `.nuxt`', async () => {
+  it('should read the root `compilerOptions` and `exclude` through `extends`, apart from tsconfigs in `.nuxt`, with `paths` resolved against the merged `baseUrl`', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'module-builder-root-'))
     await mkdir(join(cwd, '.nuxt'))
     await mkdir(join(cwd, 'config'))
@@ -1195,6 +1195,18 @@ describe('createTsconfigResolver', () => {
     await write('node_modules/shared-config/base.json', { compilerOptions: { types: ['youtube'] } })
     await write('tsconfig.json', { extends: 'shared-config', files: [] })
     expect((await rootTsconfig(cwd)).compilerOptions).toEqual({ types: ['youtube'] })
+    const tsPaths = () => {
+      const { options } = ts.getParsedCommandLineOfConfigFile(join(cwd, 'tsconfig.json'), {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} })!
+      return Object.fromEntries(Object.entries(options.paths!).map(([alias, targets]) => [alias, targets.map(target => resolve(options.baseUrl ?? options.pathsBasePath as string, target))]))
+    }
+    await write('config/base.json', { compilerOptions: { baseUrl: '../src' } })
+    await write('tsconfig.json', { extends: './config/base.json', files: [], compilerOptions: { paths: { '#types': ['types'] } } })
+    expect((await rootTsconfig(cwd)).compilerOptions.paths).toEqual({ '#types': [join(cwd, 'src/types')] })
+    expect((await rootTsconfig(cwd)).compilerOptions.paths).toEqual(tsPaths())
+    await write('config/base.json', { compilerOptions: { paths: { '#types': ['./types'] } } })
+    await write('tsconfig.json', { extends: './config/base.json', files: [], compilerOptions: { baseUrl: './src' } })
+    expect((await rootTsconfig(cwd)).compilerOptions.paths).toEqual({ '#types': [join(cwd, 'src/types')] })
+    expect((await rootTsconfig(cwd)).compilerOptions.paths).toEqual(tsPaths())
     await rm(cwd, { recursive: true, force: true })
   })
 
