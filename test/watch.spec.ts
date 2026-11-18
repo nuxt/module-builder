@@ -208,7 +208,7 @@ describe.concurrent('tsdown --watch', () => {
       const seen = watcher.output().length
       const rebuilt = file && new RegExp(`Found [^\\n]*${escapeRegExp(file)}[^\\n]* changed[\\s\\S]*Rebuilt in`)
       await change()
-      await waitFor(() => rebuilt ? rebuilt.test(watcher.output().slice(seen)) : rebuilds() > count)
+      await waitFor(() => rebuilt ? rebuilt.test(watcher.output().slice(seen).replaceAll('\\', '/')) : rebuilds() > count)
       return changes(before, await outputs(distDir))
     }
     const edit = (file: string, from: string, to: string) => rebuild(async () => writeFile(join(dir, file), (await read(dir, file)).replace(from, to)), file)
