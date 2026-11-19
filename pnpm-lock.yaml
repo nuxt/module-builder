@@ -203,8 +203,8 @@ importers:
         specifier: ^0.2.17
         version: 0.2.17
       vue-sfc-transformer:
-        specifier: ^0.3.4
-        version: 0.3.4(@volar/typescript@2.4.30(typescript@6.0.3))(@vue/compiler-core@3.5.45)(@vue/language-core@3.3.14)(esbuild@0.28.2)(rolldown@1.2.18)(typescript@6.0.3)(vue@3.5.45(typescript@6.0.3))
+        specifier: ^0.3.5
+        version: 0.3.5(@volar/typescript@2.4.30(typescript@6.0.3))(@vue/compiler-core@3.5.45)(@vue/language-core@3.3.14)(esbuild@0.28.2)(rolldown@1.2.18)(typescript@6.0.3)(vue@3.5.45(typescript@6.0.3))
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
@@ -5098,8 +5098,8 @@ packages:
       vite:
         optional: true
 
-  vue-sfc-transformer@0.3.4:
-    resolution: {integrity: sha512-oSZqnaj57ZpEtP7n1ERBvdd/dSKQnBvbPrCFRb1GyJPf+vrpFfexv6Jyr3wHw9jeo14lOrGaqeFzJGM/4ANujA==}
+  vue-sfc-transformer@0.3.5:
+    resolution: {integrity: sha512-bdobiOcFNETn0VIO5JagLfC/DwUdk35MkJHU6s0v4ycW5b5W7ke6HWrlimhDpSv9RMu+F3H93ZdkwBtKJGIHJg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@volar/typescript': ^2.4.0
@@ -10110,7 +10110,7 @@ snapshots:
       - unloader
       - webpack
 
-  vue-sfc-transformer@0.3.4(@volar/typescript@2.4.30(typescript@6.0.3))(@vue/compiler-core@3.5.45)(@vue/language-core@3.3.14)(esbuild@0.28.2)(rolldown@1.2.18)(typescript@6.0.3)(vue@3.5.45(typescript@6.0.3)):
+  vue-sfc-transformer@0.3.5(@volar/typescript@2.4.30(typescript@6.0.3))(@vue/compiler-core@3.5.45)(@vue/language-core@3.3.14)(esbuild@0.28.2)(rolldown@1.2.18)(typescript@6.0.3)(vue@3.5.45(typescript@6.0.3)):
     dependencies:
       '@vue/compiler-core': 3.5.45
       tinyglobby: 0.2.17

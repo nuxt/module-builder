@@ -24,4 +24,4 @@ minimumReleaseAgeExclude:
   - '@nuxt/*'
   - vue
   - '@vue/*'
-  - vue-sfc-transformer@0.3.4
+  - vue-sfc-transformer@0.3.5
