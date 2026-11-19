@@ -83,12 +83,8 @@ export async function writeTypes(distDir: string, source?: { exports: Set<string
     moduleExports.push(`export type ModuleOptions = typeof Module extends NuxtModule<infer O> ? Partial<O> : Record<string, any>`)
   }
 
-  for (const [name, shims, augmented] of [
-    ['ModuleHooks', schemaShims, 'NuxtHooks'],
-    ['ModuleRuntimeHooks', appShims, 'RuntimeNuxtHooks'],
-    ['ModuleRuntimeConfig', schemaShims, 'RuntimeConfig'],
-    ['ModulePublicRuntimeConfig', schemaShims, 'PublicRuntimeConfig'],
-  ] as const) {
+  for (const [name, augmented] of AUGMENTED) {
+    const shims = augmented === 'RuntimeNuxtHooks' ? appShims : schemaShims
     if (hasTypeExport(name)) {
       moduleImports.push(name)
       shims.push(`  interface ${augmented} extends ${name} {}`)
@@ -110,6 +106,20 @@ ${moduleReExports.filter(e => e.star).map(e => `\nexport ${e.star!.typeOnly ? 't
 `.trim().replace(/[\n\r]{3,}/g, '\n\n') + '\n'
 
   await writeIfChanged(dtsFile, dtsContents)
+}
+
+/** The interfaces of the module entry that `types.d.mts` merges into Nuxt's. */
+const AUGMENTED = [
+  ['ModuleHooks', 'NuxtHooks'],
+  ['ModuleRuntimeHooks', 'RuntimeNuxtHooks'],
+  ['ModuleRuntimeConfig', 'RuntimeConfig'],
+  ['ModulePublicRuntimeConfig', 'PublicRuntimeConfig'],
+] as const
+
+/** Whether `types.d.mts` augments Nuxt's types with interfaces that `entry` may export. */
+export function augmentsNuxtTypes(entry: string): boolean {
+  const names = exportedNames(entry)
+  return !names || AUGMENTED.some(([name]) => names.has(name))
 }
 
 /**

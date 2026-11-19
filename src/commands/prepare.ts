@@ -12,7 +12,7 @@ import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module
 import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
 import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/package.ts'
-import { writeSourceTypes } from '../build/types.ts'
+import { augmentsNuxtTypes, writeSourceTypes } from '../build/types.ts'
 import { noteUncheckedFiles } from '../build/unchecked.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
@@ -43,6 +43,16 @@ async function loadPrepareConfig(cwd: string): Promise<PrepareConfig> {
  * into those that only declare globals and ambient modules, and module augmentations. Other
  * modules, which only declare types for files that import them, are left out.
  */
+const DECLARE_RE = /\bdeclare\s+(?:module|global)\b/
+
+/** Whether a file of module code outside the runtime directories, or a bundled entry, may declare a module or a global. */
+async function declaresModules(cwd: string, runtimeDirs: string[], entries: string[]) {
+  const ignore = ['**/node_modules/**', ...runtimeDirs.map(dir => `${relative(cwd, dir)}/**`)]
+  const files = new Set([...await glob(['src/**/*.{ts,mts,cts,tsx}'], { cwd, absolute: true, ignore }), ...entries])
+  const sources = await Promise.all([...files].map(file => readFile(file, 'utf8')))
+  return sources.some(source => DECLARE_RE.test(source))
+}
+
 async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: string[]) {
   const { default: ts } = await import('typescript')
   const ignore = [...runtimeDirs, ...exclude].flatMap((pattern) => {
@@ -64,7 +74,17 @@ async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: 
   return { globals, augmentations }
 }
 
-export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig): Promise<{ result: unknown }> {
+export interface PrepareModuleOptions {
+  /**
+   * Writes the declarations of module code that the module's own app, server and shared type
+   * checks resolve its package name to. A build that prepares `.nuxt` itself leaves them out,
+   * unless the module entry may export interfaces that `types.d.mts` merges into Nuxt's types, or
+   * module code declares a module or a global: the runtime declarations read those.
+   */
+  declarations?: boolean
+}
+
+export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, { declarations = true }: PrepareModuleOptions = {}): Promise<{ result: unknown }> {
   const { runCommand } = await import('@nuxt/cli')
 
   const { config, outDir, pkg } = prepareConfig ?? await loadPrepareConfig(cwd)
@@ -218,7 +238,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
   if (perContext) {
     await noteUncheckedFiles(cwd, { outDir, exclude: rootConfig.exclude ?? [] })
   }
-  if (name && perContext) {
+  if (name && perContext && (declarations || augmentsNuxtTypes(entryPath) || await declaresModules(cwd, runtimeDirs, Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? [])))) {
     const roots = [...Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file))), ...own.sources]
     const tsconfigs = await moduleTsconfigs(cwd)
     const project = tsconfigs.resolve(entryPath)

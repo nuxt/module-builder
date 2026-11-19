@@ -185,7 +185,9 @@ export default {
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
     remove: ['.nuxt'],
-    module: source => source.replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    _nuxt.options.alias[\'#my-types\'] = resolver.resolve(\'./runtime/types\')'),
+    module: source => source
+      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    _nuxt.options.alias[\'#my-types\'] = resolver.resolve(\'./runtime/types\')')
+      .replace(/export (interface Module(?:Hooks|RuntimeHooks|RuntimeConfig|PublicRuntimeConfig)\b)/g, '$1'),
     files: {
       'src/runtime/types/index.ts': `export type Trigger = 'onNuxtReady' | string[] | boolean\n`,
       'src/runtime/components/Triggered.vue': `<script setup lang="ts">\nimport type { Trigger } from '#my-types'\n\ndefineProps<{ trigger?: Trigger }>()\n</script>\n\n<template>\n  <div />\n</template>\n`,
@@ -377,6 +379,12 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)
     expect(expectBuilt('singleTsconfig')).toContain('tsconfig: tsconfig.json')
     expect(await read(dirs.singleTsconfig!, 'dist/module.d.mts')).toBe(await read(dirs.moduleProject!, 'dist/module.d.mts'))
+  })
+
+  it('should prepare a missing `.nuxt` without the declarations of module code when the module augments none of Nuxt\'s types', () => {
+    expect(expectBuilt('appProject')).toContain('[NUXT_MB_B0101]')
+    expect(exists(dirs.appProject!, '.nuxt/tsconfig.app.json')).toBe(true)
+    expect(exists(dirs.appProject!, '.nuxt/module-builder/declarations')).toBe(false)
   })
 
   it('should generate the declarations of module code outside the module project from one program', async () => {

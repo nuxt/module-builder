@@ -29,7 +29,7 @@ import { createDeclarationProgram } from '../src/transpile/declarations.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
-import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
+import { augmentsNuxtTypes, writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
 import { withoutDirectiveComments } from '../src/build/directives.ts'
@@ -864,6 +864,24 @@ describe('writeTypes', () => {
       `export * as "kebab-ns" from './kebab.mjs'`,
     ])
     await rm(dir, { recursive: true, force: true })
+  })
+})
+
+describe('augmentsNuxtTypes', () => {
+  it('should tell whether a module entry may export an interface that `types.d.mts` merges into Nuxt\'s types', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-augments-'))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const check = async (code: string, files: Record<string, string> = {}) => {
+      for (const [file, text] of Object.entries({ 'module.ts': code, ...files })) {
+        await writeFile(join(cwd, file), text)
+      }
+      return augmentsNuxtTypes(join(cwd, 'module.ts'))
+    }
+    expect(await check('export interface ModuleOptions {}\nexport default {}\n')).toBe(false)
+    expect(await check('export * from "./sub.ts"\n', { 'sub.ts': 'export interface ModuleOptions {}\n' })).toBe(false)
+    expect(await check('export * from "./sub.ts"\n', { 'sub.ts': 'export interface ModuleRuntimeConfig {}\n' })).toBe(true)
+    expect(await check('export interface ModuleHooks {}\nexport default {}\n')).toBe(true)
+    expect(await check('export * from "some-package"\n')).toBe(true)
   })
 })
 
