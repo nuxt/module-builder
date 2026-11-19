@@ -9,7 +9,7 @@ import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { analyseSources, finishBuild, hashGeneratedTypes } from '../src/build/build.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs, resolveBuild } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
@@ -566,17 +566,18 @@ describe('deprecation checks', () => {
     await mkdir(join(root, 'mod/.nuxt'), { recursive: true })
     await writeFile(join(root, 'tsconfig.json'), '{}')
     await writeFile(join(root, 'mod/.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(root, 'mod/.nuxt/tsconfig.app.json'), '{}')
     vi.stubEnv('FORCE_COLOR', '1')
     vi.stubEnv('FORCE_HYPERLINK', '1')
     const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
     try {
-      warnings.NUXT_MB_C0301({ path: '../tsconfig.json', inside: false, sources: [join(root, 'tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.json')] }, { method: 'info' })
+      warnings.NUXT_MB_C0301({ path: '../tsconfig.json', inside: false, sources: [join(root, 'tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.json'), join(root, 'mod/.nuxt/tsconfig.app.json')] }, { method: 'info' })
       const message = String(info.mock.calls[0]![0])
       const link = (file: string, label: string) => `\x1B]8;;${pathToFileURL(file).href}\x07${label}\x1B]8;;\x07`
       expect(message.startsWith('\x1B[2m[NUXT_MB_C0301]\x1B[22m ')).toBe(true)
       expect(message).toContain(`\x1B[36m${link(join(root, 'tsconfig.json'), '../tsconfig.json')}\x1B[39m takes`)
       expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), '.nuxt/tsconfig.json'))
-      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.json'), './.nuxt/tsconfig.json'))
+      expect(message).toContain(link(join(root, 'mod/.nuxt/tsconfig.app.json'), './.nuxt/tsconfig.app.json'))
       expect(message).not.toContain('`')
     }
     finally {
@@ -1106,6 +1107,22 @@ describe('resolveOutDir', () => {
 })
 
 describe('createTsconfigResolver', () => {
+  it('should fail with a diagnostic naming the module\'s tsconfig, or a project it references, that cannot be read', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-unreadable-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    const cwd = join(root, 'mod')
+    await mkdir(join(root, 'shared'), { recursive: true })
+    await mkdir(cwd)
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ extends: './missing.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.json`, the module\'s tsconfig: '))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: './tsconfig.module.json' }] }))
+    await writeFile(join(cwd, 'tsconfig.module.json'), JSON.stringify({ extends: './.nuxt/tsconfig.node.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.module.json`, a project that the tsconfig of the module references: '))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: '../shared' }] }))
+    await writeFile(join(root, 'shared/tsconfig.json'), JSON.stringify({ extends: './missing.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `../shared/tsconfig.json`, a project that the tsconfig of the module references: '))
+  })
+
   it('should rebuild a tsconfig that takes its types from a playground on the module\'s own `.nuxt`, keeping its other options', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'module-builder-foreign-'))
     await mkdir(join(cwd, '.nuxt'))
@@ -1348,6 +1365,24 @@ describe('build plan', () => {
     expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(realpathSync(dir), 'missing'))
   })
 
+  it('should name the type check of the tsconfig in the module root, also when it takes its types from a playground', async () => {
+    const cwd = await tempDir()
+    await mkdir(join(cwd, '.nuxt'))
+    await mkdir(join(cwd, 'playground/.nuxt'), { recursive: true })
+    await mkdir(join(cwd, 'src'))
+    await writeFile(join(cwd, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(cwd, '.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(cwd, 'playground/.nuxt/tsconfig.app.json'), '{}')
+    const pkg = { name: 'my-module' }
+    const plan = (tsconfig: object) => writeFile(join(cwd, 'tsconfig.json'), JSON.stringify(tsconfig))
+      .then(() => resolveBuild({ cwd, pkg, outDir: join(cwd, 'dist'), sourcemap: false, config: resolveModuleOptions(cwd, pkg, join(cwd, 'dist'), {}) }))
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    onTestFinished(() => info.mockRestore())
+    expect((await plan({ files: [], references: [{ path: './playground/.nuxt/tsconfig.app.json' }] })).typeCheck).toBe('vue-tsc -b --noEmit')
+    expect((await plan({ extends: './playground/.nuxt/tsconfig.app.json' })).typeCheck).toBe('vue-tsc --noEmit')
+    expect((await plan({ extends: './.nuxt/tsconfig.json' })).typeCheck).toBe('vue-tsc --noEmit')
+  })
+
   it('should change the declaration cache key with the nearest lockfile', async () => {
     const dir = await tempDir()
     await mkdir(join(dir, 'module/.nuxt'), { recursive: true })
@@ -1402,6 +1437,13 @@ describe('build plan', () => {
     ].join('\n')
     expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
     expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+  })
+
+  it('should find `import = require()` declarations, the type-only ones as types', () => {
+    const code = `import type Helper = require('./helper.cjs')\nimport fs = require('./fs.cjs')\nexport type { Helper, fs }\n`
+    expect(moduleSpecifiers(code, 'module.d.ts').map(({ specifier }) => specifier)).toEqual(['./helper.cjs', './fs.cjs'])
+    expect([...valueSpecifiers(code)]).toEqual(['./fs.cjs'])
+    expect(rewriteSpecifiers(code, specifier => specifier.replace('.cjs', '.js'))).toBe(code.replaceAll('.cjs', '.js'))
   })
 
   it('should ignore import statements inside strings', () => {

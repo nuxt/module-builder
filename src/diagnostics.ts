@@ -41,6 +41,7 @@ export const errorCodes = {
   },
   NUXT_MB_B0002: {
     why: (p: { file: string, reason: string }): string => `Cannot load \`${p.file}\` to write \`module.json\`: ${p.reason}`,
+    fix: 'Fix the error, so that Node can import the built module. Code that only works inside a Nuxt app belongs in `setup()` or in a runtime file.',
     docs: false,
   },
   NUXT_MB_B0003: {
@@ -50,6 +51,7 @@ export const errorCodes = {
   },
   NUXT_MB_B0201: {
     why: (p: { message: string }): string => p.message,
+    fix: (p: { command: string }): string => `Run the module's own type check, \`${p.command}\`, and fix the errors that it reports. Those that it doesn't report come from build-time aliases such as \`#build/*\`, which are typed as \`any\` while declarations are generated, and can be ignored.`,
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-type-errors',
   },
 
@@ -143,8 +145,14 @@ export const errorCodes = {
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
   },
 
+  NUXT_MB_C0302: {
+    why: (p: { path: string, reason: string, tsconfig: 'own' | 'parent' | 'referenced' }): string => `Cannot read \`${p.path}\`, ${{ own: 'the module\'s tsconfig', parent: 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own', referenced: 'a project that the tsconfig of the module references' }[p.tsconfig]}: ${p.reason}`,
+    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
+    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
+  },
+
   NUXT_MB_D0001: {
-    why: (p: { command: string }): string => `\`nuxt-module-build ${p.command} --stub\` has been removed.`,
+    why: (p: { command: string }): string => `The \`--stub\` option of \`${p.command}\` has been removed.`,
     fix: 'With pnpm or Yarn 4, point `package.json` at the module\'s sources. Otherwise, build `dist` with `tsdown` and rebuild it with `tsdown --watch`.',
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#stub-builds',
   },
@@ -177,20 +185,21 @@ export const warningCodes = {
   },
   NUXT_MB_B0202: {
     why: 'Declaration generation failed under `isolatedDeclarations`, which requires an explicit type annotation on every exported value.',
-    fix: 'Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',
+    fix: 'Give each export that an error names an explicit type. Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#isolated-declarations',
   },
   NUXT_MB_B0203: {
     why: 'Type declarations could not be generated because of TypeScript errors.',
-    fix: 'Give an export whose inferred type cannot be named (TS2742) an explicit type annotation. If `.nuxt` is out of date, run `nuxt-module-build prepare` and build again.',
+    fix: 'Give each export whose inferred type cannot be named (TS2742, TS2883 or TS4023) an explicit type annotation. If `.nuxt` is out of date, run `nuxt-module-build prepare` and build again.',
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#declaration-errors',
   },
   NUXT_MB_B0204: {
     why: (p: { errors: string[] }): string => [
-      'Declarations of module code for the module\'s own app, server and shared type checks could not be generated for every file. The build reports the same errors:',
+      'Declarations of module code, which the module\'s own app, server and shared type checks read for its package name, could not be generated for every file. The other declarations were written.',
       ...p.errors,
     ].join('\n'),
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#declaration-errors',
+    fix: 'Give each export that an error names an explicit type annotation, then run `nuxt-module-build prepare` again.',
+    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#portability-errors',
   },
   NUXT_MB_B0205: {
     why: 'The declarations of the module entry are generated with tsc, as its tsconfig does not set `isolatedDeclarations`.',
@@ -215,8 +224,8 @@ export const warningCodes = {
   },
   NUXT_MB_C0301: {
     why: (p: { path: string }): string => `\`${p.path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead.`,
-    fix: (p: { inside: boolean }): string => p.inside ? 'Extend `./.nuxt/tsconfig.json` in the module\'s tsconfig.' : 'Add a `tsconfig.json` in the module directory that extends `./.nuxt/tsconfig.json`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#module-tsconfig',
+    fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./tsconfig.module.json\`, which extends \`./.nuxt/tsconfig.node.json\`, and \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
+    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
   },
 
   NUXT_MB_D0101: {

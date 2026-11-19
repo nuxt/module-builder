@@ -330,6 +330,14 @@ export type { Kit } from './kit'
 
   dirs.isolatedError = await fixture('.temp-cli/isolated-error', { from, files: { 'tsconfig.json': ISOLATED['tsconfig.json'] } })
 
+  dirs.referencedSource = await fixture('.temp-cli/referenced-source', {
+    remove: ['src/runtime/components'],
+    files: {
+      'src/kit/gen.ts': `import { myModuleUtils } from '../utils.ts'\n\nexport const gen = () => myModuleUtils\n`,
+      'src/runtime/composables/useGen.ts': `import { gen } from '../../kit/gen.ts'\n\nexport const useGen = () => gen()\n`,
+    },
+  })
+
   dirs.typeError = await fixture('.temp-cli/type-error', {
     from,
     remove: ['src/runtime/components'],
@@ -476,7 +484,12 @@ export type { Kit } from './kit'
     config: 'export default { plugins: [builder()] }\n',
     remove: ['.nuxt'],
     pkg: pkg => ({ ...pkg, exports: examplePkg.exports, main: examplePkg.main, types: examplePkg.types, publishConfig: examplePkg.publishConfig, imports: { '#my-helpers': './src/helpers.ts' } }),
-    module: source => addTypeTemplate(source).replace(`createResolver } from '@nuxt/kit'`, `createResolver } from '@nuxt/kit'\n\nexport type { Helper } from '#my-helpers'\nexport type { Extra } from './extra'`),
+    module: source => addTypeTemplate(source, [
+      '',
+      `    const strip = (options?: object): void => { if (options) Reflect.deleteProperty(options, 'allowImportingTsExtensions') }`,
+      `    _nuxt.hook('prepare:types', ({ tsConfig, nodeTsConfig, sharedTsConfig, serverTsConfig }) => [tsConfig, nodeTsConfig, sharedTsConfig, serverTsConfig].forEach(config => strip(config?.compilerOptions)))`,
+      `    _nuxt.hook('nitro:init', (nitro) => { nitro.hooks.hook('types:extend', ({ tsConfig }) => strip(tsConfig?.compilerOptions)) })`,
+    ].join('\n')).replace(`createResolver } from '@nuxt/kit'`, `createResolver } from '@nuxt/kit'\n\nexport type { Helper } from '#my-helpers'\nexport type { Extra } from './extra'`),
     files: {
       'tsconfig.json': source => JSON.stringify({ extends: './tsconfig.options.json', ...JSON.parse(source), exclude: undefined }),
       'tsconfig.options.json': JSON.stringify({ compilerOptions: { types: ['vitest/importMeta'] }, exclude: ['dist', 'node_modules', 'playground'] }),
@@ -517,18 +530,35 @@ export type { Kit } from './kit'
 
   dirs.ownPackageError = await fixture('.temp-cli/own-package-error', {
     config: 'export default { plugins: [builder()] }\n',
+    module: source => `export type Logger = typeof import('./logger.ts').logger\nexport type Styles = typeof import('./styles.ts').styles\n${source}`,
     files: {
       [`${store('fake-logger')}/package.json`]: JSON.stringify({ name: 'fake-logger', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
       [`${store('fake-logger')}/index.d.ts`]: `export interface LoggerInstance { log: (message: string) => void }\nexport declare function createLogger(): LoggerInstance\n`,
       [`${store('fake-shared')}/package.json`]: JSON.stringify({ name: 'fake-shared', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
       [`${store('fake-shared')}/index.d.ts`]: `import { createLogger } from 'fake-logger'\nexport declare function createModuleLogger(name: string): ReturnType<typeof createLogger>\n`,
       'src/logger.ts': `import { createModuleLogger } from 'fake-shared'\n\nexport const logger = createModuleLogger('my-module')\n`,
+      'src/unused.ts': `import { createModuleLogger } from 'fake-shared'\n\nexport const unused = createModuleLogger('unused')\n`,
+      [`${store('fake-format')}/package.json`]: JSON.stringify({ name: 'fake-format', type: 'module', exports: { '.': { types: './index.d.ts' } } }),
+      [`${store('fake-format')}/index.d.ts`]: `export interface Format { bold: boolean }\nexport declare function createFormat(): Format\n`,
+      [`${store('fake-styles')}/package.json`]: JSON.stringify({ name: 'fake-styles', type: 'module', exports: { '.': { types: './index.d.ts' } } }),
+      [`${store('fake-styles')}/index.d.ts`]: `import { createFormat } from 'fake-format'\nexport declare function createStyles(): ReturnType<typeof createFormat>\n`,
+      'src/styles.ts': `import { createStyles } from 'fake-styles'\n\nexport const styles = createStyles()\n`,
+      'src/runtime/server/format.ts': `import { createFormat } from 'fake-format'\n\nexport const format = createFormat()\n`,
       'tsconfig.json': REFERENCES('./.nuxt/tsconfig.node.json'),
     },
     links: {
       'node_modules/.pnpm/fake-shared@1.0.0/node_modules/fake-logger': store('fake-logger'),
       'node_modules/fake-shared': store('fake-shared'),
+      'node_modules/.pnpm/fake-styles@1.0.0/node_modules/fake-format': store('fake-format'),
+      'node_modules/fake-format': store('fake-format'),
+      'node_modules/fake-styles': store('fake-styles'),
     },
+  })
+
+  dirs.noTsconfig = await fixture('.temp-cli/monorepo/mod', {
+    from,
+    remove: ['tsconfig.json'],
+    files: { '../tsconfig.json': JSON.stringify({ extends: './.nuxt/tsconfig.json' }) },
   })
 
   dirs.legacyPrepare = await fixture('.temp-cli/legacy-prepare', {
@@ -592,6 +622,7 @@ export type { Kit } from './kit'
     step('typeError', cli(['build', dirs.typeError])),
     step('vueError', cli(['build', dirs.vueError])),
     step('solution', cli(['build', dirs.solution])),
+    step('referencedSource', cli(['build', dirs.referencedSource])),
     step('parent', cli(['build', dirs.parent])),
     inOrder(['routes:prepare', () => cli(['prepare', dirs.routes!])], ['routes:playground', () => nuxt(['prepare', join(dirs.routes!, 'playground')])], ['routes', () => cli(['build', dirs.routes!])]),
     ...['object', 'array', 'function'].map(shape => step(`${shape}:prepare`, cli(['prepare', dirs[shape]!])).then(() => step(shape, cli(['build', dirs[shape]!])))),
@@ -622,6 +653,7 @@ export type { Kit } from './kit'
       step('ownPackageIsolated:app', listed(dirs.ownPackageIsolated!, '.nuxt/tsconfig.app.json')),
     ])),
     step('ownPackageError', cli(['prepare', dirs.ownPackageError])),
+    step('noTsconfig', cli(['prepare', dirs.noTsconfig])),
     step('legacyPrepare', cli(['prepare', dirs.legacyPrepare])).then(() => Promise.all([
       step('legacyPrepare:typecheck', run(bin('vue-tsc'), ['--noEmit'], { cwd: dirs.legacyPrepare })),
       step('legacyPrepare:files', run(bin('vue-tsc'), ['--noEmit', '--listFilesOnly'], { cwd: dirs.legacyPrepare })),
@@ -762,11 +794,11 @@ describe('a module that imports runtime code, built through a symlink, under a p
 
   it('should warn about type errors that do not affect runtime declarations and build anyway', async () => {
     const output = expectBuilt('runtime')
-    expect(output).toContain('2 type errors were reported while generating declarations for `src/runtime`; the declarations were emitted. If the module\'s own type check (for example `nuxt typecheck` or `vue-tsc --noEmit`) passes')
+    expect(output).toMatch(/^\[NUXT_MB_B0201\] 2 type errors were reported while generating declarations for `src\/runtime`; the declarations were emitted\.$/m)
+    expect(output).toContain('fix: Run the module\'s own type check, `vue-tsc --noEmit`, and fix the errors that it reports.')
     expect(output).toContain('src/runtime/utils/typo.ts(1,14): error TS2322')
     expect(output).toContain('src/runtime/components/Typo.vue(3,7): error TS2322')
     expect(output.match(/type errors? (?:was|were) reported/g)).toHaveLength(1)
-    expect(output).toContain('[NUXT_MB_B0201] 2 type errors were reported')
     expect(output).not.toContain('TS2307')
     expect(await read(dist(), 'runtime/utils/typo.d.ts')).toBe('export declare const count: number;\nexport declare const double: (value: number) => number;\n')
     const component = await read(dist(), 'runtime/components/Typo.vue.d.ts')
@@ -905,7 +937,7 @@ describe('a module without a runtime directory', () => {
 
   it('should fail on `--stub` and point at what replaces it', () => {
     for (const command of ['build', 'prepare']) {
-      expect(expectFailed(command === 'build' ? 'minimal:stub' : 'minimal:prepare-stub'), command).toContain(`[NUXT_MB_D0001] \`nuxt-module-build ${command} --stub\``)
+      expect(expectFailed(command === 'build' ? 'minimal:stub' : 'minimal:prepare-stub'), command).toContain(`[NUXT_MB_D0001] The \`--stub\` option of \`${command}\` has been removed.`)
     }
   })
 })
@@ -1142,6 +1174,8 @@ describe('a module whose declarations cannot be generated', () => {
 
   it('should explain type errors that prevent declaration generation', () => {
     const output = expectFailed('typeError')
+    expect(output).toContain('[plugin nuxt-module-builder:src/runtime]')
+    expect(output).not.toContain('[plugin transpile-dir]')
     expect(output).toMatch(/TS4094/)
     expect(output).toContain('NUXT_MB_B0203')
     expect(output).toMatch(/cannot reference by name.*explicit type annotation, such as `ReturnType<typeof fn>` for a value produced by an imported `fn`:\n- `defineCachedHandler` in \S*src\/runtime\/server\/cached\.ts:3\n/)
@@ -1160,6 +1194,11 @@ describe('a module whose declarations cannot be generated', () => {
 })
 
 describe('tsconfig lookup', () => {
+  it('should read a file of a referenced project from source when a runtime file reaches it', async () => {
+    expect(expectBuilt('referencedSource')).not.toContain('TS6305')
+    expect(await read(dirs.referencedSource!, 'dist/kit/gen.d.ts')).toBe('export declare const gen: () => () => void;\n')
+  })
+
   it('should generate declarations for each project of a solution-style tsconfig', async () => {
     expectBuilt('solution')
     expect(await read(dirs.solution!, 'dist/runtime/server/api/[id].get.d.ts')).toMatch(/=> string;/)
@@ -1175,7 +1214,7 @@ describe('tsconfig lookup', () => {
 
   it('should generate declarations with the module\'s own `.nuxt` when the tsconfig takes its types from a playground', async () => {
     expect(expectBuilt('routes')).toContain('[NUXT_MB_C0301] `../tsconfig.json` takes its generated types')
-    expect(expectBuilt('routes')).toContain('fix: Add a `tsconfig.json` in the module directory')
+    expect(expectBuilt('routes')).toContain('fix: Add a `tsconfig.json` to the module directory that references')
     expect(await read(dirs.routes!, 'playground/.nuxt/types/nitro-routes.d.ts')).toContain('/api/secret')
     for (const file of await listFiles(join(dirs.routes!, 'dist'))) {
       if (file.includes('.')) {
@@ -1332,9 +1371,15 @@ describe('prepare', () => {
     }
   })
 
+  it('should let module code import `.ts` files in every generated tsconfig when Nuxt does not set `allowImportingTsExtensions`', async () => {
+    for (const name of ['tsconfig.app', 'tsconfig.node', 'tsconfig.server', 'tsconfig.shared', 'tsconfig']) {
+      expect(JSON.parse(await read(dirs.ownPackage!, `.nuxt/${name}.json`)).compilerOptions.allowImportingTsExtensions, name).toBe(true)
+    }
+  })
+
   it('should write the declarations of module code with oxc when its tsconfig sets `isolatedDeclarations`', async () => {
     const dir = dirs.ownPackageIsolated!
-    expect(expectBuilt('ownPackageIsolated')).not.toContain('The build reports the same errors')
+    expect(expectBuilt('ownPackageIsolated')).not.toContain('NUXT_MB_B0204')
     expect(await read(dir, '.nuxt/module-builder/declarations/src/nested/payload.d.ts')).toContain('interface Payload')
     const moduleDeclaration = await read(dir, '.nuxt/module-builder/declarations/src/module.d.ts')
     expect(moduleDeclaration).toContain('from "./nested/payload.js"')
@@ -1348,10 +1393,27 @@ describe('prepare', () => {
 
   it('should warn about a declaration error in module code, and write the other declarations', () => {
     const output = expectBuilt('ownPackageError')
-    expect(output).toContain('The build reports the same errors')
+    expect(output).toContain('[NUXT_MB_B0204]')
     expect(output).toContain('src/logger.ts(3,14): error TS2883')
+    expect(output).toContain('fix: Give each export that an error names an explicit type annotation')
     expect(exists(dirs.ownPackageError!, '.nuxt/module-builder/declarations/src/module.d.ts')).toBe(true)
     expect(exists(dirs.ownPackageError!, '.nuxt/module-builder/declarations/types.d.mts')).toBe(true)
+  })
+
+  it('should write only the declarations of module code that the declarations of its entries refer to', () => {
+    expect(output('ownPackageError')).not.toContain('src/unused.ts')
+    expect(exists(dirs.ownPackageError!, '.nuxt/module-builder/declarations/src/unused.d.ts')).toBe(false)
+  })
+
+  it('should name a dependency by its package in the declarations of module code when only a runtime file imports it', async () => {
+    expect(output('ownPackageError')).not.toContain('src/styles.ts')
+    expect(await read(dirs.ownPackageError!, '.nuxt/module-builder/declarations/src/styles.d.ts')).toContain('import("fake-format").Format')
+  })
+
+  it('should explain a tsconfig above the module that cannot be read', () => {
+    const output = expectFailed('noTsconfig')
+    expect(output).toContain('[NUXT_MB_C0302] Cannot read `../tsconfig.json`, the nearest tsconfig above the module, which has no `tsconfig.json` of its own: ')
+    expect(output).toContain('fix: Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own')
   })
 
   it('should keep `.nuxt/tsconfig.json` one program over the module\'s sources, with the generated tsconfigs adapted', async () => {

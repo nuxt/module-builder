@@ -173,7 +173,7 @@ export default {
     'tsconfig.override.json': JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { useDefineForClassFields: true } }),
     'tsconfig.json': REFERENCES('./tsconfig.module.json'),
   }
-  dirs.moduleProject = await fixture('.temp-builder/module-project', { config: PLUGIN, module: source => source + FIELDS, files: moduleProject })
+  dirs.moduleProject = await fixture('.temp-builder/module-project', { config: PLUGIN, module: source => source + FIELDS, files: { ...moduleProject, 'src/runtime/typo.ts': `export const count: number = 'one' as string\n` } })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -338,6 +338,7 @@ describe('with a root tsconfig that only lists references', () => {
     expect(output).toContain('ℹ [NUXT_MB_B0205]')
     expect(output.match(/fix: Set `isolatedDeclarations: true` in (`[^`]+`)/)?.[1]).toBe('`tsconfig.module.json`')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
+    expect(output).toContain('fix: Run the module\'s own type check, `vue-tsc -b --noEmit`, and fix the errors that it reports.')
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)
     expect(expectBuilt('singleTsconfig')).toContain('tsconfig: tsconfig.json')

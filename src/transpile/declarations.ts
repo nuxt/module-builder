@@ -22,15 +22,14 @@ interface DeclarationEmit {
 
 export interface DeclarationProgram {
   emit: (files: string[]) => Promise<DeclarationEmit>
-  /** The program's source files other than declaration files. */
-  sources: () => string[]
   /** The file `specifier` resolves to from `importer`, with the program's options. */
   resolve: (specifier: string, importer: string) => string | undefined
 }
 
 /**
  * A declaration-only program over every file of the tsconfig plus `roots`, so ambient
- * declarations apply and inferred types are named by package.
+ * declarations apply and inferred types are named by package. The tsconfig's `references` are
+ * left out, so files of referenced projects are read from source rather than from their output.
  */
 export async function createDeclarationProgram({ cwd, tsconfig, paths }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const { default: ts } = await import('typescript')
@@ -56,10 +55,9 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
     declarationDir: undefined,
   }
   let program: ts.Program | undefined
-  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, projectReferences: parsed?.projectReferences })
+  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options })
 
   return {
-    sources: () => createProgram().getSourceFiles().filter(source => !source.isDeclarationFile).map(source => source.fileName),
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
       const program = createProgram()

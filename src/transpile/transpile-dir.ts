@@ -77,6 +77,8 @@ export interface TranspileDirOptions {
   resolveExternal: ResolveExternal
   /** Paths relative to the output directory, without extension, that mirrored files are not emitted at. */
   reserved: string[]
+  /** The plugin's name, which rolldown prints with its errors. `transpile-dir` by default. */
+  name?: string
 }
 
 /** `pluginCode` of the warning that lists type errors which do not affect the emitted declarations. */
@@ -115,7 +117,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
   let session: Promise<VueDeclarationSession> | undefined
 
   return {
-    name: 'transpile-dir',
+    name: options.name ?? 'transpile-dir',
     api: {
       get outputs() {
         return work!.then(result => 'error' in result ? Promise.reject(result.error) : result.build.outputs)
@@ -475,7 +477,7 @@ const SHOWN_TYPE_ERRORS = 3
 function typeErrorsWarning(diagnostics: string[], directory: string) {
   const hidden = diagnostics.length - SHOWN_TYPE_ERRORS
   return [
-    `${diagnostics.length} type error${diagnostics.length === 1 ? ' was' : 's were'} reported while generating declarations for \`${directory}\`; the declarations were emitted. If the module's own type check (for example \`nuxt typecheck\` or \`vue-tsc --noEmit\`) passes, these come from build-time aliases typed as \`any\` during declaration generation and can be ignored.`,
+    `${diagnostics.length} type error${diagnostics.length === 1 ? ' was' : 's were'} reported while generating declarations for \`${directory}\`; the declarations were emitted.`,
     ...diagnostics.slice(0, SHOWN_TYPE_ERRORS),
     ...hidden > 0 ? [`... and ${hidden} more`] : [],
   ].join('\n')

@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import type { NuxtModule } from '@nuxt/schema'
+import { parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
 import { glob, globSync } from 'tinyglobby'
 
@@ -10,7 +11,8 @@ import builderPkg from '../../package.json' with { type: 'json' }
 import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, TsconfigError, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import type { TsconfigResolver } from '../transpile/tsconfig.ts'
 import { errors, warnings } from '../diagnostics.ts'
 import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
@@ -63,6 +65,8 @@ export interface BuildPlan {
   directoryPaths: Record<string, string[]>
   /** Changes whenever the types Nuxt generates in `.nuxt` change. */
   generatedTypesHash: string
+  /** The command that type checks the module with the tsconfig in its root, `-b` when it has `references`. */
+  typeCheck: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
 }
@@ -74,10 +78,20 @@ export interface PreparedBuild {
   compiledJsx: Set<string>
 }
 
+/** The tsconfigs of the module in `cwd`, see `createTsconfigResolver`. A tsconfig that cannot be read fails with a diagnostic. */
+export async function moduleTsconfigs(cwd: string): Promise<TsconfigResolver> {
+  return createTsconfigResolver(cwd).catch((error: unknown) => {
+    throw error instanceof TsconfigError
+      ? errors.NUXT_MB_C0302({ path: relative(cwd, error.path), reason: error.message, tsconfig: error.referenced ? 'referenced' : isInside(cwd, error.path) ? 'own' : 'parent', cause: error, sources: [error.path] })
+      : error
+  })
+}
+
 export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
-  const tsconfigs = await createTsconfigResolver(cwd)
+  const tsconfigs = await moduleTsconfigs(cwd)
   if (tsconfigs.replaced) {
-    warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources: [tsconfigs.replaced, resolve(cwd, '.nuxt/tsconfig.json')] }, { method: 'info' })
+    const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', 'tsconfig.module.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
+    warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })
   }
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
@@ -106,6 +120,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
+    typeCheck: (tsconfigs.replaced ? parseTsconfig(tsconfigs.replaced) : tsconfigs.root?.config)?.references?.length ? 'vue-tsc -b --noEmit' : 'vue-tsc --noEmit',
   }
 }
 
@@ -179,7 +194,7 @@ export interface BuildErrorOptions {
 }
 
 /** Removes a partial output directory and explains declaration failures. */
-export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(error), keepOutput }: BuildErrorOptions): Promise<void> {
+export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(plan, error), keepOutput }: BuildErrorOptions): Promise<void> {
   if (!keepOutput) {
     await rm(plan.outDir, { recursive: true, force: true })
   }
@@ -279,9 +294,15 @@ function valueImports(roots: string[]) {
   return found
 }
 
-function isDirectoryError(error: unknown) {
+/** The name of the plugin that transpiles `directory`, which rolldown prints with its errors. */
+export function directoryPluginName(plan: BuildPlan, directory: DirectoryEntry): string {
+  return `nuxt-module-builder:${relative(plan.cwd, directory.srcDir)}`
+}
+
+function isDirectoryError(plan: BuildPlan, error: unknown) {
+  const names = new Set(plan.directories.map(directory => directoryPluginName(plan, directory)))
   const errors = (error as { errors?: Array<{ plugin?: string }> } | undefined)?.errors
-  return Array.isArray(errors) && errors.some(nested => nested.plugin === 'transpile-dir')
+  return Array.isArray(errors) && errors.some(nested => nested.plugin !== undefined && names.has(nested.plugin))
 }
 
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock', 'bun.lockb']
