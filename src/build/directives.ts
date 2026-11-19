@@ -6,7 +6,7 @@ const DIRECTIVE_RE = /@ts-(?:expect-error|ignore|nocheck|check)\b/g
 const FIRST_LINE_DIRECTIVE_RE = /^\/(?:\/\/?|\*+)[\t ]*@ts-(?:expect-error|ignore|nocheck|check)\b/
 const LAST_LINE_DIRECTIVE_RE = /^[\t *]*@ts-(?:expect-error|ignore)\b/
 const LINE_TERMINATOR_RE = /\r\n?|[\n\u2028\u2029]/
-const NOT_LINE_TERMINATOR_RE = /[^\n\r]/g
+const NOT_LINE_TERMINATOR_RE = /[^\n\r\u2028\u2029]/g
 
 const SCRIPT_KINDS: Record<string, keyof typeof ts.ScriptKind> = { js: 'JS', jsx: 'JSX', ts: 'TS', tsx: 'TSX' }
 

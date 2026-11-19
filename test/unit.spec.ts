@@ -218,6 +218,11 @@ describe('withoutDirectiveComments', () => {
     expect(code).toContain('// @ts-ignore as text')
   })
 
+  it('should keep the line terminators of a directive comment, so that a `return` before it still ends there', async () => {
+    const { code } = await transform('file.ts', 'export function f() {\n  return /* @ts-ignore\u2028*/ 42\n}\n', { lang: 'ts' })
+    expect(code).toMatch(/return;\s+42;/)
+  })
+
   it('should keep source positions, so that the source map matches the source', async () => {
     const plain = await loadOxc()!.transform('file.ts', '\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
     const directive = await transform('file.ts', '// @ts-ignore\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
