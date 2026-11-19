@@ -2,7 +2,11 @@ import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
 
-const DIRECTIVE_RE = /\/[/*]\**\s*@ts-(?:expect-error|ignore|nocheck|check)\b/g
+const DIRECTIVE_RE = /@ts-(?:expect-error|ignore|nocheck|check)\b/g
+const FIRST_LINE_DIRECTIVE_RE = /^\/(?:\/\/?|\*+)[\t ]*@ts-(?:expect-error|ignore|nocheck|check)\b/
+const LAST_LINE_DIRECTIVE_RE = /^[\t *]*@ts-(?:expect-error|ignore)\b/
+const LINE_TERMINATOR_RE = /\r\n?|[\n\u2028\u2029]/
+const NOT_LINE_TERMINATOR_RE = /[^\n\r]/g
 
 const SCRIPT_KINDS: Record<string, keyof typeof ts.ScriptKind> = { js: 'JS', jsx: 'JSX', ts: 'TS', tsx: 'TSX' }
 
@@ -18,24 +22,33 @@ export function withoutDirectiveComments(transform: Transform): Transform {
 async function blankDirectiveComments(source: string, lang: string) {
   const { default: ts } = await import('typescript')
   const sourceFile = ts.createSourceFile(`source.${lang}`, source, ts.ScriptTarget.Latest, false, ts.ScriptKind[SCRIPT_KINDS[lang] ?? 'TS'])
-  let result = source
+  const comments = new Map<number, number>()
   for (const { index } of source.matchAll(DIRECTIVE_RE)) {
-    const end = commentEnd(ts, sourceFile, index)
-    if (end !== undefined) {
-      result = result.slice(0, index) + result.slice(index, end).replace(/[^\r\n]/g, ' ') + result.slice(end)
+    const comment = commentAt(ts, sourceFile, index)
+    if (comment && isDirective(source.slice(comment.pos, comment.end))) {
+      comments.set(comment.pos, comment.end)
     }
+  }
+  let result = source
+  for (const [pos, end] of comments) {
+    result = result.slice(0, pos) + source.slice(pos, end).replace(NOT_LINE_TERMINATOR_RE, ' ') + result.slice(end)
   }
   return result
 }
 
+/** Whether TypeScript reads `comment` as a directive: on its first line, or on the last line of a block comment. */
+function isDirective(comment: string) {
+  return FIRST_LINE_DIRECTIVE_RE.test(comment) || (comment.startsWith('/*') && LAST_LINE_DIRECTIVE_RE.test(comment.split(LINE_TERMINATOR_RE).at(-1)!))
+}
+
 /**
- * The end of the comment that starts at `offset`, or `undefined` when `offset` is not the start
- * of a comment, such as inside a string, a template or JSX text. Of the comments between two
- * tokens of one node, only those after its last child or its first token are found.
+ * The comment that holds `offset`, or `undefined` when `offset` is not in a comment, such as in
+ * a string, a template or JSX text. Of the comments between two tokens of one node, only those
+ * after its last child or its first token are found.
  */
-function commentEnd(ts: typeof import('typescript'), sourceFile: ts.SourceFile, offset: number) {
+function commentAt(ts: typeof import('typescript'), sourceFile: ts.SourceFile, offset: number) {
   const text = sourceFile.text
-  const startingAt = (pos: number) => [...ts.getTrailingCommentRanges(text, pos) ?? [], ...ts.getLeadingCommentRanges(text, pos) ?? []].find(range => range.pos === offset)?.end
+  const holding = (pos: number) => [...ts.getTrailingCommentRanges(text, pos) ?? [], ...ts.getLeadingCommentRanges(text, pos) ?? []].find(range => range.pos <= offset && offset < range.end)
   let node: ts.Node = sourceFile
   for (;;) {
     let containing: ts.Node | undefined
@@ -52,17 +65,17 @@ function commentEnd(ts: typeof import('typescript'), sourceFile: ts.SourceFile, 
     })
     if (!containing) {
       if (before) {
-        return startingAt(before.end)
+        return holding(before.end)
       }
       if (node.kind < ts.SyntaxKind.FirstNode) {
         return
       }
       const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, sourceFile.languageVariant, text, undefined, node.getStart(sourceFile))
       scanner.scan()
-      return startingAt(scanner.getTokenEnd())
+      return holding(scanner.getTokenEnd())
     }
     if (offset < containing.getStart(sourceFile)) {
-      return startingAt(containing.pos)
+      return holding(containing.pos)
     }
     node = containing
   }

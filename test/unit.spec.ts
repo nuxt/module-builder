@@ -172,6 +172,16 @@ describe('withoutDirectiveComments', () => {
       '  // @ts-expect-error at the end of a block',
       '}',
       'export const empty = { /* @ts-ignore in an empty object */ }',
+      '/// @ts-expect-error with three slashes',
+      'export const triple = 3',
+      '/*',
+      ' * @ts-ignore on the last line of a block */',
+      'export const block = 4',
+      '/**',
+      ' * @ts-ignore on a line that is not the last',
+      ' */',
+      'export const middle = 5',
+      '// remove the @ts-ignore below',
       '',
     ].join('\n')
     const { code } = await transform('file.ts', source, { lang: 'ts' })
@@ -191,6 +201,13 @@ describe('withoutDirectiveComments', () => {
       '` + "// @ts-ignore in a string" + object.key;',
       'export function last() {}',
       'export const empty = {};',
+      'export const triple = 3;',
+      'export const block = 4;',
+      '/**',
+      '* @ts-ignore on a line that is not the last',
+      '*/',
+      'export const middle = 5;',
+      '// remove the @ts-ignore below',
       '',
     ].join('\n'))
   })
