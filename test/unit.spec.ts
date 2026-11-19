@@ -9,7 +9,7 @@ import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs } from '../src/build/build.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs, resolveBuild } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
@@ -1363,6 +1363,24 @@ describe('build plan', () => {
     await symlink(join(dir, 'real'), join(dir, 'link'))
     expect(resolveCwdArg({ rootDir: join(dir, 'link') })).toBe(resolveCwdArg({ rootDir: join(dir, 'real') }))
     expect(resolveCwdArg({ cwd: join(dir, 'missing') })).toBe(join(realpathSync(dir), 'missing'))
+  })
+
+  it('should name the type check of the tsconfig in the module root, also when it takes its types from a playground', async () => {
+    const cwd = await tempDir()
+    await mkdir(join(cwd, '.nuxt'))
+    await mkdir(join(cwd, 'playground/.nuxt'), { recursive: true })
+    await mkdir(join(cwd, 'src'))
+    await writeFile(join(cwd, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(cwd, '.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(cwd, 'playground/.nuxt/tsconfig.app.json'), '{}')
+    const pkg = { name: 'my-module' }
+    const plan = (tsconfig: object) => writeFile(join(cwd, 'tsconfig.json'), JSON.stringify(tsconfig))
+      .then(() => resolveBuild({ cwd, pkg, outDir: join(cwd, 'dist'), sourcemap: false, config: resolveModuleOptions(cwd, pkg, join(cwd, 'dist'), {}) }))
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    onTestFinished(() => info.mockRestore())
+    expect((await plan({ files: [], references: [{ path: './playground/.nuxt/tsconfig.app.json' }] })).typeCheck).toBe('vue-tsc -b --noEmit')
+    expect((await plan({ extends: './playground/.nuxt/tsconfig.app.json' })).typeCheck).toBe('vue-tsc --noEmit')
+    expect((await plan({ extends: './.nuxt/tsconfig.json' })).typeCheck).toBe('vue-tsc --noEmit')
   })
 
   it('should change the declaration cache key with the nearest lockfile', async () => {

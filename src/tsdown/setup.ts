@@ -132,7 +132,6 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userNeverBundle = config.deps?.neverBundle as Array<string | RegExp> | string | RegExp | undefined
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
-  const typeCheck = plan.rootTsconfig?.config.references?.length ? 'vue-tsc -b --noEmit' : 'vue-tsc --noEmit'
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
@@ -160,7 +159,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         ...options,
         makeAbsoluteExternalsRelative: false,
         onLog(level, log, handler) {
-          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, plugin: undefined, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message, command: typeCheck })) } : log
+          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, plugin: undefined, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message, command: plan.typeCheck })) } : log
           return options.onLog ? options.onLog(level, linked, handler) : handler(level, linked)
         },
       }
