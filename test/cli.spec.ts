@@ -583,6 +583,21 @@ export type { Kit } from './kit'
     },
   })
 
+  dirs.nitroDir = await fixture('.temp-cli/nitro-dir', {
+    files: {
+      'src/runtime/nitro/plugin.ts': `export const title = (): string => document.title\n`,
+      'tsconfig.nitro.json': JSON.stringify({
+        extends: './.nuxt/tsconfig.server.json',
+        compilerOptions: { tsBuildInfoFile: './.nuxt/tsconfig.nitro.tsbuildinfo' },
+        include: ['./.nuxt/types/nitro-nuxt.d.ts', './.nuxt/types/nitro.d.ts', './src/runtime/nitro'],
+      }),
+      'tsconfig.json': (source) => {
+        const tsconfig = JSON.parse(source)
+        return JSON.stringify({ ...tsconfig, exclude: [...tsconfig.exclude, 'src/runtime/nitro'], references: [...tsconfig.references, { path: './tsconfig.nitro.json' }] })
+      },
+    },
+  })
+
   dirs.noTsconfig = await fixture('.temp-cli/monorepo/mod', {
     from,
     remove: ['tsconfig.json'],
@@ -681,6 +696,11 @@ export type { Kit } from './kit'
       step('ownPackageIsolated:app', listed(dirs.ownPackageIsolated!, '.nuxt/tsconfig.app.json')),
     ])),
     step('ownPackageError', cli(['prepare', dirs.ownPackageError])),
+    inOrder(
+      ['nitroDir:prepare', () => cli(['prepare', dirs.nitroDir!])],
+      ['nitroDir', () => cli(['build', dirs.nitroDir!])],
+      ['nitroDir:typecheck', () => run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.nitroDir })],
+    ),
     inOrder(
       ['unchecked:ci', () => cli(['prepare', dirs.unchecked!], { CI: '1' })],
       ['unchecked', () => cli(['prepare', dirs.unchecked!], { CI: '' })],
@@ -1469,6 +1489,14 @@ describe('prepare', () => {
       expect(files, file).toContain(join(dirs.unchecked!, file))
     }
     expect(files.filter(file => file.includes('/test/nuxt/') || file.includes('/test/fixtures/'))).toEqual([])
+  })
+
+  it('should check and declare a server directory outside `src/runtime/server` with a tsconfig that extends the server tsconfig', async () => {
+    const error = 'src/runtime/nitro/plugin.ts(1,36): error TS2584: Cannot find name \'document\'.'
+    expect(expectBuilt('nitroDir')).toContain(error)
+    expect(expectFailed('nitroDir:typecheck')).toContain(error)
+    expect(JSON.parse(await read(dirs.nitroDir!, '.nuxt/tsconfig.app.json')).exclude).toContain('../src/runtime/nitro')
+    expect(await read(dirs.nitroDir!, 'dist/runtime/nitro/plugin.d.ts')).toContain('export declare const title: () => string;')
   })
 
   it('should explain a tsconfig above the module that cannot be read', () => {

@@ -774,6 +774,38 @@ Tests run in Node, so type check them with a tsconfig that extends the generated
 
 A fixture that is a Nuxt app relies on the `.nuxt` that Nuxt generates for it, with its auto-imports and the other modules it installs, so none of the module's tsconfigs type check it. Give it a `tsconfig.json` like a playground's and type check it as one, with `nuxt typecheck test/fixtures/basic`. It reads module code as a playground does, so it can report the errors in [Source exports](#source-exports).
 
+### Server code outside src/runtime/server
+
+The app's tsconfig covers every runtime directory apart from `src/runtime/server`, so server code in another directory, such as Nitro plugins in `src/runtime/nitro`, is type checked with the app's types and DOM globals, and its declarations are generated with them. To check it as server code, give it a tsconfig that extends the generated server tsconfig, reference it from the root, and add the directory to the root's `exclude`, so that `prepare` leaves it out of the app's tsconfig:
+
+```json
+// tsconfig.nitro.json
+{
+  "extends": "./.nuxt/tsconfig.server.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./.nuxt/tsconfig.nitro.tsbuildinfo"
+  },
+  "include": ["./.nuxt/types/nitro-nuxt.d.ts", "./.nuxt/types/nitro.d.ts", "./src/runtime/nitro"]
+}
+```
+
+```json
+// tsconfig.json
+{
+  "files": [],
+  "exclude": ["dist", "node_modules", "playground", "src/runtime/nitro"],
+  "references": [
+    { "path": "./tsconfig.module.json" },
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./tsconfig.nitro.json" }
+  ]
+}
+```
+
+Its `include` replaces the one it extends, so it lists the server's declarations, `.nuxt/types/nitro-nuxt.d.ts` and `.nuxt/types/nitro.d.ts`. Run `nuxt-module-build prepare` again after changing `exclude`. The build then generates the directory's declarations with this tsconfig, as it tries the module's own tsconfigs first. Moving the files into `src/runtime/server` has the same effect, and changes their paths in `dist/runtime`.
+
 ### Type checking each part
 
 Each part is type checked on its own, with the files it imports and the types that part has in an app. A `tsconfig.json` that extends `./.nuxt/tsconfig.json` checks the whole module root as one program with the app's types, so it doesn't report some of the errors below. Each entry gives the error, what it means and the fix:
@@ -896,7 +928,7 @@ Build-time code that reads a runtime file's contents, such as code that inlines 
 
 A subpath that code outside Nuxt imports, such as a plugin for a plain Vite app, can keep pointing at `dist` in `exports`, so that code loads the built file. Run `tsdown` before using it.
 
-Yarn 4 doesn't apply `publishConfig.typesVersions`. Keep `typesVersions` at the top level, pointing at `dist`: TypeScript only reads it under `node10` module resolution, which a playground doesn't use.
+With pnpm and with Yarn 4, keep `typesVersions` at the top level, pointing at `dist`: TypeScript only reads it under `node10` module resolution, which a playground doesn't use, and the pack check accepts it with either. pnpm also applies `publishConfig.typesVersions`, but Yarn 4 packs `typesVersions` as written, so a `typesVersions` that points at `src` with a `dist` one in `publishConfig` only passes the pack check with pnpm.
 
 A playground that lists the module by relative path, such as `modules: ['../src/module']`, keeps working unchanged: it loads `src/module.ts` and never resolves the package. It doesn't load `types.d.mts` either, so its type check doesn't see the augmentations for `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig`, and `ModulePublicRuntimeConfig`. The module's name only has to resolve where something imports the module or one of its subpaths by name: the playground's `nuxt.config.ts` or code, tests, or the module's own runtime files. Then the playground has to resolve the name to the module directory itself, as `"my-module": "workspace:*"` or `"my-module": "link:.."` do. Vite serves the files under `src/runtime` from there, so components update in place and plugins reload the page. The playground loads `src/module.ts` once, when `nuxt dev` starts: restart `nuxt dev` after changing module code.
 
@@ -1036,7 +1068,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Replace `module.cjs` with `module.mjs`, and remove `.cjs` entries.
    - Decide whether your module supports `node10` consumers: projects that import it and type check with `"moduleResolution": "node"` or `"node10"`, or with `"module": "commonjs"` and no `moduleResolution`. An app on Nuxt 4 isn't one. See [The types field](#the-types-field).
    - If it doesn't, remove the top-level `types` field and `typesVersions`. Subpath exports then don't resolve under `node10`, which step 10 leaves out of its check.
-   - If it does, set `types` to `./dist/types.d.mts`, in `publishConfig` with source exports (see step 8). Give every `typesVersions` path its full file name: `./dist/util.d.mts`, not `dist/util`.
+   - If it does, set `types` to `./dist/types.d.mts`, in `publishConfig` with source exports (see step 8). Give every `typesVersions` path its full file name: `./dist/util.d.mts`, not `dist/util`. Keep `typesVersions` at the top level, pointing at `dist`, with source exports too, as described in [Source exports](#source-exports).
 5. Make module code load with Node. See [Module code loads with Node](#module-code-loads-with-node):
    - Add the `.ts` extension to relative imports in `src/module.ts` and the files that it imports by value, runtime files included. `./utils` becomes `./utils.ts`, and `./dir` becomes `./dir/index.ts`.
    - Replace value imports through tsconfig `paths` aliases.
@@ -1054,7 +1086,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - In a monorepo, both files are in the module's directory, as created in step 5 and described in [Other tsconfig layouts](#other-tsconfig-layouts).
    - In the type-check script, replace the module's own `vue-tsc --noEmit` or `tsc --noEmit` with `vue-tsc -b --noEmit`, and keep the rest of the script. `vue-tsc --noEmit && nuxt typecheck playground` becomes `vue-tsc -b --noEmit && nuxt typecheck playground`. Replace a `nuxt typecheck` of the module root, without a directory, the same way: it regenerates `.nuxt` as an app's. Without a type-check script, add `"test:types": "vue-tsc -b --noEmit"`.
    - If `vue-tsc` isn't in `devDependencies`, run `pnpm add -D --ignore-workspace-root-check vue-tsc`.
-   - Run `nuxt-module-build prepare` and the type-check script. It checks each part with the types that part has in an app, so it can report errors that a single-program check didn't. [Type checking each part](#type-checking-each-part) lists them, with their fixes.
+   - Run `nuxt-module-build prepare`, then `vue-tsc -b --noEmit` itself rather than the type-check script, which can run scripts that step 8 changes, such as `"test:types": "pnpm stub && vue-tsc -b --noEmit"`. It checks each part with the types that part has in an app, so it can report errors that a single-program check didn't. [Type checking each part](#type-checking-each-part) lists them, with their fixes.
 
    To keep a `tsconfig.json` that extends `./.nuxt/tsconfig.json`, set `erasableSyntaxOnly` in it instead, and keep `vue-tsc --noEmit`, as described in [Extending .nuxt/tsconfig.json](#extending-nuxttsconfigjson).
 7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D --ignore-workspace-root-check sass`.
@@ -1067,7 +1099,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - With source exports, run `tsdown` from `prepack` itself, so that the pack checks in [Publishing source exports](#publishing-source-exports) run. A `prepack` that chains other commands, such as `tsdown && pnpm build:client`, is checked. One that runs another script, such as `pnpm run build`, isn't: move that script's commands into `prepack`.
    - Run the `dev:prepare` script, then `tsdown`.
    - Fix what the build reports. Remove each unsupported build option, and annotate each export in a portability error. Build again until the build passes, then run the `prepack` script once, so that its other commands run too.
-9. Run your module's type-check script again, and fix what it reports, as described in [Type checking each part](#type-checking-each-part):
+9. Run your module's type-check script, with the scripts that step 8 changed, and fix what it reports, as described in [Type checking each part](#type-checking-each-part):
    - You can ignore a build warning about type errors that the type check doesn't reproduce.
    - Annotate exports whose type is inferred through a `#build/*` alias. Otherwise, `dist` declares them as `any`.
 10. Check the package:
