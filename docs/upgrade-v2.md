@@ -347,7 +347,7 @@ The module entry's declarations are `dist/types.d.mts` and `dist/module.d.mts`. 
 
 ### The types field
 
-With `"moduleResolution": "bundler"`, which Nuxt projects use, TypeScript reads `exports` and ignores the top-level `types` field. With `node10` resolution, TypeScript ignores `exports` and resolves the root import through `types`, then `main`. A `typesVersions` entry doesn't change that root lookup.
+With `"moduleResolution": "bundler"`, which Nuxt projects use, TypeScript reads `exports` and ignores the top-level `types` field. With `node10` resolution, TypeScript ignores `exports` and resolves the root import through `types`, then `main`. A `typesVersions` entry for a subpath, such as `utils`, doesn't change that root lookup. A wildcard entry does, as it also maps the path in `types`: with `"*": ["./dist/*"]`, `"types": "./dist/types.d.mts"` is looked up at `./dist/dist/types.d.mts`. With a wildcard, check the root import under `node10` as well as the subpaths.
 
 TypeScript resolves with `node10` in a project whose tsconfig sets `"moduleResolution": "node"` or `"node10"`, or sets `"module": "commonjs"` without a `moduleResolution`. Every tsconfig that Nuxt 4 generates for an app uses `bundler`, so an app on Nuxt 4 reads `exports` only. Your module supports `node10` consumers if other projects that type check with such a tsconfig import it, such as a library or a tool with an older setup:
 
