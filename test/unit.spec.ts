@@ -29,7 +29,7 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { errorCodes, errors, warningCodes, warnings } from '../src/diagnostics.ts'
+import { errorCodes, errors, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
@@ -183,6 +183,22 @@ describe('command docs', () => {
 describe('hints', () => {
   it('should suggest installing the peer range of tsdown when it is missing', () => {
     expect(errors.NUXT_MB_B0003().fix).toMatch(/pnpm add -D tsdown@"\^[\d.]+"`\.$/)
+  })
+
+  it('should give a thrown diagnostic its fix and docs as its stack, and unwrap it from a build error with the stack of its cause', () => {
+    const plain = errors.NUXT_MB_C0004()
+    expect(plain.stack).toBe([
+      `NUXT_MB_C0004: ${plain.message}`,
+      '├▶ fix: Call `builder()` in each config that builds the module.',
+      '╰▶ see: https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    ].join('\n'))
+    const cause = new Error('boom')
+    const caused = errors.NUXT_MB_B0002({ file: 'dist/module.mjs', reason: 'boom', cause })
+    expect(unwrapBuildError({ errors: [caused] })).toBe(caused)
+    expect(caused.stack).toMatch(/^NUXT_MB_B0002: [^\n]+\n╰▶ fix: [^\n]+\nCaused by: Error: boom\n {4}at /)
+    const both = { errors: [plain, caused] }
+    expect(unwrapBuildError(both)).toBe(both)
+    expect(unwrapBuildError(plain)).toBe(plain)
   })
 })
 

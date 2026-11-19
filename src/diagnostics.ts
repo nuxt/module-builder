@@ -357,15 +357,12 @@ export function formatDiagnostic(diagnostic: Diagnostic<unknown>, style: Style =
 }
 
 /**
- * Adds the `fix` and docs lines to the stack after its first line, as tsdown and
- * rolldown print the stack of an error rather than its fields.
+ * Replaces the stack frames with the `fix` and docs lines, as tsdown and rolldown print the
+ * stack of an error rather than its fields, and a diagnostic reports a mistake in the module
+ * rather than in the builder.
  */
 const withDetailsInStack: DiagnosticReporter = (diagnostic) => {
-  const header = `${diagnostic.name}: ${diagnostic.message}`
-  const lines = details(diagnostic)
-  if (lines.length && diagnostic.stack?.startsWith(header)) {
-    diagnostic.stack = [header, ...lines].join('\n') + diagnostic.stack.slice(header.length)
-  }
+  diagnostic.stack = [`${diagnostic.name}: ${diagnostic.message}`, ...details(diagnostic)].join('\n')
 }
 
 type BuildLogger = Pick<Logger, 'info' | 'warn' | 'error'>
@@ -392,8 +389,7 @@ const report: DiagnosticReporter<{ method?: 'info' | 'warn' | 'error' }> = (diag
  * diagnostics, followed by their causes, and returns whether it did.
  */
 export function reportFailure(error: unknown): boolean {
-  const nested = (error as { errors?: unknown } | undefined)?.errors
-  const found = error instanceof Diagnostic ? [error] : Array.isArray(nested) && nested.length && nested.every(item => item instanceof Diagnostic) ? nested as Diagnostic<unknown>[] : []
+  const found = diagnosticsOf(error)
   for (const diagnostic of found) {
     report(diagnostic, { method: 'error' })
     if (diagnostic.cause !== undefined) {
@@ -401,6 +397,30 @@ export function reportFailure(error: unknown): boolean {
     }
   }
   return found.length > 0
+}
+
+/** `error` if it is a diagnostic, or the errors of a rolldown build error when all of them are diagnostics. */
+function diagnosticsOf(error: unknown): Diagnostic<unknown>[] {
+  const nested = (error as { errors?: unknown } | undefined)?.errors
+  return error instanceof Diagnostic ? [error] : Array.isArray(nested) && nested.length && nested.every(item => item instanceof Diagnostic) ? nested as Diagnostic<unknown>[] : []
+}
+
+/**
+ * The diagnostic of a rolldown build error made of one, with the stack of its cause after its
+ * own, or else `error`. tsdown prints the stack of a failed build, and rolldown's frames say
+ * nothing about a mistake in the module.
+ */
+export function unwrapBuildError(error: unknown): unknown {
+  const found = diagnosticsOf(error)
+  if (found.length !== 1 || found[0] === error) {
+    return error
+  }
+  const [diagnostic] = found as [Diagnostic<unknown>]
+  const cause = diagnostic.cause instanceof Error ? diagnostic.cause.stack : undefined
+  if (cause) {
+    diagnostic.stack = `${diagnostic.stack}\nCaused by: ${cause}`
+  }
+  return diagnostic
 }
 
 /** Diagnostics that are thrown, or handed to rolldown as a log, so they are not printed when created. */

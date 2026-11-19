@@ -286,6 +286,14 @@ describe('builder', () => {
     expect(exists(dirs.entryFileNames!, 'dist')).toBe(false)
   })
 
+  it('should print the diagnostics it fails with without a stack, from every stage of the build', () => {
+    for (const name of ['unpublishable-source:tsdown', 'format', 'packageImports', 'entryFileNames']) {
+      const output = expectFailed(name)
+      expect(output, name).toMatch(/ERROR {2}NUXT_MB_C0\d{3}: /)
+      expect(output, name).not.toMatch(/^\s+at /m)
+    }
+  })
+
   it('should break the size report down by entry and runtime directory only when it is a summary', () => {
     expect(sizeRows(expectBuilt('compose'))).toEqual(['dist/module.mjs', 'dist/runtime/'])
     expect(sizeRows(expectBuilt('summary'))).toEqual([])

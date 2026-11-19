@@ -12,7 +12,7 @@ import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { errors, formatDiagnostic, useBuildLogger, warnings } from '../diagnostics.ts'
+import { errors, formatDiagnostic, unwrapBuildError, useBuildLogger, warnings } from '../diagnostics.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
@@ -198,6 +198,12 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       useBuildLogger(resolved.logger)
       watch = !!resolved.watch
       resolvedConfig = resolved
+      const { runBuild } = resolved
+      if (typeof runBuild === 'function') {
+        resolved.runBuild = task => runBuild(task).catch((error: unknown) => {
+          throw unwrapBuildError(error)
+        })
+      }
       const changed = [
         ...resolved.format !== 'es' ? ['format'] : [],
         ...Object.keys(resolved.entry).length !== Object.keys(plan.entries).length || Object.entries(plan.entries).some(([name, input]) => !resolved.entry[name] || resolve(cwd, resolved.entry[name]) !== resolve(cwd, input)) ? ['entry'] : [],

@@ -120,7 +120,7 @@ Errors and warnings that a module author can act on are [nostics](https://www.np
 
 There are two catalogs:
 
-- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so the `fix` and docs lines are added to the stack after its first line. `nuxt-module-build` prints a thrown diagnostic without its stack instead.
+- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so a diagnostic's stack is its first line followed by the `fix` and docs lines, without frames. rolldown wraps an error thrown from a plugin hook in a build error with its own frames, so `setupBuilder` unwraps a build error made of one diagnostic before tsdown prints it, with the stack of its `cause` after it. `nuxt-module-build` prints a thrown diagnostic with `formatDiagnostic` instead, followed by its `cause`.
 - `warnings` for diagnostics that are printed when created, as warnings, or as info or errors when the call passes `{ method }`.
 
 During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`), so the build's `logLevel`, `failOnWarn` and `suppressWarnings` apply to them. `setupBuilder` hands it tsdown's global logger, then the logger of the resolved config. Outside a build, as in `nuxt-module-build prepare`, they are printed with `logger` from `src/utils.ts`. tsdown is a peer dependency, so `src/diagnostics.ts` only imports its types.
