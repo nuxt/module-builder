@@ -99,9 +99,12 @@ export async function typeResolutionFs(files: string[], project: (file: string) 
 export class TsconfigError extends Error {
   /** The tsconfig that cannot be read. */
   readonly path: string
-  constructor(path: string, cause: unknown) {
+  /** Whether another tsconfig references it, rather than it being the nearest one. */
+  readonly referenced: boolean
+  constructor(path: string, cause: unknown, referenced = false) {
     super(cause instanceof Error ? cause.message : String(cause), { cause })
     this.path = path
+    this.referenced = referenced
   }
 }
 
@@ -270,7 +273,7 @@ function referencedProjects(tsconfig: TsConfigResult | undefined): TsConfigResul
       return [{ path: config, config: parseTsconfig(config) }]
     }
     catch (error) {
-      throw new TsconfigError(config, error)
+      throw new TsconfigError(config, error, true)
     }
   }).sort((a, b) => projectRank(a.path) - projectRank(b.path))
 }

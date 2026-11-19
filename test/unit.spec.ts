@@ -1108,13 +1108,19 @@ describe('resolveOutDir', () => {
 
 describe('createTsconfigResolver', () => {
   it('should fail with a diagnostic naming the module\'s tsconfig, or a project it references, that cannot be read', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-unreadable-'))
-    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-unreadable-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    const cwd = join(root, 'mod')
+    await mkdir(join(root, 'shared'), { recursive: true })
+    await mkdir(cwd)
     await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ extends: './missing.json' }))
     await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.json`, the module\'s tsconfig: '))
     await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: './tsconfig.module.json' }] }))
     await writeFile(join(cwd, 'tsconfig.module.json'), JSON.stringify({ extends: './.nuxt/tsconfig.node.json' }))
-    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.module.json`, the module\'s tsconfig: '))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `tsconfig.module.json`, a project that the tsconfig of the module references: '))
+    await writeFile(join(cwd, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: '../shared' }] }))
+    await writeFile(join(root, 'shared/tsconfig.json'), JSON.stringify({ extends: './missing.json' }))
+    await expect(moduleTsconfigs(cwd)).rejects.toEqual(diagnostic('NUXT_MB_C0302', 'Cannot read `../shared/tsconfig.json`, a project that the tsconfig of the module references: '))
   })
 
   it('should rebuild a tsconfig that takes its types from a playground on the module\'s own `.nuxt`, keeping its other options', async () => {

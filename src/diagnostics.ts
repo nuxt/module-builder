@@ -146,8 +146,8 @@ export const errorCodes = {
   },
 
   NUXT_MB_C0302: {
-    why: (p: { path: string, reason: string, inside: boolean }): string => `Cannot read \`${p.path}\`, ${p.inside ? 'the module\'s tsconfig' : 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own'}: ${p.reason}`,
-    fix: (p: { inside: boolean }): string => p.inside ? 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.' : 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.',
+    why: (p: { path: string, reason: string, tsconfig: 'own' | 'parent' | 'referenced' }): string => `Cannot read \`${p.path}\`, ${{ own: 'the module\'s tsconfig', parent: 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own', referenced: 'a project that the tsconfig of the module references' }[p.tsconfig]}: ${p.reason}`,
+    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
   },
 

@@ -79,7 +79,7 @@ export interface PreparedBuild {
 export async function moduleTsconfigs(cwd: string): Promise<TsconfigResolver> {
   return createTsconfigResolver(cwd).catch((error: unknown) => {
     throw error instanceof TsconfigError
-      ? errors.NUXT_MB_C0302({ path: relative(cwd, error.path), reason: error.message, inside: isInside(cwd, error.path), cause: error, sources: [error.path] })
+      ? errors.NUXT_MB_C0302({ path: relative(cwd, error.path), reason: error.message, tsconfig: error.referenced ? 'referenced' : isInside(cwd, error.path) ? 'own' : 'parent', cause: error, sources: [error.path] })
       : error
   })
 }
