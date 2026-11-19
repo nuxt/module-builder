@@ -1684,6 +1684,43 @@ describe('build plan', () => {
 })
 
 describe('createDeclarationProgram', () => {
+  it('should emit the same declarations when programs over projects with other options share their declaration files', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, 'node_modules/dep'), { recursive: true })
+    await writeFile(join(cwd, 'node_modules/dep/package.json'), JSON.stringify({ name: 'dep', types: './index.d.ts' }))
+    await writeFile(join(cwd, 'node_modules/dep/index.d.ts'), `export interface Dep { value: string }\nexport declare function make(): Dep\n`)
+    await writeFile(join(cwd, 'node_modules/dep/global.d.ts'), `declare const DEP_FLAG: boolean\n`)
+    const projects = {
+      app: { lib: ['es2022', 'dom'], moduleDetection: 'force' },
+      server: { lib: ['es2022'], module: 'preserve' },
+    }
+    for (const [name, compilerOptions] of Object.entries(projects)) {
+      await writeFile(join(cwd, `${name}.ts`), `/// <reference path="./node_modules/dep/global.d.ts" />\nimport { make } from 'dep'\n\nexport const ${name} = { dep: make(), flag: DEP_FLAG }\n`)
+      await writeFile(join(cwd, `tsconfig.${name}.json`), JSON.stringify({ compilerOptions: { strict: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true, ...compilerOptions }, files: [`${name}.ts`] }))
+    }
+    const emit = async (name: string, sourceFiles?: Map<string, ts.SourceFile>) => {
+      const tsconfig = join(cwd, `tsconfig.${name}.json`)
+      const program = await createDeclarationProgram({ cwd, tsconfig: { path: tsconfig, config: parseTsconfig(tsconfig) }, paths: {}, sourceFiles }, [join(cwd, `${name}.ts`)])
+      const { declarations, errors } = await program.emit([join(cwd, `${name}.ts`)])
+      return [declarations.get(join(cwd, `${name}.ts`)), errors]
+    }
+    const dep = join(cwd, 'node_modules/dep/index.d.ts')
+    const sourceFiles = new Map<string, ts.SourceFile>()
+    const parsed = () => [...sourceFiles.values()].filter(file => file.fileName.endsWith('/node_modules/dep/index.d.ts'))
+    const app = await emit('app', sourceFiles)
+    const [depFile] = parsed()
+    expect(depFile).toBeDefined()
+    expect([...sourceFiles.values()].every(file => file.isDeclarationFile)).toBe(true)
+    const server = await emit('server', sourceFiles)
+    expect(parsed()).toEqual([depFile])
+    expect([app, server]).toEqual([await emit('app'), await emit('server')])
+    expect(app[0]).toContain('dep: import("dep").Dep;')
+    await writeFile(dep, `export interface Dep { value: number }\nexport declare function make(): Dep\n`)
+    await emit('server', sourceFiles)
+    expect(parsed()).not.toContain(depFile)
+  })
+
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {
     const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
     onTestFinished(() => rm(cwd, { recursive: true, force: true }))

@@ -8,7 +8,7 @@ import type { VueDeclarationSession, Transform as VueTransform } from 'vue-sfc-t
 
 import { getOrCreate, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
-import type { DeclarationProgram } from './declarations.ts'
+import type { DeclarationProgram, SourceFileCache } from './declarations.ts'
 import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, typeResolutionFs, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
@@ -175,6 +175,7 @@ class DirectoryBuild {
   /** Rewritten declarations keyed by source path. */
   private declarations = new Map<string, string>()
   private programs = new Map<string | undefined, Promise<DeclarationProgram>>()
+  private sourceFiles: SourceFileCache = new Map()
   private vueDeclarations: Promise<VueDeclarations> | undefined
   private resolver!: TsconfigResolver
   private imports: string | undefined
@@ -392,7 +393,7 @@ class DirectoryBuild {
   }
 
   private program(tsconfig: TsConfigResult | undefined) {
-    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths, cache: 'directory-declarations' }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
+    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths, cache: 'directory-declarations', sourceFiles: this.sourceFiles }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
   }
 
   /** The program shared by single-file components and TypeScript sources. */
