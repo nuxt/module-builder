@@ -123,7 +123,7 @@ export default defineConfig({
 })
 ```
 
-Other tsdown options apply as usual, such as `outDir` (inside the module, see [Output directory](#output-directory)), `sourcemap`, `define`, `plugins`, and `hooks`. `deps.neverBundle` adds to the imports that are never bundled. `--outDir` and `--sourcemap` on the command line take precedence over the config.
+Other tsdown options apply as usual, such as `outDir` (inside the module, see [Output directory](#output-directory)), `sourcemap`, `define`, `plugins`, and `hooks`. `deps.neverBundle` adds to the imports that are never bundled. `--outDir` and `--sourcemap` on the command line take precedence over the config. rolldown's `checks.bundlerTimings` report is off unless the config sets it, as most of the plugin time in a module build is declaration generation.
 
 Plugins in the config run alongside those of `builder()`, and its `hooks` as described in [Hooks in a tsdown config](#hooks-in-a-tsdown-config).
 

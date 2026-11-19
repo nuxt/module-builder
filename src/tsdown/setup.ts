@@ -153,6 +153,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     sourcemap: config.sourcemap || plan.sourcemap,
     deps: { ...config.deps, neverBundle: [...plan.neverBundle, ...userNeverBundle === undefined ? [] : [userNeverBundle].flat()] },
     dts,
+    // Most of the time rolldown attributes to plugins is spent generating declarations, which the report cannot break down.
+    checks: { ...!(config.checks && ('bundlerTimings' in config.checks || 'pluginTimings' in config.checks)) && { bundlerTimings: false }, ...config.checks },
     inputOptions: async (inputOptions, format, context) => {
       const options = typeof userInputOptions === 'function' ? await userInputOptions(inputOptions, format, context) ?? inputOptions : { ...inputOptions, ...userInputOptions }
       return {

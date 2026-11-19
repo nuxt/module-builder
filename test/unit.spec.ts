@@ -1011,6 +1011,24 @@ describe('builder options', () => {
       '  - `deps.neverBundle`: list the imports that are never bundled',
     ].join('\n')))
   })
+
+  it('should turn off rolldown\'s timings report unless the config sets it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-checks-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await mkdir(join(root, '.nuxt'))
+    await mkdir(join(root, 'src'))
+    await writeFile(join(root, '.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(root, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'my-module' }))
+    const checks = async (config: UserConfig) => {
+      await setupBuilder(config, {}, {}, {})
+      return config.checks
+    }
+    expect(await checks({ cwd: root })).toEqual({ bundlerTimings: false })
+    expect(await checks({ cwd: root, checks: { legacyCjs: false } })).toEqual({ bundlerTimings: false, legacyCjs: false })
+    expect(await checks({ cwd: root, checks: { bundlerTimings: true } })).toEqual({ bundlerTimings: true })
+    expect(await checks({ cwd: root, checks: { pluginTimings: true } })).toEqual({ pluginTimings: true })
+  })
 })
 
 describe('unchangedOutputs', () => {
