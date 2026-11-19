@@ -830,6 +830,11 @@ describe('a module that imports runtime code, built through a symlink, under a p
     expect(staticImports(await read(dist(), 'runtime/utils/options.d.ts')).map(i => i.specifier)).toEqual(['fake-types'])
   })
 
+  it('should leave the TypeScript directive comments of runtime files out of their scripts', async () => {
+    expect(await read(dirs.runtime!, 'src/runtime/server/handler.ts')).toContain('// @ts-ignore')
+    expect(await read(dist(), 'runtime/server/handler.js')).not.toContain('@ts-ignore')
+  })
+
   it('should not emit dependencies or bundler helpers into the runtime directory', async () => {
     const files = await listFiles(join(dist(), 'runtime'))
     expect(files.filter(file => /node_modules|_virtual/.test(file))).toEqual([])

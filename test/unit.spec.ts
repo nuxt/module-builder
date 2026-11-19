@@ -30,7 +30,8 @@ import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, i
 import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
 import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
-import { findModuleCodeIssues } from '../src/build/loader.ts'
+import { withoutDirectiveComments } from '../src/build/directives.ts'
+import { findModuleCodeIssues, loadOxc } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
 import prepareCommand from '../src/commands/prepare.ts'
@@ -143,6 +144,67 @@ describe('upgrade guide', () => {
     expect(GUIDE_URL).toBe(`https://github.com/nuxt/module-builder/blob/v${version}/docs/upgrade-v2.md`)
     expect(errors.NUXT_MB_C0004().docs).toBe(`${GUIDE_URL}#tsdown-config`)
     expect(errors.NUXT_MB_D0004({ options: [{ option: 'stub', section: 'stub-builds' }] }).message).toContain(`(${GUIDE_URL}#stub-builds)`)
+  })
+})
+
+describe('withoutDirectiveComments', () => {
+  const transform = withoutDirectiveComments(loadOxc()!.transform)
+
+  it('should leave TypeScript directive comments out of the output, and keep every other comment', async () => {
+    const source = [
+      '// @ts-nocheck',
+      '/**',
+      ' * Documented.',
+      ' */',
+      '// @ts-expect-error virtual module',
+      'import value from \'#virtual\'',
+      '/*! licence */',
+      '// #region helpers',
+      'export const set = /* @__PURE__ */ new Set([value])',
+      '// #endregion',
+      '// a plain comment',
+      'const object = { /* @ts-ignore */ key: 1 }',
+      '/** @ts-ignore */',
+      'export const text: string = `',
+      '// @ts-ignore in a template',
+      '` + \'// @ts-ignore in a string\' + object.key',
+      'export function last(): object {',
+      '  // @ts-expect-error at the end of a block',
+      '}',
+      'export const empty = { /* @ts-ignore in an empty object */ }',
+      '',
+    ].join('\n')
+    const { code } = await transform('file.ts', source, { lang: 'ts' })
+    expect(code).toBe([
+      '/**',
+      '* Documented.',
+      '*/',
+      'import value from "#virtual";',
+      '/*! licence */',
+      '// #region helpers',
+      'export const set = /* @__PURE__ */ new Set([value]);',
+      '// #endregion',
+      '// a plain comment',
+      'const object = { key: 1 };',
+      'export const text = `',
+      '// @ts-ignore in a template',
+      '` + "// @ts-ignore in a string" + object.key;',
+      'export function last() {}',
+      'export const empty = {};',
+      '',
+    ].join('\n'))
+  })
+
+  it('should leave directive comments out of JSX, and keep JSX text', async () => {
+    const { code } = await transform('file.tsx', 'export const C = () => (\n  <div>\n    {/* @ts-ignore */}\n    // @ts-ignore as text\n  </div>\n)\n', { lang: 'tsx', jsx: 'preserve' })
+    expect(code).not.toContain('/* @ts-ignore */')
+    expect(code).toContain('// @ts-ignore as text')
+  })
+
+  it('should keep source positions, so that the source map matches the source', async () => {
+    const plain = await loadOxc()!.transform('file.ts', '\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
+    const directive = await transform('file.ts', '// @ts-ignore\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
+    expect((directive.map as { mappings: string }).mappings).toBe((plain.map as { mappings: string }).mappings)
   })
 })
 

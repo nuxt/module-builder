@@ -7,6 +7,7 @@ import { globalLogger } from 'tsdown'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, directoryPluginName, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
+import { withoutDirectiveComments } from '../build/directives.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
@@ -95,7 +96,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     outBase: relative(outDir, directory.outDir),
     extension: directory.ext,
     paths: plan.directoryPaths,
-    transform: loadOxc()!.transform,
+    transform: withoutDirectiveComments(loadOxc()!.transform),
     sourcemap: plan.sourcemap,
     cacheVersion: plan.generatedTypesHash,
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
