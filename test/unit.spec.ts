@@ -22,7 +22,7 @@ import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/externals.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
 import { createDeclarationProgram } from '../src/transpile/declarations.ts'
@@ -1023,6 +1023,13 @@ describe('importModule', () => {
     expect(kind).toBe('stub')
     expect(rejected).toBe('ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX')
     await rm(dir, { recursive: true, force: true })
+  })
+})
+
+describe('packageName', () => {
+  it('should name the package of a bare specifier, and no package for a path or an alias', () => {
+    expect(['vue', 'vue/server-renderer', '@nuxt/kit', '@nuxt/kit/x', '../shared/urls', './x', '..', '/abs', '#imports', '~/x', '@/x', 'node:fs'].map(packageName))
+      .toEqual(['vue', 'vue', '@nuxt/kit', '@nuxt/kit', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined])
   })
 })
 
