@@ -1439,6 +1439,13 @@ describe('build plan', () => {
     expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
   })
 
+  it('should find `import = require()` declarations, the type-only ones as types', () => {
+    const code = `import type Helper = require('./helper.cjs')\nimport fs = require('./fs.cjs')\nexport type { Helper, fs }\n`
+    expect(moduleSpecifiers(code, 'module.d.ts').map(({ specifier }) => specifier)).toEqual(['./helper.cjs', './fs.cjs'])
+    expect([...valueSpecifiers(code)]).toEqual(['./fs.cjs'])
+    expect(rewriteSpecifiers(code, specifier => specifier.replace('.cjs', '.js'))).toBe(code.replaceAll('.cjs', '.js'))
+  })
+
   it('should ignore import statements inside strings', () => {
     const template = 'const template = `\nimport x from \'./in-string\'\n`\n'
     expect(moduleSpecifiers(`@decorate\nclass A {}\n${template}`)).toEqual([])

@@ -59,6 +59,9 @@ function scriptReferences(code: string, filename: string, offset: number): Refer
       else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
         add(statement.moduleSpecifier, statement.isTypeOnly)
       }
+      else if (ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference) && ts.isStringLiteral(statement.moduleReference.expression)) {
+        add(statement.moduleReference.expression, statement.isTypeOnly)
+      }
       else if (ts.isModuleDeclaration(statement) && statement.body && ts.isModuleBlock(statement.body)) {
         visitStatements(statement.body.statements)
       }
