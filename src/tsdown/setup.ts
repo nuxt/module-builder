@@ -13,8 +13,8 @@ import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { errors, formatDiagnostic, unwrapBuildError, useBuildLogger, warnings } from '../diagnostics.ts'
-import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
+import { errors, unwrapBuildError, useBuildLogger, warnings } from '../diagnostics.ts'
+import { transpileDir } from '../transpile/transpile-dir.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
@@ -136,7 +136,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userNeverBundle = config.deps?.neverBundle as Array<string | RegExp> | string | RegExp | undefined
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
-  const compilerOptions = { paths: plan.declarationPaths }
+  const compilerOptions = { paths: plan.declarationPaths, noCheck: true }
   const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, cacheVersion: plan.generatedTypesHash, watch: () => watch })
   const dts = {
     tsconfig: plan.declarationTsconfig,
@@ -161,10 +161,6 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       return {
         ...options,
         makeAbsoluteExternalsRelative: false,
-        onLog(level, log, handler) {
-          const linked = log.pluginCode === TYPE_ERRORS_WARNING ? { ...log, plugin: undefined, message: formatDiagnostic(errors.NUXT_MB_B0201({ message: log.message, command: plan.typeCheck })) } : log
-          return options.onLog ? options.onLog(level, linked, handler) : handler(level, linked)
-        },
       }
     },
     hooks: async (hooks) => {

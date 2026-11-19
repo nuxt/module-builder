@@ -560,7 +560,7 @@ Fix the list before you run `prepare` or `dev:prepare`. Until it's empty, `prepa
 
 ## Declaration errors
 
-Declarations for the module entry and for `src/runtime` are generated with TypeScript, using the tsconfig project that includes each file, as described in [Module tsconfig](#module-tsconfig). Run `nuxt-module-build prepare` first, as described in [Preparing .nuxt](#preparing-nuxt). Errors that would leave the declarations missing or wrong fail the build. Every other type error, in `.ts` and `.vue` files alike, is reported as a warning.
+Declarations for the module entry and for `src/runtime` are generated with TypeScript, using the tsconfig project that includes each file, as described in [Module tsconfig](#module-tsconfig). Run `nuxt-module-build prepare` first, as described in [Preparing .nuxt](#preparing-nuxt). Errors that TypeScript reports while emitting declarations, which leave them missing or unportable, fail the build. The build doesn't type check otherwise, so your module's own type check reports every other type error, in `.ts` and `.vue` files alike, including those where a declaration disagrees with the code, such as `export const count: number = 'one'`.
 
 ### Portability errors
 
@@ -588,19 +588,20 @@ Syntax errors, and files for which no declaration could be emitted, fail the bui
 
 ### Other type errors
 
-Type errors that don't change the declarations, such as a wrong argument type or a missing property, don't fail the build. This applies to `.ts` and `.vue` files alike. One warning per directory gives their number and the first three, and names your module's own type check: `vue-tsc -b --noEmit` with the tsconfigs in [Module tsconfig](#module-tsconfig), or `vue-tsc --noEmit` with a `tsconfig.json` that extends `./.nuxt/tsconfig.json`. Run it:
+The build generates declarations without type checking, so type errors that don't change the declarations, such as a wrong argument type or a missing property, neither fail the build nor appear in its output. This applies to `.ts` and `.vue` files alike. Your module's own type check reports them: `vue-tsc -b --noEmit` with the tsconfigs in [Module tsconfig](#module-tsconfig), or `vue-tsc --noEmit` with a `tsconfig.json` that extends `./.nuxt/tsconfig.json`. Give it a script of its own, and run it as a step of its own in CI, after `dev:prepare`:
 
-```bash
-vue-tsc -b --noEmit
+```json
+{
+  "scripts": {
+    "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
+    "test:types": "vue-tsc -b --noEmit"
+  }
+}
 ```
-
-If the type check reports the same errors, fix them there. If it passes, the warning is safe to ignore.
 
 `nuxt typecheck` in the module root type checks it as an app, and regenerates `.nuxt` without the changes that `prepare` makes. Use `vue-tsc` for the module, and `nuxt typecheck playground` for the playground.
 
-Its errors come from build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`), which are typed as `any` while declarations are generated. The types in your module's `.nuxt` also reflect the module's default options. Code that only type-checks under a playground's configuration (a provider the playground enables, for example) warns here as well. An explicit annotation on the export removes that warning.
-
-Those aliases are `any` in the emitted declarations too. An export whose type is inferred through one of them is declared as `any`, or as `string | number | symbol` for a key type. This includes a module's own generated alias, such as `#mdc-highlighter`. Annotate such an export with a type that refers to it by name. That can be a component's props type, or a type imported from the alias. The type then resolves against the `.nuxt` of the app that installs the module:
+Build-time aliases (`#build/*`, `#internal/*`, and other paths into `.nuxt/`) are typed as `any` while declarations are generated, so they're `any` in the emitted declarations too. An export whose type is inferred through one of them is declared as `any`, or as `string | number | symbol` for a key type. This includes a module's own generated alias, such as `#mdc-highlighter`. Annotate such an export with a type that refers to it by name. That can be a component's props type, or a type imported from the alias. The type then resolves against the `.nuxt` of the app that installs the module:
 
 ```ts
 import type { ComputedRef } from 'vue'
@@ -1100,7 +1101,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Run the `dev:prepare` script, then `tsdown`.
    - Fix what the build reports. Remove each unsupported build option, and annotate each export in a portability error. Build again until the build passes, then run the `prepack` script once, so that its other commands run too.
 9. Run your module's type-check script, with the scripts that step 8 changed, and fix what it reports, as described in [Type checking each part](#type-checking-each-part):
-   - You can ignore a build warning about type errors that the type check doesn't reproduce.
+   - Run the type-check script as a step of its own in CI, as the build doesn't type check.
    - Annotate exports whose type is inferred through a `#build/*` alias. Otherwise, `dist` declares them as `any`.
 10. Check the package:
     - Run `pnpm dlx publint`.

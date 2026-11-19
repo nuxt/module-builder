@@ -81,11 +81,6 @@ export interface TranspileDirOptions {
   name?: string
 }
 
-/** `pluginCode` of the warning that lists type errors which do not affect the emitted declarations. */
-export const TYPE_ERRORS_WARNING = 'TYPE_ERRORS'
-
-type Warning = string | { pluginCode: string, message: string }
-
 interface Edge {
   specifier: string
   target: string
@@ -167,8 +162,7 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
 class DirectoryBuild {
   /** Source path to output path, relative to the output directory. */
   outputs = new Map<string, string>()
-  warnings: Warning[] = []
-  private typeErrors: string[] = []
+  warnings: string[] = []
   private scripts: string[] = []
   private vue: string[] = []
   private assets: string[] = []
@@ -235,9 +229,6 @@ class DirectoryBuild {
       referenced = this.referencedOutside(referenced, requested)
     }
     const declarations = [...this.declarations].map(([source, text]) => ({ fileName: this.declarationOutput(source), source: text }))
-    if (this.typeErrors.length) {
-      this.warnings.push({ pluginCode: TYPE_ERRORS_WARNING, message: typeErrorsWarning([...new Set(this.typeErrors)], relative(this.options.cwd, this.options.srcDir)) })
-    }
     return [...transpiled, ...assets, ...vue, ...declarations]
   }
 
@@ -376,11 +367,10 @@ class DirectoryBuild {
     }
     const runtime = await transformVueRuntime(this.vue, this.options.transform as VueTransform, await typeResolutionFs(this.vue, file => this.resolver.resolve(file)))
     const result = await this.vueProgram()
-    const { errors, warnings } = vueEmit(result, this.vue, this.options.cwd, true)
+    const { errors } = vueEmit(result, this.vue, this.options.cwd, true)
     if (errors.length) {
       throw declarationError([...new Set(errors)])
     }
-    this.typeErrors.push(...warnings)
     const selected = new Set(this.vue)
     const declarations = [...result.declarations].flatMap(([path, source]) => {
       const vueFile = path.replace(VUE_DECLARATION_RE, '.vue')
@@ -437,7 +427,6 @@ class DirectoryBuild {
     if (errors.length) {
       throw declarationError([...new Set(errors)])
     }
-    this.typeErrors.push(...results.flatMap(result => result.warnings))
   }
 
   private referencedOutside(sources: string[], requested: Set<string>) {
@@ -456,7 +445,7 @@ class DirectoryBuild {
  * errors that name no file are included.
  */
 function vueEmit(result: VueDeclarations, files: string[], cwd: string, global: boolean) {
-  const { errors, warnings } = result
+  const { errors } = result
   const selected = new Set(files)
   const about = ({ file }: { file?: string }) => file === undefined ? global : selected.has(file)
   const declarations = new Map(files.flatMap((file) => {
@@ -469,21 +458,9 @@ function vueEmit(result: VueDeclarations, files: string[], cwd: string, global: 
       ...errors.filter(about).map(({ message }) => message),
       ...files.filter(file => !declarations.has(file) && !errors.some(error => error.file === file)).map(file => `${relative(cwd, file)}: no declaration was emitted`),
     ],
-    warnings: warnings.filter(({ file }) => file !== undefined && selected.has(file)).map(({ message }) => message),
   }
 }
 
 function stem(path: string) {
   return path.replace(SCRIPT_RE, '')
-}
-
-const SHOWN_TYPE_ERRORS = 3
-
-function typeErrorsWarning(diagnostics: string[], directory: string) {
-  const hidden = diagnostics.length - SHOWN_TYPE_ERRORS
-  return [
-    `${diagnostics.length} type error${diagnostics.length === 1 ? ' was' : 's were'} reported while generating declarations for \`${directory}\`; the declarations were emitted.`,
-    ...diagnostics.slice(0, SHOWN_TYPE_ERRORS),
-    ...hidden > 0 ? [`... and ${hidden} more`] : [],
-  ].join('\n')
 }

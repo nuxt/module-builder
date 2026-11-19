@@ -865,14 +865,10 @@ describe('a module that imports runtime code, built through a symlink, under a p
     expect(await read(dist(), 'runtime/utils/self.d.ts')).toMatch(/=> string;/)
   })
 
-  it('should warn about type errors that do not affect runtime declarations and build anyway', async () => {
+  it('should build without type checking, so type errors that do not affect runtime declarations are left to the type check', async () => {
     const output = expectBuilt('runtime')
-    expect(output).toMatch(/^\[NUXT_MB_B0201\] 2 type errors were reported while generating declarations for `src\/runtime`; the declarations were emitted\.$/m)
-    expect(output).toContain('fix: Run the module\'s own type check, `vue-tsc --noEmit`, and fix the errors that it reports.')
-    expect(output).toContain('src/runtime/utils/typo.ts(1,14): error TS2322')
-    expect(output).toContain('src/runtime/components/Typo.vue(3,7): error TS2322')
-    expect(output.match(/type errors? (?:was|were) reported/g)).toHaveLength(1)
-    expect(output).not.toContain('TS2307')
+    expect(output).not.toMatch(/error TS\d+/)
+    expect(output).not.toContain('type errors')
     expect(await read(dist(), 'runtime/utils/typo.d.ts')).toBe('export declare const count: number;\nexport declare const double: (value: number) => number;\n')
     const component = await read(dist(), 'runtime/components/Typo.vue.d.ts')
     expect(component).toContain('label: string')
@@ -1312,7 +1308,6 @@ describe('tsconfig lookup', () => {
     expect(files.map(file => relative(dir, file)).filter(file => file.includes('routes.d.ts')).sort()).toEqual(['../sibling/types/routes.d.ts', 'docs/types/routes.d.ts', 'playground/types/routes.d.ts'])
     expect(await read(dir, 'dist/runtime/composables/useOwn.d.ts')).toBe(`export declare const useOwn: () => import("nuxt/app").AsyncData<{\n    own: "module-owned";\n} | undefined, import("nuxt/app").NuxtError<unknown> | undefined>;\n`)
     expect(await read(dir, 'dist/runtime/composables/useGlobal.d.ts')).toBe('export declare const useGlobal: () => Fake.Thing;\n')
-    expect(output('routes')).not.toMatch(/type errors? (?:was|were) reported/)
     for (const name of ['useSecret', 'useSibling', 'useDocs']) {
       expect(await read(dir, `dist/runtime/composables/${name}.d.ts`), name).toBe(`export declare const ${name}: () => import("nuxt/app").AsyncData<unknown, import("nuxt/app").NuxtError<unknown> | undefined>;\n`)
     }
@@ -1510,7 +1505,7 @@ describe('prepare', () => {
 
   it('should check and declare a server directory outside `src/runtime/server` with a tsconfig that extends the server tsconfig', async () => {
     const error = 'src/runtime/nitro/plugin.ts(1,36): error TS2584: Cannot find name \'document\'.'
-    expect(expectBuilt('nitroDir')).toContain(error)
+    expect(expectBuilt('nitroDir')).not.toContain(error)
     expect(expectFailed('nitroDir:typecheck')).toContain(error)
     expect(JSON.parse(await read(dirs.nitroDir!, '.nuxt/tsconfig.app.json')).exclude).toContain('../src/runtime/nitro')
     expect(await read(dirs.nitroDir!, 'dist/runtime/nitro/plugin.d.ts')).toContain('export declare const title: () => string;')
