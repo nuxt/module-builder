@@ -1,6 +1,7 @@
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
+import { GUIDE_URL } from '../src/diagnostics.ts'
 import type { Result } from './utils.ts'
 import { bin, cli, exists, fixture, read, repoRoot, run, tsdown, tsdownBin } from './utils.ts'
 
@@ -255,7 +256,7 @@ describe('builder', () => {
         expect(output, command).toContain('NUXT_MB_C0101')
         expect(output, command).toContain(message)
         expect(output, command).toContain('├▶ fix: Point them at the build output')
-        expect(output, command).toContain('╰▶ see: https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports')
+        expect(output, command).toContain(`╰▶ see: ${GUIDE_URL}#publishing-source-exports`)
       }
       expect(exists(dirs[`unpublishable-${name}`]!, 'dist')).toBe(false)
     }

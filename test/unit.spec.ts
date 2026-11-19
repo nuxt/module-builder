@@ -29,7 +29,7 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { errorCodes, errors, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
+import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
 import { findModuleCodeIssues } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
@@ -136,7 +136,13 @@ describe('upgrade guide', () => {
     const anchors = await guideAnchors()
     const links = Object.entries({ ...errorCodes, ...warningCodes }).flatMap(([code, { docs }]) => docs ? [[code, docs] as const] : [])
     expect(links.length).toBeGreaterThan(0)
-    expect(links.filter(([, docs]) => !docs.startsWith('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#') || !anchors.includes(docs.split('#')[1]!))).toEqual([])
+    expect(links.filter(([, docs]) => !docs.startsWith('#') || !anchors.includes(docs.slice(1)))).toEqual([])
+  })
+
+  it('should link diagnostics to the guide at the release tag of this version', () => {
+    expect(GUIDE_URL).toBe(`https://github.com/nuxt/module-builder/blob/v${version}/docs/upgrade-v2.md`)
+    expect(errors.NUXT_MB_C0004().docs).toBe(`${GUIDE_URL}#tsdown-config`)
+    expect(errors.NUXT_MB_D0004({ options: [{ option: 'stub', section: 'stub-builds' }] }).message).toContain(`(${GUIDE_URL}#stub-builds)`)
   })
 })
 
@@ -190,7 +196,7 @@ describe('hints', () => {
     expect(plain.stack).toBe([
       `NUXT_MB_C0004: ${plain.message}`,
       '├▶ fix: Call `builder()` in each config that builds the module.',
-      '╰▶ see: https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+      `╰▶ see: ${GUIDE_URL}#tsdown-config`,
     ].join('\n'))
     const cause = new Error('boom')
     const caused = errors.NUXT_MB_B0002({ file: 'dist/module.mjs', reason: 'boom', cause })
@@ -590,7 +596,7 @@ describe('deprecation checks', () => {
       const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
       expect(message).toContain(link(pathToFileURL(join(root, 'package.json')).href, 'package.json'))
       expect(message).toContain(link(pathToFileURL(join(root, 'dist/util.d.mts')).href, './dist/util.d.mts'))
-      expect(message).toContain('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#typesversions-paths\x07')
+      expect(message).toContain(`${GUIDE_URL}#typesversions-paths\x07`)
       expect(message).not.toContain(pathToFileURL(join(root, 'dist/util')).href + '\x07')
     }
     finally {

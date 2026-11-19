@@ -128,7 +128,7 @@ During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`
 To add one, add an entry to `errorCodes` or `warningCodes` with the next free number in its group:
 
 - `why` says what is wrong and becomes the message. `fix` says what to do. Neither repeats the other.
-- `docs` is the URL of the heading of `docs/upgrade-v2.md` that explains it, or `false`.
+- `docs` is the `#anchor` of the heading of `docs/upgrade-v2.md` that explains it, or `false`. The printed link points at the guide at the release tag of the version that prints it, `GUIDE_URL`.
 - The call passes `sources`: the absolute path of every file that the `why` or `fix` names, with `:line:column` when it names a position. In a terminal, each file that exists is linked where the `why` or `fix` names it, by the end of its path. URLs in the text and the docs link are linked as well.
 - The tsconfig sets `isolatedDeclarations`, so `why` and `fix` are string literals or functions with a `: string` return type, and `docs` is a string literal.
 

@@ -15,6 +15,9 @@ function list(values: string[]) {
 
 const UNPUBLISHABLE = 'TypeScript sources or paths that `files` leaves out'
 
+/** The upgrade guide as released with this version, which the `docs` anchors of diagnostics point into. */
+export const GUIDE_URL: string = `https://github.com/nuxt/module-builder/blob/v${pkg.version}/docs/upgrade-v2.md`
+
 interface UnpublishableItem {
   /** The field or `imports` key that points at `path`. */
   name: string
@@ -37,7 +40,7 @@ export const errorCodes = {
       ...new Set(p.issues.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)),
     ].join('\n'),
     fix: 'Change each one as suggested.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#module-code-loads-with-node',
+    docs: '#module-code-loads-with-node',
   },
   NUXT_MB_B0002: {
     why: (p: { file: string, reason: string }): string => `Cannot load \`${p.file}\` to write \`module.json\`: ${p.reason}`,
@@ -47,12 +50,12 @@ export const errorCodes = {
   NUXT_MB_B0003: {
     why: '`@nuxt/module-builder` builds with `tsdown`, which is a peer dependency and is not installed.',
     fix: (): string => `Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#install-tsdown',
+    docs: '#install-tsdown',
   },
   NUXT_MB_B0201: {
     why: (p: { message: string }): string => p.message,
     fix: (p: { command: string }): string => `Run the module's own type check, \`${p.command}\`, and fix the errors that it reports. Those that it doesn't report come from build-time aliases such as \`#build/*\`, which are typed as \`any\` while declarations are generated, and can be ignored.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-type-errors',
+    docs: '#other-type-errors',
   },
 
   NUXT_MB_C0001: {
@@ -61,47 +64,47 @@ export const errorCodes = {
       ...p.options.map(({ option, reason }) => `  - \`${option}\`: ${reason}`),
     ].join('\n'),
     fix: 'Remove each of them from the tsdown config.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#options-builder-sets',
+    docs: '#options-builder-sets',
   },
   NUXT_MB_C0002: {
     why: (p: { options: string[] }): string => `Another tsdown plugin changed ${list(p.options)}, which \`builder()\` sets.`,
     fix: 'Configure the plugin to leave these options unchanged, or remove it.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#options-builder-sets',
+    docs: '#options-builder-sets',
   },
   NUXT_MB_C0003: {
     why: (p: { files: string[] }): string => `The bundled entries were not emitted at the file names that \`builder()\` sets: ${list(p.files)}.`,
     fix: 'Leave `outputOptions.entryFileNames` unchanged in the tsdown config and its plugins.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#options-builder-sets',
+    docs: '#options-builder-sets',
   },
   NUXT_MB_C0004: {
     why: 'The same `builder()` plugin is used in more than one tsdown config.',
     fix: 'Call `builder()` in each config that builds the module.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    docs: '#tsdown-config',
   },
   NUXT_MB_C0005: {
     why: (p: { file: string }): string => `\`${p.file}\` does not build the module with \`builder()\`.`,
     fix: 'Add the plugin:\n\n  import { builder } from \'@nuxt/module-builder/tsdown\'\n  import { defineConfig } from \'tsdown\'\n\n  export default defineConfig({\n    plugins: [builder()],\n  })',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    docs: '#tsdown-config',
   },
   NUXT_MB_C0006: {
     why: (p: { file: string }): string => `\`${p.file}\` uses \`builder()\` in more than one config.`,
     fix: 'Build the module with one of them.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    docs: '#tsdown-config',
   },
   NUXT_MB_C0007: {
     why: (p: { file: string }): string => `\`${p.file}\` sets \`cwd\`, but \`prepare\` reads the module in the directory of the tsdown config.`,
     fix: 'Move the tsdown config into the module, or remove `cwd`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    docs: '#tsdown-config',
   },
   NUXT_MB_C0008: {
     why: '`builder()` does not take `hooks`.',
     fix: 'Use tsdown\'s own `hooks` in the tsdown config, or a plugin that emits extra files.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#hooks-in-a-tsdown-config',
+    docs: '#hooks-in-a-tsdown-config',
   },
   NUXT_MB_C0009: {
     why: (p: { options: string[] }): string => ['`builder()` does not support these options:', ...p.options.map(option => `  - ${option}`)].join('\n'),
     fix: 'Remove each of them, and set tsdown options in the tsdown config instead.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tsdown-config',
+    docs: '#tsdown-config',
   },
   NUXT_MB_C0010: {
     why: 'A bundled entry is named `types`, so its declarations would replace the generated `types.d.mts`.',
@@ -116,63 +119,63 @@ export const errorCodes = {
   NUXT_MB_C0012: {
     why: (p: { label: string, path: string }): string => `\`${p.label}\` resolves to \`${p.path}\`, which is not inside the module root; the build empties the output directory first.`,
     fix: 'Use a directory inside the module such as `dist`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#output-directory',
+    docs: '#output-directory',
   },
 
   NUXT_MB_C0101: {
     why: (p: { items: UnpublishableItem[] }): string => `These published fields of \`package.json\` would not work once installed. ${describeUnpublishable(p.items)}`,
     fix: 'Point them at the build output, in `publishConfig` when `package.json` points at the sources. To publish a file other than a TypeScript source as it is, add it to `files`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
+    docs: '#publishing-source-exports',
   },
   NUXT_MB_C0102: {
     why: (p: { items: UnpublishableItem[] }): string => `The build output imports these \`imports\` of \`package.json\`, which would not work once installed. ${describeUnpublishable(p.items)}`,
     fix: 'Point them at the build output, in `publishConfig` when `package.json` points at the sources. To publish a file other than a TypeScript source as it is, add it to `files`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
+    docs: '#publishing-source-exports',
   },
   NUXT_MB_C0103: {
     why: (p: { fields: string[], paths: string[] }): string => `These fields of \`publishConfig\` point at ${UNPUBLISHABLE}, so they would be published that way: ${list(p.fields)} (${list(p.paths)}).`,
     fix: 'Point them at `dist`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
+    docs: '#publishing-source-exports',
   },
   NUXT_MB_C0104: {
     why: (p: { client: string, fields: string[], paths: string[] }): string => `${p.client} packs these fields of \`package.json\` as written, and they point at ${UNPUBLISHABLE}: ${list(p.fields)} (${list(p.paths)}).`,
     fix: (p: { alternatives: string }): string => `Point them at \`dist\`, or pack and publish with ${p.alternatives}, which replace them with the \`dist\` paths in \`publishConfig\`.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
+    docs: '#publishing-source-exports',
   },
   NUXT_MB_C0105: {
     why: (p: { fields: string[], paths: string[] }): string => `These fields of \`package.json\` point at ${UNPUBLISHABLE}, and \`publishConfig\` does not replace them, so they would be published as written: ${list(p.fields)} (${list(p.paths)}).`,
     fix: (p: { fields: string[] }): string => `Set ${list(p.fields.map(field => `publishConfig.${field}`))} to the \`dist\` paths.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports',
+    docs: '#publishing-source-exports',
   },
 
   NUXT_MB_C0302: {
     why: (p: { path: string, reason: string, tsconfig: 'own' | 'parent' | 'referenced' }): string => `Cannot read \`${p.path}\`, ${{ own: 'the module\'s tsconfig', parent: 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own', referenced: 'a project that the tsconfig of the module references' }[p.tsconfig]}: ${p.reason}`,
     fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
+    docs: '#other-tsconfig-layouts',
   },
 
   NUXT_MB_D0001: {
     why: (p: { command: string }): string => `The \`--stub\` option of \`${p.command}\` has been removed.`,
     fix: 'With pnpm or Yarn 4, point `package.json` at the module\'s sources. Otherwise, build `dist` with `tsdown` and rebuild it with `tsdown --watch`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#stub-builds',
+    docs: '#stub-builds',
   },
   NUXT_MB_D0002: {
     why: (p: { file: string | undefined, field: string | undefined }): string => `${p.file ? `\`${p.file}\`` : `The \`${p.field}\` field of \`package.json\``} configures the build, and so does \`builder()\` in the tsdown config.`,
     fix: (p: { file: string | undefined }): string => `Move its options into \`builder()\` and ${p.file ? 'delete the file' : 'remove the field'}.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#moving-from-buildconfigts',
+    docs: '#moving-from-buildconfigts',
   },
   NUXT_MB_D0003: {
     why: (p: { file: string }): string => `\`${p.file}\` exports a function, and \`@nuxt/module-builder\` v2 only reads a config object.`,
     fix: 'Replace the function with the object it returns.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-options',
+    docs: '#other-options',
   },
   NUXT_MB_D0004: {
     why: (p: { options: Array<{ option: string, section: string }> }): string => [
       'The build config uses options that `@nuxt/module-builder` v2 does not support:',
-      ...p.options.map(({ option, section }) => `  - ${option} (https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#${section})`),
+      ...p.options.map(({ option, section }) => `  - ${option} (${GUIDE_URL}#${section})`),
     ].join('\n'),
     fix: 'Remove each of them from the file named.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#unsupported-build-options',
+    docs: '#unsupported-build-options',
   },
 } as const
 
@@ -181,17 +184,17 @@ export const warningCodes = {
   NUXT_MB_B0101: {
     why: '`.nuxt` not found, running `nuxt-module-build prepare` first.',
     fix: 'Add `nuxt-module-build prepare` to the module\'s `dev:prepare` script to skip this step.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#preparing-nuxt',
+    docs: '#preparing-nuxt',
   },
   NUXT_MB_B0202: {
     why: 'Declaration generation failed under `isolatedDeclarations`, which requires an explicit type annotation on every exported value.',
     fix: 'Give each export that an error names an explicit type. Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#isolated-declarations',
+    docs: '#isolated-declarations',
   },
   NUXT_MB_B0203: {
     why: 'Type declarations could not be generated because of TypeScript errors.',
     fix: 'Give each export whose inferred type cannot be named (TS2742, TS2883 or TS4023) an explicit type annotation. If `.nuxt` is out of date, run `nuxt-module-build prepare` and build again.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#declaration-errors',
+    docs: '#declaration-errors',
   },
   NUXT_MB_B0204: {
     why: (p: { errors: string[] }): string => [
@@ -199,64 +202,64 @@ export const warningCodes = {
       ...p.errors,
     ].join('\n'),
     fix: 'Give each export that an error names an explicit type annotation, then run `nuxt-module-build prepare` again.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#portability-errors',
+    docs: '#portability-errors',
   },
   NUXT_MB_B0205: {
     why: 'The declarations of the module entry are generated with tsc, as its tsconfig does not set `isolatedDeclarations`.',
     fix: (p: { project: string | undefined }): string => `Set \`isolatedDeclarations: true\` in ${!p.project ? 'your `tsconfig.json`' : p.project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${p.project}\``} to generate them with oxc, which is faster.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#isolated-declarations',
+    docs: '#isolated-declarations',
   },
 
   NUXT_MB_C0201: {
     why: (p: { path: string }): string => `\`types\` in \`package.json\` points at \`${p.path}\`, which the build does not produce.`,
     fix: 'Set it to `./dist/types.d.mts`, which node10 module resolution reads, or remove it: bundler module resolution reads `exports` instead.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#the-types-field',
+    docs: '#the-types-field',
   },
   NUXT_MB_C0202: {
     why: (p: { paths: Array<{ path: string, replacement: string }> }): string => `These \`typesVersions\` paths in \`package.json\` do not resolve under TypeScript's node10 module resolution, which probes for \`.d.ts\` but not for \`.d.mts\`: ${list(p.paths.map(({ path }) => path))}.`,
     fix: (p: { paths: Array<{ path: string, replacement: string }> }): string => `Write each path with its extension: ${p.paths.map(({ path, replacement }) => `\`${replacement}\` for \`${path}\``).join(', ')}.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#typesversions-paths',
+    docs: '#typesversions-paths',
   },
   NUXT_MB_C0203: {
     why: (p: { paths: string[] }): string => `These paths in \`package.json\` do not exist after the build, so imports that resolve to them will fail: ${list(p.paths)}.`,
     fix: 'Add the entry that produces each one, or remove the path.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#paths-the-build-does-not-produce',
+    docs: '#paths-the-build-does-not-produce',
   },
   NUXT_MB_C0301: {
     why: (p: { path: string }): string => `\`${p.path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead.`,
     fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./tsconfig.module.json\`, which extends \`./.nuxt/tsconfig.node.json\`, and \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
+    docs: '#other-tsconfig-layouts',
   },
   NUXT_MB_C0303: {
     why: (p: { groups: Array<[path: string, files: number]> }): string => `No project that \`tsconfig.json\` references includes these TypeScript files, so \`vue-tsc -b\` does not type check them: ${p.groups.map(([path, files]) => path.endsWith('/') ? `\`${path}\` (${files} ${files === 1 ? 'file' : 'files'})` : `\`${path}\``).join(', ')}.`,
     fix: 'Reference a tsconfig that includes them, such as a `tsconfig.test.json` for tests and config files, or add them to the `exclude` of `tsconfig.json`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tests-and-config-files',
+    docs: '#tests-and-config-files',
   },
 
   NUXT_MB_D0101: {
     why: (p: { file: string }): string => `\`${p.file}\` is deprecated. Its options are still applied.`,
     fix: (p: { importsUnbuild: boolean }): string => `${p.importsUnbuild ? 'Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`. ' : ''}Move the options into \`builder()\` in \`tsdown.config.ts\`.`,
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#moving-from-buildconfigts',
+    docs: '#moving-from-buildconfigts',
   },
   NUXT_MB_D0102: {
     why: 'The `unbuild` field of `package.json` is deprecated. Its options are still applied.',
     fix: 'Rename the field to `build`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#build-configuration',
+    docs: '#build-configuration',
   },
   NUXT_MB_D0103: {
     why: (p: { hook: string }): string => `Ignoring ${p.hook}: runtime files are no longer built with mkdist.`,
     fix: 'Remove the hook.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#hooks',
+    docs: '#hooks',
   },
   NUXT_MB_D0104: {
     why: (p: { paths: string[] }): string => `\`@nuxt/module-builder\` no longer generates \`.d.ts\` declarations for the module entry, which these \`package.json\` paths point at: ${list(p.paths)}.`,
     fix: 'Replace `.d.ts` with `.d.mts` in each of them.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#declaration-paths',
+    docs: '#declaration-paths',
   },
   NUXT_MB_D0105: {
     why: '`@nuxt/module-builder` no longer generates `module.cjs`, which Nuxt 3 and later do not need.',
     fix: 'Replace it with `./dist/module.mjs` in `package.json`.',
-    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#modulecjs',
+    docs: '#modulecjs',
   },
 } as const
 
@@ -423,8 +426,13 @@ export function unwrapBuildError(error: unknown): unknown {
   return diagnostic
 }
 
+/** `codes` with each `docs` anchor resolved against {@link GUIDE_URL}. */
+function linked<T extends Record<string, { docs: string | false }>>(codes: T): T {
+  return Object.fromEntries(Object.entries(codes).map(([code, definition]) => [code, { ...definition, docs: definition.docs && GUIDE_URL + definition.docs }])) as T
+}
+
 /** Diagnostics that are thrown, or handed to rolldown as a log, so they are not printed when created. */
-export const errors: Diagnostics<typeof errorCodes, readonly [typeof withDetailsInStack]> = defineDiagnostics({ reporters: [withDetailsInStack], codes: errorCodes })
+export const errors: Diagnostics<typeof errorCodes, readonly [typeof withDetailsInStack]> = defineDiagnostics({ reporters: [withDetailsInStack], codes: linked(errorCodes) })
 
 /** Diagnostics that are printed when created. */
-export const warnings: Diagnostics<typeof warningCodes, readonly [typeof report]> = defineDiagnostics({ reporters: [report], codes: warningCodes })
+export const warnings: Diagnostics<typeof warningCodes, readonly [typeof report]> = defineDiagnostics({ reporters: [report], codes: linked(warningCodes) })
