@@ -915,7 +915,7 @@ While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --wat
 
 - `CJSResolvesToESM`, under `node16` from CommonJS. The module is an ES module, which `require` can't load.
 - `NoResolution`, under `node10`, for each subpath export of a module without `typesVersions`, as described in [The types field](#the-types-field).
-- `InternalResolutionError`, for an import in a declaration file that doesn't resolve from the package alone. The declarations keep imports of `#app`, `#imports`, `#build/*` and the module's other build-time aliases as written, as described in [Other type errors](#other-type-errors), and only a Nuxt app resolves them. Under `node10`, the package's own `imports`, such as `#my-module/types`, don't resolve either.
+- `InternalResolutionError`, for an import in a declaration file that doesn't resolve from the package alone. The declarations keep imports of `#app`, `#imports`, `#build/*` and the module's other build-time aliases as written, as described in [Other type errors](#other-type-errors), and only a Nuxt app resolves them. Under `node10`, the package's own `imports`, such as `#my-module/types`, don't resolve either. That is only expected for a module without `node10` consumers: one that supports them imports those files by relative path in the code that the declarations come from.
 
 `--profile esm-only` leaves out `node10` and `require` under `node16`, which covers the first two. It doesn't cover the third: attw reports an `InternalResolutionError` under `node10` even with that profile, and exits with an error when every resolution it shows is green.
 
