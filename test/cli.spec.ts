@@ -1077,6 +1077,13 @@ describe('a module whose runtime files import files around them', () => {
       "
     `)
     expect(await read(dist(), 'runtime/escaping.js')).toContain(`import("../_external/external.js")`)
+    expect(await read(dist(), 'data.d.mts')).toMatchInlineSnapshot(`
+      "export declare let answer: number;
+      declare namespace __json_default_export {
+        export { answer };
+      }
+      export { __json_default_export as default };"
+    `)
     expect(await read(dist(), 'shared/constants.js')).toMatchInlineSnapshot(`
       "import { LIMIT } from "./limits.js";
       export const CONSTANT = LIMIT;

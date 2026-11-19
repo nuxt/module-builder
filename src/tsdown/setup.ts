@@ -18,6 +18,7 @@ import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
+import { entryDeclarationGenerator } from './dts.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
 
@@ -42,6 +43,8 @@ export interface BuilderSession {
    */
   onGenerateBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
   onWriteBundle: () => Promise<void>
+  /** Releases what a watcher keeps between builds. */
+  onCloseWatcher: () => Promise<void>
 }
 
 const ESM_FORMATS = new Set(['es', 'esm', 'module'])
@@ -133,16 +136,13 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userNeverBundle = config.deps?.neverBundle as Array<string | RegExp> | string | RegExp | undefined
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
+  const compilerOptions = { paths: plan.declarationPaths }
+  const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, watch: () => watch })
   const dts = {
     tsconfig: plan.declarationTsconfig,
-    generator: plan.isolatedDeclarations ? 'oxc' : 'tsc',
-    // `eager` puts every file of the tsconfig in the program, so ambient declarations such
-    // as `.nuxt/nuxt.d.ts` apply and inferred types can be named by their package.
-    // TODO: allow the parallel worker while watching once https://github.com/sxzz/rolldown-plugin-dts/pull/365 is released.
-    // The worker inherits stdin, which tsdown reads while watching, and on Windows it then blocks at startup.
-    tsc: { eager: true, parallel: !config.watch },
-    compilerOptions: { paths: plan.declarationPaths },
-  } as const
+    generator: entryDeclarations ?? 'oxc' as const,
+    compilerOptions,
+  }
 
   Object.assign(config, {
     entry: plan.entries,
@@ -232,6 +232,9 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       else {
         failed = false
       }
+    },
+    async onCloseWatcher() {
+      await entryDeclarations?.close()
     },
     async onGenerateBundle(bundle) {
       const missing = Object.keys(plan.entries).map(name => `${name}.mjs`).filter((fileName) => {

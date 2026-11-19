@@ -3,6 +3,9 @@
   "ignore": [
     "test/__snapshots__/**"
   ],
+  "ignoreDependencies": [
+    "rolldown-plugin-dts"
+  ],
   "workspaces": {
     "example": {
       "entry": [
