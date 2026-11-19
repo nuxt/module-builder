@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
@@ -11,6 +12,8 @@ import type { PackageJson } from '../src/utils.ts'
 import { builderImport, exists, fixture, read, repoRoot, run, succeed, tsdown, tsdownBin, waitFor, watch } from './utils.ts'
 
 const PLUGIN = `export default {\n  plugins: [builder()],\n}\n`
+const BUILD_STARTED = 'Watched build started'
+const WATCHED_PLUGIN = `export default {\n  plugins: [\n    builder(),\n    { name: 'watched-builds', buildStart() { console.log('${BUILD_STARTED}') }, watchChange(id) { console.log('Watched change: ' + id) } },\n  ],\n}\n`
 const tsdownApi = JSON.stringify(pathToFileURL(join(repoRoot, 'node_modules/tsdown/dist/index.mjs')).href)
 const withoutConfig = { config: false, pkg: ({ build: _, ...pkg }: PackageJson) => pkg } as const
 const sizeRows = (output: string) => [...output.matchAll(/(dist\/(?:module\.mjs|runtime\/))\s[^\n]*types/g)].map(match => match[1]).sort()
@@ -28,6 +31,17 @@ describe.concurrent('tsdown --watch', () => {
     let dir: string
     let watcher: ReturnType<typeof watch>
     const dist = (file: string) => join(dir, 'dist', file)
+    const builds = (from = 0) => watcher.output().slice(from).split(BUILD_STARTED).slice(1)
+    const changed = (from: number) => [...new Set([...watcher.output().slice(from).matchAll(/Watched change: ([^\n]+)/g)].map(match => relative(dir, match[1]!.trim())))]
+    const settled = async () => {
+      let started = -1
+      await waitFor(() => {
+        const count = builds().length
+        const idle = count === started && count === (watcher.output().match(/Rebuilt in|Build failed with/g)?.length ?? 0)
+        started = count
+        return idle
+      })
+    }
     let previous = Promise.resolve()
     const finished: Array<() => void> = []
     const inOrder = (test: () => Promise<void>) => {
@@ -43,13 +57,13 @@ describe.concurrent('tsdown --watch', () => {
             finished[index]!()
           }
         })
-        return prior.then(test).finally(done)
+        return prior.then(settled).then(test).finally(done)
       }
     }
 
     beforeAll(async () => {
       dir = await fixture('.temp-watch/module', {
-        config: PLUGIN,
+        config: WATCHED_PLUGIN,
         module: source => `import { moduleName } from './runtime/name.ts'\n${source.replace(`name: 'my-module'`, 'name: moduleName')}`,
         files: {
           'src/runtime/name.ts': `export const moduleName: string = 'from-runtime'\n`,
@@ -71,26 +85,24 @@ describe.concurrent('tsdown --watch', () => {
     })
 
     it('should report the size of each entry and runtime directory once', inOrder(async () => {
-      await waitFor(async () => sizeRows(watcher.output()).length >= 2 && exists(dist('types.d.mts')) && exists(dist('module.json')))
-      await delay(1000)
-      expect(sizeRows(watcher.output())).toEqual(['dist/module.mjs', 'dist/runtime/'])
+      expect(builds().map(build => sizeRows(build))).toEqual([['dist/module.mjs', 'dist/runtime/']])
       expect(JSON.parse(await read(dist('module.json'))).name).toBe('from-runtime')
     }))
 
     it('should rewrite `module.json` when a file the module entry imports changes', inOrder(async () => {
-      await writeFile(join(dir, 'src/runtime/name.ts'), `export const moduleName: string = 'changed-runtime'\n`)
+      writeFileSync(join(dir, 'src/runtime/name.ts'), `export const moduleName: string = 'changed-runtime'\n`)
       await waitFor(async () => JSON.parse(await read(dist('module.json'))).name === 'changed-runtime')
     }))
 
     it('should rebuild when a file is added to the runtime directory', inOrder(async () => {
       await mkdir(join(dir, 'src/runtime/utils/nested'), { recursive: true })
-      await writeFile(join(dir, 'src/runtime/utils/nested/added.ts'), `export const added: string = 'added'\n`)
+      writeFileSync(join(dir, 'src/runtime/utils/nested/added.ts'), `export const added: string = 'added'\n`)
       await waitFor(() => exists(dist('runtime/utils/nested/added.js')) && exists(dist('runtime/utils/nested/added.d.ts')))
     }))
 
     it('should compile JSX in a server runtime file added', inOrder(async () => {
       await mkdir(join(dir, 'src/runtime/server'), { recursive: true })
-      await writeFile(join(dir, 'src/runtime/server/render.tsx'), `export const render = (): unknown => <p>hi</p>\n`)
+      writeFileSync(join(dir, 'src/runtime/server/render.tsx'), `export const render = (): unknown => <p>hi</p>\n`)
       await waitFor(() => exists(dist('runtime/server/render.js')) || exists(dist('runtime/server/render.jsx')))
       expect(exists(dist('runtime/server/render.jsx'))).toBe(false)
       expect(await read(dist('runtime/server/render.js'))).toContain('vue/jsx-runtime')
@@ -98,7 +110,7 @@ describe.concurrent('tsdown --watch', () => {
 
     it('should rebuild when a file outside the runtime directory that a runtime file imports changes', inOrder(async () => {
       await waitFor(async () => (await read(dist('shared.js'))).includes('first'))
-      await writeFile(join(dir, 'src/shared.ts'), `export const shared: string = 'second'\n`)
+      writeFileSync(join(dir, 'src/shared.ts'), `export const shared: string = 'second'\n`)
       await waitFor(async () => (await read(dist('shared.js'))).includes('second'))
     }))
 
@@ -110,16 +122,18 @@ describe.concurrent('tsdown --watch', () => {
     }))
 
     it('should rewrite `#app` in an added declaration file', inOrder(async () => {
-      await writeFile(join(dir, 'src/runtime/composables/added.d.ts'), `import type { NuxtApp } from '#app'\nexport type Added = NuxtApp\n`)
+      writeFileSync(join(dir, 'src/runtime/composables/added.d.ts'), `import type { NuxtApp } from '#app'\nexport type Added = NuxtApp\n`)
       await waitFor(async () => exists(dist('runtime/composables/added.d.ts')) && (await read(dist('runtime/composables/added.d.ts'))).includes(`from 'nuxt/app'`))
     }))
 
-    it('should rewrite `types.d.mts` and report sizes once when the module entry changes', inOrder(async () => {
+    it('should rewrite `types.d.mts` when the module entry changes, and report sizes once per rebuild', inOrder(async () => {
       const seen = watcher.output().length
-      await writeFile(join(dir, 'src/module.ts'), `${await read(dir, 'src/module.ts')}\nexport const rebuiltMarker: string = 'rebuilt'\n`)
-      await waitFor(async () => (await read(dist('types.d.mts'))).includes('rebuiltMarker') && sizeRows(watcher.output().slice(seen)).length >= 2)
-      await delay(1000)
-      expect(sizeRows(watcher.output().slice(seen))).toEqual(['dist/module.mjs', 'dist/runtime/'])
+      writeFileSync(join(dir, 'src/module.ts'), `${await read(dir, 'src/module.ts')}\nexport const rebuiltMarker: string = 'rebuilt'\n`)
+      await waitFor(async () => (await read(dist('types.d.mts'))).includes('rebuiltMarker'))
+      await settled()
+      expect(changed(seen)).toEqual(['src/module.ts'])
+      const rebuilt = builds(seen).filter(build => /Rebuilt in/.test(build))
+      expect(rebuilt.map(build => sizeRows(build))).toEqual(rebuilt.map(() => ['dist/module.mjs', 'dist/runtime/']))
       expect(JSON.parse(await read(dist('module.json'))).name).toBe('changed-runtime')
     }))
 
@@ -132,11 +146,11 @@ describe.concurrent('tsdown --watch', () => {
         const source = await read(dir, file)
         const before = await Promise.all(files.map(output => read(output)))
         const seen = watcher.output().length
-        await writeFile(join(dir, file), `${source}\nexport const broken = (\n`)
+        writeFileSync(join(dir, file), `${source}\nexport const broken = (\n`)
         await waitFor(() => /error/i.test(watcher.output().slice(seen)))
         await delay(1000)
         expect(await Promise.all(files.map(output => read(output)))).toEqual(before)
-        await writeFile(join(dir, file), `${source}\nexport const recoveredMarker: string = 'recovered'\n`)
+        writeFileSync(join(dir, file), `${source}\nexport const recoveredMarker: string = 'recovered'\n`)
         await waitFor(async () => (await read(dist(recovered))).includes('recoveredMarker'))
       }))
     }
@@ -146,12 +160,12 @@ describe.concurrent('tsdown --watch', () => {
       const source = await read(file)
       const before = await read(dist('runtime/components/TestMeSetup.d.vue.ts'))
       let seen = watcher.output().length
-      await writeFile(file, source.replace('defineProps<{ count: number }>()', 'defineProps<{ count: number }>(\n'))
+      writeFileSync(file, source.replace('defineProps<{ count: number }>()', 'defineProps<{ count: number }>(\n'))
       await waitFor(() => /error/i.test(watcher.output().slice(seen)))
       await delay(1000)
       expect(await read(dist('runtime/components/TestMeSetup.d.vue.ts'))).toBe(before)
       seen = watcher.output().length
-      await writeFile(file, source.replace('count: number', 'count: number, recovered?: boolean'))
+      writeFileSync(file, source.replace('count: number', 'count: number, recovered?: boolean'))
       await waitFor(async () => (await read(dist('runtime/components/TestMeSetup.d.vue.ts'))).includes('recovered') && /Rebuilt in/.test(watcher.output().slice(seen)))
     }))
 
@@ -233,7 +247,7 @@ describe.concurrent('tsdown --watch', () => {
       await waitFor(() => rebuilt ? rebuilt.test(watcher.output().slice(seen).replaceAll('\\', '/')) : rebuilds() > count)
       return changes(before, await outputs(distDir))
     }
-    const edit = (file: string, from: string, to: string) => rebuild(async () => writeFile(join(dir, file), (await read(dir, file)).replace(from, to)), file)
+    const edit = (file: string, from: string, to: string) => rebuild(async () => writeFileSync(join(dir, file), (await read(dir, file)).replace(from, to)), file)
     try {
       await waitFor(() => rebuilds() > 0 && exists(distDir, 'module.json') && exists(distDir, 'types.d.mts'))
       expect(await read(distDir, 'user.txt')).toBe('user asset\n')
@@ -250,10 +264,10 @@ describe.concurrent('tsdown --watch', () => {
       const plugin = await read(dir, 'src/runtime/plugins/plugin.ts')
       const failures = () => watcher.output().match(/Failed to transpile/g)?.length ?? 0
       const failed = failures()
-      await writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), `${plugin}\nexport const broken: = 1\n`)
+      writeFileSync(join(dir, 'src/runtime/plugins/plugin.ts'), `${plugin}\nexport const broken: = 1\n`)
       await waitFor(() => failures() > failed)
       expect(changes(before, await outputs(distDir))).toEqual({ changed: [], added: [], removed: [] })
-      expect(await rebuild(() => writeFile(join(dir, 'src/runtime/plugins/plugin.ts'), plugin), 'src/runtime/plugins/plugin.ts')).toEqual({ changed: [], added: [], removed: [] })
+      expect(await rebuild(async () => writeFileSync(join(dir, 'src/runtime/plugins/plugin.ts'), plugin), 'src/runtime/plugins/plugin.ts')).toEqual({ changed: [], added: [], removed: [] })
       expect([...(await outputs(distDir)).entries()].map(([file, { hash }]) => [file, hash])).toEqual([...before.entries()].map(([file, { hash }]) => [file, hash]))
     }
     finally {
