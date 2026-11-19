@@ -925,6 +925,8 @@ While `nuxt dev playground` runs, run `tsdown --watch` next to it. `tsdown --wat
 pnpm dlx @arethetypeswrong/cli my-module-1.0.0.tgz --profile esm-only --format json | jq -r '.analysis.problems[] | select(.kind == "InternalResolutionError") | "\(.resolutionOption) \(.moduleSpecifier) \(.fileName)"' | sort -u
 ```
 
+An app resolves these aliases in its app context only. Its `nuxt.config.ts` context also reads `dist/types.d.mts` and `dist/module.d.mts`, for the module's options, and there an alias that doesn't resolve is typed `any`, without an error. Check the files that the module's options type reaches, such as a runtime file it takes a type from: a type there that relies on `#app`, `#imports` or `#build/*` belongs in a file that doesn't import them, as described for the playground's `nuxt.config.ts` context in [Source exports](#source-exports).
+
 Then check the package with the rule ignored:
 
 ```bash
