@@ -41,6 +41,7 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
   const options: ts.CompilerOptions = {
     ...parsed?.options,
     allowJs: true,
+    allowImportingTsExtensions: true,
     paths: declaration.paths,
     pathsBasePath: undefined,
     declaration: true,

@@ -584,7 +584,11 @@ export type { Kit } from './kit'
   })
 
   dirs.nitroDir = await fixture('.temp-cli/nitro-dir', {
+    remove: ['src/runtime/components'],
     files: {
+      'src/kit/gen.ts': `import type { Helper } from './helper.ts'\nimport { helper } from './helper.ts'\n\nexport const gen = (): Helper => helper()\n`,
+      'src/kit/helper.ts': `export type Helper = string\nexport const helper = (): Helper => 'helper'\n`,
+      'src/runtime/composables/useGen.ts': `import type { gen } from '../../kit/gen.ts'\n\nexport const useGen = (): ReturnType<typeof gen> => 'gen'\n`,
       'src/runtime/nitro/plugin.ts': `export const title = (): string => document.title\n`,
       'tsconfig.nitro.json': JSON.stringify({
         extends: './.nuxt/tsconfig.server.json',
@@ -1497,6 +1501,11 @@ describe('prepare', () => {
     expect(expectFailed('nitroDir:typecheck')).toContain(error)
     expect(JSON.parse(await read(dirs.nitroDir!, '.nuxt/tsconfig.app.json')).exclude).toContain('../src/runtime/nitro')
     expect(await read(dirs.nitroDir!, 'dist/runtime/nitro/plugin.d.ts')).toContain('export declare const title: () => string;')
+  })
+
+  it('should not report `.ts` imports in module code that a runtime file imports, and keep their declarations', async () => {
+    expect(expectBuilt('nitroDir')).not.toContain('TS5097')
+    expect(await read(dirs.nitroDir!, 'dist/kit/gen.d.ts')).toBe(`import type { Helper } from './helper.js';\nexport declare const gen: () => Helper;\n`)
   })
 
   it('should explain a tsconfig above the module that cannot be read', () => {
