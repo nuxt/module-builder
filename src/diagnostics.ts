@@ -227,6 +227,11 @@ export const warningCodes = {
     fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./tsconfig.module.json\`, which extends \`./.nuxt/tsconfig.node.json\`, and \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
     docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#other-tsconfig-layouts',
   },
+  NUXT_MB_C0303: {
+    why: (p: { groups: Array<[path: string, files: number]> }): string => `No project that \`tsconfig.json\` references includes these TypeScript files, so \`vue-tsc -b\` does not type check them: ${p.groups.map(([path, files]) => path.endsWith('/') ? `\`${path}\` (${files} ${files === 1 ? 'file' : 'files'})` : `\`${path}\``).join(', ')}.`,
+    fix: 'Reference a tsconfig that includes them, such as a `tsconfig.test.json` for tests and config files, or add them to the `exclude` of `tsconfig.json`.',
+    docs: 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#tests-and-config-files',
+  },
 
   NUXT_MB_D0101: {
     why: (p: { file: string }): string => `\`${p.file}\` is deprecated. Its options are still applied.`,

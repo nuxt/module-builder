@@ -23,6 +23,13 @@ const REFERENCES = (node: string) => JSON.stringify({
   references: [node, './.nuxt/tsconfig.app.json', './.nuxt/tsconfig.server.json', './.nuxt/tsconfig.shared.json'].map(path => ({ path })),
 })
 
+const TEST_TSCONFIG = {
+  extends: './.nuxt/tsconfig.node.json',
+  compilerOptions: { tsBuildInfoFile: './.nuxt/tsconfig.test.tsbuildinfo' },
+  include: ['./.nuxt/nuxt.d.ts', './.nuxt/nuxt.node.d.ts', './test', './*.config.*'],
+  exclude: ['./test/nuxt', './test/fixtures'],
+}
+
 const annotate = (source: string) => [
   `import type { NuxtModule } from '@nuxt/schema'`,
   source.replace(/export default defineNuxtModule(<ModuleOptions>)?\(\{/, (_, options = '') => `const module: NuxtModule${options} = defineNuxtModule${options}({`),
@@ -555,6 +562,27 @@ export type { Kit } from './kit'
     },
   })
 
+  dirs.unchecked = await fixture('.temp-cli/unchecked', {
+    remove: ['tsdown.config.ts'],
+    files: {
+      'tsdown.config.mjs': `${builderImport}\nexport default { plugins: [builder()] }\n`,
+      'eslint.config.ts': `export default []\n`,
+      'tsconfig.json': source => JSON.stringify({ ...JSON.parse(source), exclude: ['dist', 'node_modules', 'playground', 'scripts'] }),
+      'test/unit.ts': `import { helper } from './utils.ts'\n\nexport const result: string = helper()\n`,
+      'test/utils.ts': `export const helper = (): string => 'helper'\n// @ts-expect-error a string is not a number\nexport const count: number = 'one'\n`,
+      'test/nuxt/app.ts': `export const app: string = 'app'\n`,
+      'test/fixtures/basic/nuxt.config.ts': `export default defineNuxtConfig({ modules: ['../../../src/module'] })\n`,
+      'test/fixtures/basic/app.vue': `<script setup lang="ts">\nconst count = ref(1)\n</script>\n\n<template>\n  <div>{{ count }}</div>\n</template>\n`,
+      'vitest.config.ts': `export default {}\n`,
+      'prettier.config.mjs': `export default {}\n`,
+      'scripts/release.ts': `export {}\n`,
+      'src/helpers/format.ts': `export const format = (value: string): string => value\n`,
+      'test/globals.d.ts': `declare const __TEST__: boolean\n`,
+      'docs/example.ts': `export {}\n`,
+      'playground/extra.ts': `export {}\n`,
+    },
+  })
+
   dirs.noTsconfig = await fixture('.temp-cli/monorepo/mod', {
     from,
     remove: ['tsconfig.json'],
@@ -653,6 +681,22 @@ export type { Kit } from './kit'
       step('ownPackageIsolated:app', listed(dirs.ownPackageIsolated!, '.nuxt/tsconfig.app.json')),
     ])),
     step('ownPackageError', cli(['prepare', dirs.ownPackageError])),
+    inOrder(
+      ['unchecked:ci', () => cli(['prepare', dirs.unchecked!], { CI: '1' })],
+      ['unchecked', () => cli(['prepare', dirs.unchecked!], { CI: '' })],
+    ).then(async (ran) => {
+      if (!ran) {
+        return
+      }
+      const tsconfig = JSON.parse(await read(dirs.unchecked!, 'tsconfig.json'))
+      await writeFile(join(dirs.unchecked!, 'tsconfig.json'), JSON.stringify({ ...tsconfig, references: [...tsconfig.references, { path: './tsconfig.test.json' }] }))
+      await writeFile(join(dirs.unchecked!, 'tsconfig.test.json'), JSON.stringify(TEST_TSCONFIG))
+      await inOrder(
+        ['unchecked:test', () => cli(['prepare', dirs.unchecked!], { CI: '' })],
+        ['unchecked:typecheck', () => run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.unchecked })],
+        ['unchecked:files', () => listed(dirs.unchecked!, 'tsconfig.test.json')],
+      )
+    }),
     step('noTsconfig', cli(['prepare', dirs.noTsconfig])),
     step('legacyPrepare', cli(['prepare', dirs.legacyPrepare])).then(() => Promise.all([
       step('legacyPrepare:typecheck', run(bin('vue-tsc'), ['--noEmit'], { cwd: dirs.legacyPrepare })),
@@ -1408,6 +1452,23 @@ describe('prepare', () => {
   it('should name a dependency by its package in the declarations of module code when only a runtime file imports it', async () => {
     expect(output('ownPackageError')).not.toContain('src/styles.ts')
     expect(await read(dirs.ownPackageError!, '.nuxt/module-builder/declarations/src/styles.d.ts')).toContain('import("fake-format").Format')
+  })
+
+  it('should list the TypeScript files that no referenced project includes, by directory, outside CI', () => {
+    expect(expectBuilt('unchecked:ci')).not.toContain('NUXT_MB_C0303')
+    const notice = expectBuilt('unchecked').split('\n').filter(line => line.includes('NUXT_MB_C0303'))
+    expect(notice).toHaveLength(1)
+    expect(notice[0]).toContain('[NUXT_MB_C0303] No project that `tsconfig.json` references includes these TypeScript files, so `vue-tsc -b` does not type check them: `eslint.config.ts`, `test/` (4 files), `vitest.config.ts`.')
+  })
+
+  it('should type check tests and config files with a `tsconfig.test.json` that extends the node tsconfig', () => {
+    expect(expectBuilt('unchecked:test')).not.toContain('NUXT_MB_C0303')
+    expect(expectBuilt('unchecked:typecheck')).toBe('')
+    const files = expectBuilt('unchecked:files').split('\n').map(file => file.trim())
+    for (const file of ['test/unit.ts', 'test/utils.ts', 'eslint.config.ts', 'vitest.config.ts']) {
+      expect(files, file).toContain(join(dirs.unchecked!, file))
+    }
+    expect(files.filter(file => file.includes('/test/nuxt/') || file.includes('/test/fixtures/'))).toEqual([])
   })
 
   it('should explain a tsconfig above the module that cannot be read', () => {

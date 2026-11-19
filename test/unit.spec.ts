@@ -561,6 +561,28 @@ describe('deprecation checks', () => {
     }
   })
 
+  it('should link the directories and tsconfig that the note about unchecked files names', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-unchecked-'))
+    await mkdir(join(root, 'test'))
+    await writeFile(join(root, 'tsconfig.json'), '{}')
+    await writeFile(join(root, 'vitest.config.ts'), '')
+    vi.stubEnv('FORCE_HYPERLINK', '1')
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    try {
+      warnings.NUXT_MB_C0303({ groups: [['test/', 2], ['vitest.config.ts', 1]], sources: [`${join(root, 'test')}/`, join(root, 'vitest.config.ts'), join(root, 'tsconfig.json')] }, { method: 'info' })
+      const message = String(info.mock.calls[0]![0])
+      const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
+      expect(message).toContain(link(pathToFileURL(join(root, 'test')).href, 'test/'))
+      expect(message).toContain(link(pathToFileURL(join(root, 'vitest.config.ts')).href, 'vitest.config.ts'))
+      expect(message).toContain(link(pathToFileURL(join(root, 'tsconfig.json')).href, 'tsconfig.json'))
+    }
+    finally {
+      info.mockRestore()
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('should dim the code, show inline code in cyan and link paths outside the module where the terminal supports it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'module-builder-styles-'))
     await mkdir(join(root, 'mod/.nuxt'), { recursive: true })

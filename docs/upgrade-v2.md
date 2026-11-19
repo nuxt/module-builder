@@ -727,7 +727,48 @@ Auto-imports are off in the module's own `.nuxt`, so runtime code imports what i
 - Module code also gets `.nuxt/module-builder/types.d.mts`, so the augmentations for the `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig` and `ModulePublicRuntimeConfig` that `src/module.ts` exports apply to it, as they do in an app that installs the module.
 - In the app, server and shared tsconfigs, the module's own package name resolves to declarations of module code that `prepare` writes into `.nuxt/module-builder/declarations`, with a `types.d.mts` that has the same augmentations, and the subpath of each other bundled entry resolves to that entry's declarations. A type template or a runtime file that imports from the module's own name then gets the types an app that installs the module gets, without type checking module code in that part. `prepare` writes the declarations of the module code that those of the bundled entries refer to. A declaration error there, such as an export whose type can't be named, is a warning. Fix it as described in [Portability errors](#portability-errors).
 
-The app's tsconfig also includes `test/nuxt` and `tests/nuxt`, as an app's does, unless the root's `exclude` leaves them out. Other files, such as the other tests and fixtures, are in none of them. Reference a tsconfig of your own to type check them.
+The app's tsconfig also includes `test/nuxt` and `tests/nuxt`, as an app's does, unless the root's `exclude` leaves them out. Other files, such as the other tests, fixtures and config files, are in none of them. See [Tests and config files](#tests-and-config-files).
+
+### Tests and config files
+
+Tests outside `test/nuxt` and `tests/nuxt`, fixtures, and config files in the module root, such as `vitest.config.ts` and `tsdown.config.ts`, are in none of the generated tsconfigs, so `vue-tsc -b` doesn't type check them. Outside CI, `nuxt-module-build prepare` lists them in a note, `NUXT_MB_C0303`, with the number of files in each directory. The note leaves out `src`, whose files the parts include or module code imports, and declaration files. It also leaves out the output directory, `node_modules`, the `playground*`, `docs`, `example` and `examples` directories, the root's `exclude`, and the files that the `exclude` of a referenced tsconfig of your own lists.
+
+Tests run in Node, so type check them with a tsconfig that extends the generated node tsconfig, and reference it from the root:
+
+```json
+// tsconfig.test.json
+{
+  "extends": "./.nuxt/tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./.nuxt/tsconfig.test.tsbuildinfo"
+  },
+  "include": ["./.nuxt/nuxt.d.ts", "./.nuxt/nuxt.node.d.ts", "./test", "./*.config.*"],
+  "exclude": ["./test/nuxt", "./test/fixtures"]
+}
+```
+
+```json
+// tsconfig.json
+{
+  "files": [],
+  "exclude": ["dist", "node_modules", "playground"],
+  "references": [
+    { "path": "./tsconfig.module.json" },
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./tsconfig.test.json" }
+  ]
+}
+```
+
+- Its `include` replaces the one it extends, so it lists `.nuxt/nuxt.d.ts` and `.nuxt/nuxt.node.d.ts`, the declarations that module code is checked with. With a `tests` directory, write `./tests` and `./tests/nuxt`.
+- Tests that import module code or runtime files type check those files with these options as well. Tests that use `@nuxt/test-utils/e2e`, or mount components with `@vue/test-utils`, type check here.
+- `exclude` leaves out `test/nuxt`, which the app's tsconfig checks with the app's types. Tests that import from `#imports` or use `mountSuspended` run in the Nuxt environment, so they go in `test/nuxt`. When the root's `exclude` leaves out `test`, the app's tsconfig doesn't include `test/nuxt`, so remove `./test/nuxt` from this `exclude`.
+- A test runner's globals, such as `"types": ["vitest/globals"]`, go in this tsconfig's `compilerOptions`, rather than in the root's.
+- `exclude` also leaves out `test/fixtures`. A file there that a test imports, such as a helper, is type checked all the same.
+
+A fixture that is a Nuxt app relies on the `.nuxt` that Nuxt generates for it, with its auto-imports and the other modules it installs, so none of the module's tsconfigs type check it. Give it a `tsconfig.json` like a playground's and type check it as one, with `nuxt typecheck test/fixtures/basic`. It reads module code as a playground does, so it can report the errors in [Source exports](#source-exports).
 
 ### Type checking each part
 
@@ -743,7 +784,7 @@ Each part is type checked on its own, with the files it imports and the types th
 - **Errors in code that relies on `.nuxt`'s declarations**. A `tsconfig.json` whose own `include` replaces the one it extends, such as `"include": ["src"]`, leaves out `.nuxt/nuxt.d.ts` and the declarations it references, such as the module's runtime config, typed routes and type templates. Each part here has them, so code that relies on them is checked against them. Fix what they report.
 - **Module code that a runtime file imports by relative path** (TS2339 on `nuxt.options`, TS2307 for `#app`). A runtime file that imports from `src/module.ts` or another file of module code by relative path, such as `import type { ImageProvider } from '../../module'`, brings that file into the type check of its own part. The server and shared parts don't have the module's augmentations, so `nuxt.options.<key>` from one of them fails there, and so do the imports that module code makes. Import the type through the module's own package name instead, `import type { ImageProvider } from 'my-module'`, which these parts resolve to the declarations of module code that `prepare` writes. Or import it from a file that only declares types.
 - **Vite's module types not found** (TS2307 for an import such as `./worker.ts?worker&url` or `./styles.css?inline`, TS2882 for `import './styles.css'`). No part has the types of `vite/client`, as in an app, where Nuxt only types `import.meta`. Add `vite` to the module's `devDependencies`, and a `.d.ts` in the module root, such as `env.d.ts`, with `/// <reference types="vite/client" />`. It applies to every part, as described in [Generated tsconfigs](#generated-tsconfigs).
-- **Errors in tests under `test/nuxt`** (TS2593 for `describe` and `it`, and other errors in tests). The app's tsconfig includes `test/nuxt` and `tests/nuxt`, so these tests are checked with the app's types and without a test runner's globals. Import `describe` and `it` from `vitest`, or leave the directory out with the root's `exclude`, such as `"exclude": ["dist", "node_modules", "playground", "test"]` (or `"tests"`), run `nuxt-module-build prepare` again, and type check tests with a tsconfig of your own.
+- **Errors in tests under `test/nuxt`** (TS2593 for `describe` and `it`, and other errors in tests). The app's tsconfig includes `test/nuxt` and `tests/nuxt`, so these tests are checked with the app's types and without a test runner's globals. Import `describe` and `it` from `vitest`, or leave the directory out with the root's `exclude`, such as `"exclude": ["dist", "node_modules", "playground", "test"]` (or `"tests"`), run `nuxt-module-build prepare` again, and type check tests as described in [Tests and config files](#tests-and-config-files).
 - **Errors in a template that the module generates** (such as TS7006 in a `.ts` template). A template with a `.ts` file name that a runtime file imports, through an alias or `#build`, is type checked in that file's part, with its options. Type the code that the template generates, such as the parameters of its functions.
 - **Excessive stack depth** (TS2321). TypeScript stops comparing two deeply nested types once the comparison is too deep, and which comparisons get that far depends on the types in the program. Give the value an explicit type, so that its inferred type isn't compared.
 - **An unused `@ts-expect-error`** (TS2578). The directive suppressed an error that a single-program check reported, and the part that checks the file now has no error there. Remove the directive. If another check of the same file still reports the error, such as the playground's check with source exports, use `// @ts-ignore` on that line instead.
@@ -1004,6 +1045,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Replace `tsconfig.json` with the root shown there: `"files": []`, the `references` to `./tsconfig.module.json` and to `./.nuxt/tsconfig.app.json`, `tsconfig.server.json` and `tsconfig.shared.json`, and the old `exclude`.
    - Keep the old `compilerOptions` in the root, apart from `types` that only tests or other tools use, such as `"vitest/globals"`: `prepare` copies the root's options, `types` included, into every part. Path options such as `paths` and `baseUrl` aren't copied: move an alias from `paths` into the `imports` of `package.json`, as described in [Source exports](#source-exports). Move `erasableSyntaxOnly` and any other option for module code only into `tsconfig.module.json`.
    - Create `tsconfig.module.json` as shown there, with `"erasableSyntaxOnly": true` and `tsBuildInfoFile`.
+   - If the module has tests outside `test/nuxt`, or TypeScript config files in its root such as `vitest.config.ts` or `tsdown.config.ts`, create `tsconfig.test.json` and reference it from the root, as shown in [Tests and config files](#tests-and-config-files). The other tsconfigs don't include these files, so without it they aren't type checked. `nuxt-module-build prepare` lists the files that no referenced tsconfig includes.
    - Drop the old `include`. The generated tsconfigs cover `src`, and the module's `.d.ts` files are added to them, as described in [Generated tsconfigs](#generated-tsconfigs). A `.d.ts` that an `include` named in an excluded directory, such as `test/`, applies to none of them: move it into `src` or the module root.
    - In a monorepo, both files are in the module's directory, as created in step 5 and described in [Other tsconfig layouts](#other-tsconfig-layouts).
    - In the type-check script, replace the module's own `vue-tsc --noEmit` or `tsc --noEmit` with `vue-tsc -b --noEmit`, and keep the rest of the script. `vue-tsc --noEmit && nuxt typecheck playground` becomes `vue-tsc -b --noEmit && nuxt typecheck playground`. Replace a `nuxt typecheck` of the module root, without a directory, the same way: it regenerates `.nuxt` as an app's. Without a type-check script, add `"test:types": "vue-tsc -b --noEmit"`.

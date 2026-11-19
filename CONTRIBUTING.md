@@ -35,7 +35,7 @@ The package has three entry points:
 |---|---|
 | `src/commands/` | The CLI subcommands, plus `config-file.ts`, which finds the module's tsdown config and reads the `builder()` options from it. |
 | `src/tsdown/` | The `builder()` plugin. `plugin.ts` creates it, and `setup.ts` turns the tsdown config into a build. It adds the plugins, hooks into tsdown's lifecycle, and handles watch mode. `externals.ts`, `unchanged.ts` and `report.ts` are the plugins and helpers that `setup.ts` uses. `build.ts` runs tsdown for `nuxt-module-build build`. |
-| `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations. |
+| `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations.<br>`unchecked.ts` finds the TypeScript files that no tsconfig the module references includes, for `prepare`'s note. |
 | `src/transpile/` | `transpileDir()`, the internal rolldown plugin that transpiles a directory file by file. It transforms scripts with oxc and `.vue` files with `vue.ts`, compiles stylesheets with `stylesheets.ts`, emits declarations with `declarations.ts`, rewrites import specifiers with `specifiers.ts`, and resolves the tsconfig of each file with `tsconfig.ts`. It imports nothing outside the directory but `src/utils.ts`, so it can be extracted later. |
 | `src/legacy/` | Compatibility with v1 and unbuild (see [Legacy code](#legacy-code)). |
 | `src/diagnostics.ts` | The codes of every error and warning the builder reports (see [Diagnostics](#diagnostics)). |
@@ -89,6 +89,8 @@ That writes `.nuxt`, including:
 - the tsconfigs of each context;
 - `.nuxt/module-builder/types.d.mts`, which source exports point at;
 - the declarations that resolve the module's own package name inside its type checks.
+
+With a root tsconfig that has `references`, it then lists the module's TypeScript files that none of the referenced projects include, once per process and outside CI.
 
 ### Module code loads with Node
 
