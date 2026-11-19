@@ -23,17 +23,21 @@ strategy:
 `tsdown` is a peer dependency, so you install it alongside `@nuxt/module-builder`. Install both before you change `build.config.ts`: the `defineBuildConfig` export that the next section imports only exists in v2.
 
 ```bash
-pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7
+pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 tsdown@^0.23.7
 ```
 
 ```json
 {
   "devDependencies": {
-    "@nuxt/module-builder": "^2.0.0",
+    "@nuxt/module-builder": "^2.0.0-alpha.0",
     "tsdown": "^0.23.7"
   }
 }
 ```
+
+With `--ignore-workspace-root-check`, `pnpm add` installs into the root of a pnpm workspace, where it otherwise fails with `ERR_PNPM_ADDING_TO_ROOT`. In a single package, the flag has no effect. Yarn 1 takes `-W` for the same purpose, and npm, Yarn 2 and later, and bun need no flag.
+
+With pnpm's `minimumReleaseAge`, a dependency of `@nuxt/module-builder` published shortly before it fails the install with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`: add the `<package>@<version>` that the error names to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`.
 
 Then remove the packages that you don't need any more (see [Removed dependencies](#removed-dependencies)).
 
@@ -659,7 +663,7 @@ Stylesheets under `src/runtime` are processed with lightningcss instead of postc
 - `.scss` and `.sass` files are compiled with your module's own `sass` or `sass-embedded`, written as `.css`, and not minified. Partials (`_name.scss`) aren't emitted. Install one of the two compilers when the runtime contains Sass:
 
   ```bash
-  pnpm add -D sass
+  pnpm add -D --ignore-workspace-root-check sass
   ```
 
 - An import of a compiled Sass file in a runtime script points at the emitted file: `import './x.scss'` becomes `import './x.css'`. Other stylesheet imports are kept as written.
@@ -1021,7 +1025,7 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
 
 1. Use Node 22.18+, 24.11+, or 26+ locally and in CI.
 2. Install v2 and tsdown, before step 3:
-   - Run `pnpm add -D @nuxt/module-builder@^2.0.0 tsdown@^0.23.7`.
+   - Run `pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 tsdown@^0.23.7`. See [Install tsdown](#install-tsdown) for the flag, and for an install that `minimumReleaseAge` blocks.
    - If `unbuild` is in `devDependencies`, run `pnpm remove unbuild`. Also remove `mkdist` and `jiti`, if they only served the builder.
 3. Move the build options into a `tsdown.config.ts`:
    - Move the options of `build.config.ts`, and of the `build` or `unbuild` field of `package.json`, into `builder()`. Include directory entries such as `{ input: 'src/x/', outDir: 'dist/x' }`. See [Moving from build.config.ts](#moving-from-buildconfigts).
@@ -1049,11 +1053,11 @@ Follow these steps in order to upgrade a module. Where a step says `pnpm`, use y
    - Drop the old `include`. The generated tsconfigs cover `src`, and the module's `.d.ts` files are added to them, as described in [Generated tsconfigs](#generated-tsconfigs). A `.d.ts` that an `include` named in an excluded directory, such as `test/`, applies to none of them: move it into `src` or the module root.
    - In a monorepo, both files are in the module's directory, as created in step 5 and described in [Other tsconfig layouts](#other-tsconfig-layouts).
    - In the type-check script, replace the module's own `vue-tsc --noEmit` or `tsc --noEmit` with `vue-tsc -b --noEmit`, and keep the rest of the script. `vue-tsc --noEmit && nuxt typecheck playground` becomes `vue-tsc -b --noEmit && nuxt typecheck playground`. Replace a `nuxt typecheck` of the module root, without a directory, the same way: it regenerates `.nuxt` as an app's. Without a type-check script, add `"test:types": "vue-tsc -b --noEmit"`.
-   - If `vue-tsc` isn't in `devDependencies`, run `pnpm add -D vue-tsc`. At the root of a pnpm workspace, add `-w`: `pnpm add -D -w vue-tsc`.
+   - If `vue-tsc` isn't in `devDependencies`, run `pnpm add -D --ignore-workspace-root-check vue-tsc`.
    - Run `nuxt-module-build prepare` and the type-check script. It checks each part with the types that part has in an app, so it can report errors that a single-program check didn't. [Type checking each part](#type-checking-each-part) lists them, with their fixes.
 
    To keep a `tsconfig.json` that extends `./.nuxt/tsconfig.json`, set `erasableSyntaxOnly` in it instead, and keep `vue-tsc --noEmit`, as described in [Extending .nuxt/tsconfig.json](#extending-nuxttsconfigjson).
-7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D sass`.
+7. If the runtime contains `.scss` or `.sass` files, run `pnpm add -D --ignore-workspace-root-check sass`.
 8. Set up the scripts, and build. In every script that runs the builder, under any of its names (`nuxt-module-build`, `nuxt-build-module` or `nuxt build-module`, see [Commands](#commands)), change only the builder's commands, as shown in [Scripts](#scripts), and keep the others:
    - `nuxt-module-build build` becomes `tsdown`, in `prepack` and in any other script or CI workflow that runs it.
    - With pnpm or Yarn 4, point `package.json` at the module's sources, and the same fields in `publishConfig` at `dist`. See [Source exports](#source-exports). Remove `nuxt-module-build build --stub` from `dev:prepare`. A subpath that code outside Nuxt loads with Node, such as a Vite plugin at `my-module/vite` that a plain Vite app imports, keeps pointing at `dist`, as described in [Source exports](#source-exports): step 5 only checks the files that module code imports, so Node can fail on that subpath's source, with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, after every step passes.

@@ -64,7 +64,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
 1. Install `@nuxt/module-builder` and its peer dependencies:
 
    ```bash
-   pnpm add -D @nuxt/module-builder tsdown@^0.23.7 typescript nuxt
+   pnpm add -D @nuxt/module-builder@^2.0.0-alpha.0 tsdown@^0.23.7 typescript nuxt
    ```
 
 2. Create a `tsdown.config.ts` in the module root that uses the `builder()` plugin:

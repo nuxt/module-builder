@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
+import { version } from '../package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs, resolveBuild } from '../src/build/build.ts'
@@ -136,6 +137,28 @@ describe('upgrade guide', () => {
     const links = Object.entries({ ...errorCodes, ...warningCodes }).flatMap(([code, { docs }]) => docs ? [[code, docs] as const] : [])
     expect(links.length).toBeGreaterThan(0)
     expect(links.filter(([, docs]) => !docs.startsWith('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#') || !anchors.includes(docs.split('#')[1]!))).toEqual([])
+  })
+})
+
+describe('install commands in the docs', () => {
+  it('should install a range of `@nuxt/module-builder` that includes this version', async () => {
+    const docsDir = fileURLToPath(new URL('../docs', import.meta.url))
+    const files = [fileURLToPath(new URL('../README.md', import.meta.url)), ...(await readdir(docsDir)).filter(file => file.endsWith('.md')).map(file => join(docsDir, file))]
+    const ranges: Array<[file: string, range: string | undefined]> = []
+    for (const file of files) {
+      for (const line of (await readFile(file, 'utf8')).split('\n')) {
+        if (/\b(?:pnpm|npm|yarn|bun) (?:add|install|i)\b.*@nuxt\/module-builder\b/.test(line)) {
+          ranges.push([basename(file), line.match(/@nuxt\/module-builder@([^\s`]+)/)?.[1]])
+        }
+        const dependency = line.match(/"@nuxt\/module-builder": "([~^][^"]+)"/)?.[1]
+        if (dependency) {
+          ranges.push([basename(file), dependency])
+        }
+      }
+    }
+    expect(ranges.length).toBeGreaterThan(3)
+    const prerelease = version.includes('-')
+    expect(ranges.filter(([, range]) => !range || !satisfies(version, range) || range.includes('-') !== prerelease)).toEqual([])
   })
 })
 
