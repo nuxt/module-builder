@@ -392,7 +392,7 @@ class DirectoryBuild {
   }
 
   private program(tsconfig: TsConfigResult | undefined) {
-    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
+    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths, cache: 'directory-declarations' }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
   }
 
   /** The program shared by single-file components and TypeScript sources. */

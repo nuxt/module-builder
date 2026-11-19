@@ -24,6 +24,8 @@ import { exec } from 'tinyexec'
 import { runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
+import { contentCache } from '../src/transpile/cache.ts'
+import { createDeclarationProgram } from '../src/transpile/declarations.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
@@ -1671,5 +1673,85 @@ describe('build plan', () => {
     const plan = { cwd, entries: { module: './src/module.ts' }, directories: [{ srcDir: join(cwd, 'src/runtime'), outDir: join(cwd, 'dist/runtime'), ext: 'js' }] } as unknown as BuildPlan
     const { compiledJsx } = analyseSources(plan)
     expect([...compiledJsx].sort()).toEqual([join(cwd, 'src/module.ts'), join(cwd, 'src/runtime/server/handler.ts')])
+  })
+})
+
+describe('createDeclarationProgram', () => {
+  it('should reuse the declarations of a cached emit until a file its program read changes', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const tsconfig = join(cwd, 'tsconfig.json')
+    await writeFile(tsconfig, JSON.stringify({ compilerOptions: { strict: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true }, files: ['a.ts'] }))
+    await writeFile(join(cwd, 'a.ts'), `import { b } from './b'\n\nexport const a = { b }\n`)
+    await writeFile(join(cwd, 'b.ts'), `export const b = 1 as const\n`)
+    const emit = async () => {
+      const program = await createDeclarationProgram({ cwd, tsconfig: { path: tsconfig, config: parseTsconfig(tsconfig) }, paths: {}, cache: 'test' }, [join(cwd, 'a.ts')])
+      return (await program.emit([join(cwd, 'a.ts')])).declarations.get(join(cwd, 'a.ts'))
+    }
+    const results = join(cwd, 'node_modules/.cache/transpile-dir/results')
+    const written = async () => Promise.all((await readdir(results)).map(async file => (await stat(join(results, file))).mtimeMs))
+    expect(await emit()).toContain('b: 1;')
+    const first = await written()
+    expect(await emit()).toContain('b: 1;')
+    expect(await written()).toEqual(first)
+    await writeFile(join(cwd, 'b.ts'), `export const b = 2 as const\n`)
+    expect(await emit()).toContain('b: 2;')
+  })
+})
+
+describe('contentCache', () => {
+  const setup = async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-cache-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, 'src/lib'), { recursive: true })
+    await mkdir(join(cwd, 'node_modules/dep'), { recursive: true })
+    await writeFile(join(cwd, 'src/lib/a.ts'), 'export const a = 1\n')
+    await writeFile(join(cwd, 'node_modules/dep/package.json'), '{"version":"1.0.0"}')
+    await writeFile(join(cwd, 'node_modules/dep/index.d.ts'), 'export declare const dep: 1\n')
+    const inputs = new Map([[join(cwd, 'src/lib/a.ts'), 'export const a = 1\n'], [join(cwd, 'node_modules/dep/index.d.ts'), undefined]])
+    const cache = contentCache<string>(cwd, 'test', { version: 1 })
+    await cache.write('value', inputs)
+    return { cwd, cache }
+  }
+
+  it('should reuse a value while its inputs are unchanged, and keep values of other keys apart', async () => {
+    const { cwd, cache } = await setup()
+    expect(await cache.read()).toBe('value')
+    expect(await contentCache<string>(cwd, 'test', { version: 2 }).read()).toBeUndefined()
+  })
+
+  it('should not reuse a value once a source changes, a file that could change resolution appears, or a package changes', async () => {
+    for (const change of [
+      (cwd: string) => writeFile(join(cwd, 'src/lib/a.ts'), 'export const a = 2\n'),
+      (cwd: string) => writeFile(join(cwd, 'src/lib/b.ts'), 'export const b = 1\n'),
+      (cwd: string) => writeFile(join(cwd, 'src/lib.ts'), 'export const lib = 1\n'),
+      (cwd: string) => writeFile(join(cwd, 'src/lib/package.json'), '{"types":"./b.d.ts"}'),
+      (cwd: string) => writeFile(join(cwd, 'node_modules/dep/package.json'), '{"version":"1.0.1"}'),
+      (cwd: string) => writeFile(join(cwd, 'node_modules/dep/index.d.ts'), 'export declare const dep: "patched"\n'),
+      (cwd: string) => rm(join(cwd, 'src/lib/a.ts')),
+    ]) {
+      const { cwd, cache } = await setup()
+      await change(cwd)
+      expect(await cache.read()).toBeUndefined()
+    }
+  })
+
+  it('should count an entry it cannot read as missing', async () => {
+    const { cwd, cache } = await setup()
+    const results = join(cwd, 'node_modules/.cache/transpile-dir/results')
+    const [file] = await readdir(results)
+    for (const contents of ['{"manifest":', '{}', '{"value":1,"manifest":{"files":[]}}']) {
+      await writeFile(join(results, file!), contents)
+      expect(await cache.read()).toBeUndefined()
+    }
+  })
+
+  it('should record the text a computation read rather than what the file holds when the value is stored', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-cache-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await writeFile(join(cwd, 'a.ts'), 'export const a = 2\n')
+    const cache = contentCache<string>(cwd, 'test', {})
+    await cache.write('value', new Map([[join(cwd, 'a.ts'), 'export const a = 1\n']]))
+    expect(await cache.read()).toBeUndefined()
   })
 })

@@ -2,6 +2,7 @@ import type { TsConfigResult } from 'get-tsconfig'
 import { relative } from 'pathe'
 import type ts from 'typescript'
 
+import { contentCache } from './cache.ts'
 import { projectFiles, writeDeclarationPaths } from './tsconfig.ts'
 
 export interface DeclarationProgramOptions {
@@ -9,6 +10,8 @@ export interface DeclarationProgramOptions {
   tsconfig: TsConfigResult | undefined
   /** `paths` added to the tsconfig's. */
   paths: Record<string, string[]>
+  /** Keeps the results of each `emit` without errors under this name in the module's cache, see `contentCache`. */
+  cache?: string
 }
 
 interface DeclarationEmit {
@@ -31,7 +34,7 @@ export interface DeclarationProgram {
  * declarations apply and inferred types are named by package. The tsconfig's `references` are
  * left out, so files of referenced projects are read from source rather than from their output.
  */
-export async function createDeclarationProgram({ cwd, tsconfig, paths }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
+export async function createDeclarationProgram({ cwd, tsconfig, paths, cache }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const { default: ts } = await import('typescript')
   const classifier = import('vue-sfc-transformer/core')
   const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, configHost(ts)) : undefined
@@ -58,7 +61,7 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
   let program: ts.Program | undefined
   const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options })
 
-  return {
+  const declarationProgram: DeclarationProgram = {
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
       const program = createProgram()
@@ -98,6 +101,24 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
         ],
         warnings: [...new Set(formatDiagnostics(ts, warnings.filter(isError), cwd))],
       }
+    },
+  }
+  if (!cache) {
+    return declarationProgram
+  }
+  return {
+    ...declarationProgram,
+    async emit(files) {
+      const stored = contentCache<{ declarations: Array<[string, string]>, warnings: string[] }>(cwd, cache, { typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
+      const hit = await stored.read()
+      if (hit) {
+        return { declarations: new Map(hit.declarations), errors: [], warnings: hit.warnings }
+      }
+      const result = await declarationProgram.emit(files)
+      if (!result.errors.length) {
+        await stored.write({ declarations: [...result.declarations], warnings: result.warnings }, new Map(program!.getSourceFiles().map(file => [file.fileName, file.text])))
+      }
+      return result
     },
   }
 }

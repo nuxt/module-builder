@@ -3,6 +3,10 @@ import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import type { UserConfig } from 'tsdown'
 
+import builderPkg from '../../package.json' with { type: 'json' }
+import { contentCache } from '../transpile/cache.ts'
+import type { ContentCache } from '../transpile/cache.ts'
+
 /** The `Generator` interface of rolldown-plugin-dts. */
 export type DeclarationGenerator = Required<Omit<Extract<NonNullable<Extract<UserConfig['dts'], object>['generator']>, object>, 'addFile'>>
 
@@ -13,11 +17,13 @@ export interface EntryDeclarationOptions {
   /** The tsconfig and `compilerOptions` rolldown-plugin-dts is given. */
   tsconfig: string | false
   compilerOptions: Record<string, unknown>
+  /** Extra key for the cache, for inputs it cannot see. */
+  cacheVersion: string
   /** Whether the build is watched, which keeps the worker between builds. */
   watch: () => boolean
 }
 
-type Request = { type: 'emit', file: string } | { type: 'invalidate', file: string }
+type Request = { type: 'emit', file: string } | { type: 'invalidate', file: string } | { type: 'inputs' }
 
 type WorkerModules = Record<'dts' | 'tsc' | 'context' | 'typescript', string>
 
@@ -47,10 +53,19 @@ parentPort.on('message', ({ id, request }) => {
       }
       parentPort.postMessage({ id, result })
     }
-    else {
+    else if (request.type === 'invalidate') {
       invalidateContextFile(context, request.file)
       base = undefined
       parentPort.postMessage({ id })
+    }
+    else {
+      const files = new Map()
+      for (const program of context.programs) {
+        for (const file of program.getSourceFiles()) {
+          files.set(file.fileName, file.text)
+        }
+      }
+      parentPort.postMessage({ id, result: [...files] })
     }
   }
   catch (error) {
@@ -156,31 +171,85 @@ function workerModules(): WorkerModules {
   }
 }
 
+/** What the declarations depend on besides the files the program reads. */
+async function cacheKey(modules: WorkerModules, dtsOptions: Record<string, unknown>, cacheVersion: string) {
+  const { resolveOptions } = await import(modules.dts) as { resolveOptions: (options: object) => { tsconfig?: string, tsconfigRaw: unknown, sourcemap: boolean } }
+  const resolved = resolveOptions(dtsOptions)
+  const require = createRequire(new URL(modules.dts))
+  return {
+    builder: builderPkg.version,
+    dts: (require('rolldown-plugin-dts/package.json') as { version: string }).version,
+    typescript: (require('typescript/package.json') as { version: string }).version,
+    tsconfig: resolved.tsconfig,
+    tsconfigRaw: resolved.tsconfigRaw,
+    sourcemap: resolved.sourcemap,
+    cacheVersion,
+  }
+}
+
 /**
  * The declaration generator of the bundled entries: rolldown-plugin-dts's `tsc` emit in a worker
- * thread, which a watched build keeps until `close`.
+ * thread, which a watched build keeps until `close`. The declarations of a build are kept in the
+ * module's cache and reused, without a program, while none of the files that build's program read
+ * have changed.
  */
 export function entryDeclarationGenerator(options: EntryDeclarationOptions): DeclarationGenerator & { close: () => Promise<void> } {
   let worker: ReturnType<typeof createWorker> | undefined
+  let modules: WorkerModules | undefined
+  let cache: ContentCache<Record<string, GeneratorResult>> | undefined
+  let cached: Map<string, GeneratorResult> | undefined
+  let emitted = new Map<string, GeneratorResult>()
+  let mixed = false
+  let invalidated = false
   const dtsOptions = { cwd: options.cwd, tsconfig: options.tsconfig, compilerOptions: options.compilerOptions, generator: 'tsc' }
+  const start = () => {
+    if (worker?.exited) {
+      worker = undefined
+    }
+    return worker ??= createWorker(modules!, dtsOptions)
+  }
 
   return {
     async init() {
-      if (worker?.exited) {
-        worker = undefined
+      if (!cache) {
+        modules = workerModules()
+        cache = contentCache(options.cwd, 'entry-declarations', await cacheKey(modules, dtsOptions, options.cacheVersion))
+        const stored = await cache.read()
+        cached = stored && new Map(Object.entries(stored))
       }
-      worker ??= createWorker(workerModules(), dtsOptions)
+      if (!cached) {
+        start()
+      }
     },
     async emit(_code, fileName) {
-      return worker!.call<GeneratorResult>({ type: 'emit', file: fileName })
+      const hit = cached?.get(fileName)
+      if (hit) {
+        mixed = true
+        return hit
+      }
+      const result = await start().call<GeneratorResult>({ type: 'emit', file: fileName })
+      if (result.error) {
+        mixed = true
+      }
+      else {
+        emitted.set(fileName, result)
+      }
+      return result
     },
     async dispose() {
+      if (worker && !worker.exited && emitted.size && !mixed && !invalidated) {
+        await cache!.write(Object.fromEntries(emitted), new Map(await worker.call<Array<[string, string]>>({ type: 'inputs' })))
+      }
+      emitted = new Map()
+      mixed = false
       if (!options.watch()) {
         await worker?.terminate()
         worker = undefined
       }
     },
     invalidate(fileName) {
+      invalidated = true
+      cached = undefined
       worker?.call({ type: 'invalidate', file: fileName }).catch(() => {})
     },
     async close() {
