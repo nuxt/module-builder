@@ -1,9 +1,14 @@
+import { readFile } from 'node:fs/promises'
 import type { TsConfigResult } from 'get-tsconfig'
 import { relative } from 'pathe'
 import type ts from 'typescript'
 
 import { contentCache } from './cache.ts'
-import { projectFiles, writeDeclarationPaths } from './tsconfig.ts'
+import { createTscEngine } from './engine.ts'
+import type { DeclarationEngine, DeclarationProject, EngineDiagnostic, ProjectOptions, SourceFileCache } from './engine.ts'
+import { isModuleFile, writeDeclarationPaths } from './tsconfig.ts'
+
+export type { SourceFileCache } from './engine.ts'
 
 export interface DeclarationProgramOptions {
   cwd: string
@@ -12,16 +17,11 @@ export interface DeclarationProgramOptions {
   paths: Record<string, string[]>
   /** Keeps the results of each `emit` without errors under this name in the module's cache, see `contentCache`. */
   cache?: string
-  /**
-   * Parsed declaration files that the programs given the same map share. A declaration file
-   * (`.d.ts`) parses and binds the same under every option besides `languageVersion`,
-   * `impliedNodeFormat`, `jsDocParsingMode` and module detection, so programs over different
-   * projects can share it. Other files are parsed by each program.
-   */
+  /** The compiler, the module's own TypeScript by default. */
+  engine?: DeclarationEngine
+  /** Parsed declaration files shared with other programs given the same map, without `engine`. See `TscEngineOptions`. */
   sourceFiles?: SourceFileCache
 }
-
-export type SourceFileCache = Map<string, ts.SourceFile>
 
 interface DeclarationEmit {
   /** Declarations keyed by source path. */
@@ -42,68 +42,52 @@ export interface DeclarationProgram {
  * left out, so files of referenced projects are read from source rather than from their output.
  * It doesn't type check (`noCheck`): only syntax and declaration emit errors are reported.
  */
-export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
-  const { default: ts } = await import('typescript')
-  const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, configHost(ts)) : undefined
+export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, engine, sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
-  const rootNames = new Set([...projectFiles(parsed, cwd), ...roots, ...declaration.ambient ? [declaration.ambient] : []])
-
-  const options: ts.CompilerOptions = {
-    ...parsed?.options,
-    allowJs: true,
-    allowImportingTsExtensions: true,
-    paths: declaration.paths,
-    pathsBasePath: undefined,
-    declaration: true,
-    emitDeclarationOnly: true,
-    declarationMap: false,
-    noEmit: false,
-    isolatedDeclarations: false,
-    noCheck: true,
-    composite: false,
-    incremental: false,
-    tsBuildInfoFile: undefined,
-    outDir: undefined,
-    declarationDir: undefined,
+  const options: ProjectOptions = {
+    tsconfig: tsconfig?.path,
+    include: file => isModuleFile(file, cwd),
+    roots: [...roots, ...declaration.ambient ? [declaration.ambient] : []],
+    compilerOptions: {
+      allowJs: true,
+      allowImportingTsExtensions: true,
+      paths: declaration.paths,
+      pathsBasePath: undefined,
+      declaration: true,
+      emitDeclarationOnly: true,
+      declarationMap: false,
+      noEmit: false,
+      isolatedDeclarations: false,
+      noCheck: true,
+      composite: false,
+      incremental: false,
+      tsBuildInfoFile: undefined,
+      outDir: undefined,
+      declarationDir: undefined,
+    },
   }
-  let program: ts.Program | undefined
-  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, host: sourceFiles && sharingHost(ts, options, sourceFiles) })
+  const tsc = createTscEngine({ sourceFiles })
+  // The module's own TypeScript parses the tsconfig and resolves specifiers for every engine, so
+  // that a cached emit needs no other compiler.
+  const base = await tsc.open(options)
+  let project: Promise<DeclarationProject> | undefined
+  const compiler = engine ?? tsc
+  const emitter = () => project ??= engine ? engine.open(options) : Promise.resolve(base)
 
   const declarationProgram: DeclarationProgram = {
-    resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
+    resolve: base.resolve,
     async emit(files) {
-      const program = createProgram()
-      const declarations = new Map<string, string>()
-      const errors: ts.Diagnostic[] = []
-      const skipped: string[] = []
+      const { declarations, diagnostics, skipped } = await (await emitter()).emit(files)
       for (const file of files) {
-        const source = program.getSourceFile(file)
-        if (!source) {
-          skipped.push(file)
-          continue
-        }
-        const reported = errors.length
-        errors.push(...program.getSyntacticDiagnostics(source))
-        const result = program.emit(source, (_name, text, _bom, _error, sources) => {
-          const emitted = sources?.[0]?.fileName
-          if (emitted) {
-            declarations.set(emitted, text)
-          }
-        }, undefined, true)
         const text = declarations.get(file)
         if (text !== undefined) {
-          declarations.set(file, await restoreImports(text, file, source.text))
-        }
-        errors.push(...result.diagnostics)
-        if ((result.emitSkipped || !declarations.has(file)) && errors.length === reported) {
-          skipped.push(file)
+          declarations.set(file, await restoreImports(text, file, await readFile(file, 'utf8')))
         }
       }
-      const isError = (diagnostic: ts.Diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error
       return {
         declarations,
         errors: [
-          ...new Set(formatDiagnostics(ts, errors.filter(isError), cwd)),
+          ...new Set(diagnostics.filter(diagnostic => diagnostic.category === 'error').map(diagnostic => formatDiagnostic(diagnostic, cwd))),
           ...skipped.map(file => `${relative(cwd, file)}: no declaration was emitted`),
         ],
       }
@@ -115,72 +99,25 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
   return {
     ...declarationProgram,
     async emit(files) {
-      const stored = contentCache<Array<[string, string]>>(cwd, cache, { format: 3, typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
+      const { options, rootNames } = base.key
+      const stored = contentCache<Array<[string, string]>>(cwd, cache, { format: 4, engine: compiler.name, version: compiler.version, cwd, options, rootNames, files })
       const hit = await stored.read()
       if (hit) {
         return { declarations: new Map(hit), errors: [] }
       }
       const result = await declarationProgram.emit(files)
       if (!result.errors.length) {
-        await stored.write([...result.declarations], new Map(program!.getSourceFiles().map(file => [file.fileName, file.text])))
+        await stored.write([...result.declarations], await (await emitter()).inputs())
       }
       return result
     },
   }
 }
 
-const DECLARATION_FILE_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
-
-function sharingHost(ts: typeof import('typescript'), options: ts.CompilerOptions, sourceFiles: SourceFileCache): ts.CompilerHost {
-  const host = ts.createCompilerHost(options, true)
-  const getSourceFile = host.getSourceFile.bind(host)
-  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
-    if (shouldCreateNewSourceFile || !DECLARATION_FILE_RE.test(fileName)) {
-      return getSourceFile(fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile)
-    }
-    const { languageVersion, impliedNodeFormat, jsDocParsingMode, setExternalModuleIndicator } = typeof languageVersionOrOptions === 'object' ? languageVersionOrOptions : { languageVersion: languageVersionOrOptions } as ts.CreateSourceFileOptions
-    const key = [fileName, languageVersion, impliedNodeFormat, jsDocParsingMode].join('\0')
-    const cached = sourceFiles.get(key)
-    if (cached && cached.text === host.readFile(fileName) && sameModuleIndicator(cached, setExternalModuleIndicator)) {
-      return cached
-    }
-    const sourceFile = getSourceFile(fileName, languageVersionOrOptions, onError)
-    if (sourceFile) {
-      sourceFiles.set(key, sourceFile)
-    }
-    return sourceFile
-  }
-  return host
-}
-
-/** Whether `setExternalModuleIndicator` of the requesting program decides as the one that parsed `file` did. */
-function sameModuleIndicator(file: ts.SourceFile, setExternalModuleIndicator: ((file: ts.SourceFile) => void) | undefined) {
-  if (!setExternalModuleIndicator) {
-    return true
-  }
-  const probe = Object.create(file) as ts.SourceFile & { externalModuleIndicator?: unknown }
-  setExternalModuleIndicator(probe)
-  return probe.externalModuleIndicator === (file as typeof probe).externalModuleIndicator
-}
-
-function configHost(ts: typeof import('typescript')): ts.ParseConfigFileHost {
-  return {
-    ...ts.sys,
-    onUnRecoverableConfigFileDiagnostic(diagnostic) {
-      throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
-    },
-  }
-}
-
-function formatDiagnostics(ts: typeof import('typescript'), diagnostics: ts.Diagnostic[], cwd: string) {
-  return diagnostics.map((diagnostic) => {
-    const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')
-    if (!diagnostic.file || diagnostic.start === undefined) {
-      return `error TS${diagnostic.code}: ${message}`
-    }
-    const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
-    return `${relative(cwd, diagnostic.file.fileName)}(${line + 1},${character + 1}): error TS${diagnostic.code}: ${message}`
-  })
+/** A diagnostic formatted as tsc prints it, with its file relative to `cwd`. */
+function formatDiagnostic(diagnostic: EngineDiagnostic, cwd: string): string {
+  const prefix = `error TS${diagnostic.code}: ${diagnostic.message}`
+  return diagnostic.file && diagnostic.line !== undefined ? `${relative(cwd, diagnostic.file)}(${diagnostic.line},${diagnostic.column}): ${prefix}` : prefix
 }
 
 const SFC_SCRIPT_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script\b[^>]*>/gi
