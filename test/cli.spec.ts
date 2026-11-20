@@ -105,6 +105,7 @@ beforeAll(async () => {
 
   dirs.runtime = await fixture('.temp-cli/runtime with spaces ü', {
     from,
+    config: `export default {\n  deps: { onlyBundle: ['fake-kit'] },\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`,
     module: source => [
       `import type { DeepPartial } from 'fake-types'`,
       `import type FakeCjs from 'fake-cjs-types'`,
@@ -290,6 +291,7 @@ export default (): unknown[] => [options, app, root, useNuxtApp, helper(), lru, 
 
   dirs.loader = await fixture('.temp-cli/loader', {
     from,
+    config: `export default {\n  deps: { onlyBundle: ['fake-cjs-marker', 'fake-esm-split'] },\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`,
     module: `import { deps } from './deps.ts'\nimport { deep } from './deep/a.ts'\n${minimalModule('my-module')}\nexport const loaded = [deps, deep]\nexport { nativeValue } from './native-helper.ts'\nexport { internal } from '#internal/value'\n`,
     remove: ['.nuxt'],
     pkg: pkg => ({ ...pkg, imports: { '#internal/*': './src/internal/*.ts' } }),

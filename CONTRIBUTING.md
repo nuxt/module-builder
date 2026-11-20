@@ -53,7 +53,7 @@ The package has three entry points:
    - the tsconfigs for declarations;
    - the module's self-reference paths;
    - a cache key for `.vue` declarations.
-4. Sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`. Adds `runtimeExternals` (bundled code imports runtime files from `dist` instead of inlining them), the declaration externals, replacements, and one `transpileDir()` per directory.
+4. Sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`, and `deps.onlyBundle` unless the config sets it. Adds `runtimeExternals` (bundled code imports runtime files from `dist` instead of inlining them), the declaration externals, `bundledPackages` (which fails on packages that `deps.onlyBundle` leaves out), replacements, and one `transpileDir()` per directory.
 
 Then, once per build:
 

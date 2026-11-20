@@ -67,6 +67,7 @@ If your module has a `build.config.ts`, or a `build` or `unbuild` field in `pack
 | `hooks['build:before']` | tsdown's `hooks['build:prepare']`, where `ctx.options.cwd` is the module root |
 | `hooks['build:done']` | tsdown's `hooks['build:done']` |
 | `hooks['rollup:done']` | a plugin that [emits the extra files](./4.configuration.md#extra-files-in-the-output), or `package.json` paths that point at the files the build emits |
+| `rollup.inlineDependencies` | tsdown's `deps.onlyBundle`, or `false` in place of `true` |
 | `hooks['mkdist:*']`, `declaration`, `failOnWarn`, `name`, and `parallel` | nothing: drop them |
 | any other option | see [Unsupported build options](#unsupported-build-options) |
 
@@ -104,8 +105,8 @@ export default defineConfig({
 ```
 
 - If both `build.config.ts` and a field of `package.json` hold options, move the options of both. List each external once.
-- The build never bundles the packages in `dependencies`, `peerDependencies`, and `optionalDependencies`, their subpaths, Node builtins, `@nuxt/kit`, `@nuxt/schema`, `nuxt`, `vue`, `#app`, `#build/*`, and `#imports`. Drop the externals that are among these, and those that no bundled entry imports. The build bundles every other import, `devDependencies` included, so keep the rest in `builder({ externals })`.
-- Optional: to fail the build when it bundles a package from `node_modules` by mistake, set tsdown's `deps.onlyBundle`. List the packages that you mean to bundle, or set it to `[]`.
+- The build never bundles the packages in `dependencies`, `peerDependencies`, and `optionalDependencies`, their subpaths, Node builtins, `@nuxt/kit`, `@nuxt/schema`, `nuxt`, `vue`, `#app`, `#build/*`, and `#imports`. Drop the externals that are among these, and those that no bundled entry imports. Keep the rest in `builder({ externals })`.
+- The build fails when it bundles any other package from `node_modules`, `devDependencies` included. See [Bundled packages](#bundled-packages).
 - `src/module` is always built, so you can leave it out of `entries`. Drop `addRelativeDeclarationExtensions` from directory entries.
 - Relative imports in `tsdown.config.ts` carry their extension, because `prepare` loads the file with Node.
 
@@ -350,6 +351,16 @@ The build also fails when another plugin changes one of these options, or the fi
 
 tsdown's hooks and plugins don't run for `nuxt-module-build prepare`, or for a playground that loads your sources. If module code imports generated files, commit them, or generate them in `dev:prepare` before `nuxt-module-build prepare`.
 
+### Bundled packages
+
+The build fails when the bundled entries bundle a package from `node_modules` that `package.json` doesn't list in `dependencies` or `peerDependencies`. For each package that the message names:
+
+- If apps that install the module need it, move it to `dependencies` or `peerDependencies`.
+- If bundling it is intended, list it in tsdown's `deps.onlyBundle`. Without a `tsdown.config.ts`, list it in `rollup.inlineDependencies` instead.
+- If the app provides it, add it to `builder({ externals })`.
+
+See [Externals](./4.configuration.md#externals).
+
 ### Output directory
 
 The build empties the output directory before it writes to it, and `tsdown --watch` removes the files that it doesn't emit any more. So `outDir` and `--outDir` have to name a directory inside the module, such as `dist`. A directory outside the module, such as `../dist`, or the module root itself, fails the build.
@@ -462,7 +473,7 @@ Only the `build:before`, `rollup:done`, and `build:done` hooks run. `mkdist:*` h
 
 #### Rollup options
 
-The module entry is bundled with tsdown's defaults for a Node library, so `rollup.*` options fail the build. Remove them. The build applies `rollup.replace`, and accepts `rollup.emitCJS: false`, `rollup.cjsBridge: false`, and `rollup.output.exports`.
+The module entry is bundled with tsdown's defaults for a Node library, so `rollup.*` options fail the build. Remove them. The build applies `rollup.replace` and `rollup.inlineDependencies`, and accepts `rollup.emitCJS: false`, `rollup.cjsBridge: false`, and `rollup.output.exports`.
 
 #### CommonJS output
 

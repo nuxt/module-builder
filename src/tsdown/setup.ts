@@ -17,7 +17,7 @@ import { errors, unwrapBuildError, useBuildLogger, warnings } from '../diagnosti
 import { transpileDir } from '../transpile/transpile-dir.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
-import { externalDependencyDeclarations, runtimeExternals } from './externals.ts'
+import { bundledPackages, externalDependencyDeclarations, runtimeExternals } from './externals.ts'
 import { entryDeclarationGenerator } from './dts.ts'
 import { defaultReport, reportsSummary, sizeBreakdown } from './report.ts'
 import { unchangedOutputs } from './unchanged.ts'
@@ -134,6 +134,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }
 
   const userNeverBundle = config.deps?.neverBundle as Array<string | RegExp> | string | RegExp | undefined
+  const userOnlyBundle = config.deps?.onlyBundle
+  const onlyBundle = userOnlyBundle === undefined ? plan.config.onlyBundle : userOnlyBundle
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
   const compilerOptions = { paths: plan.declarationPaths, noCheck: true }
@@ -152,7 +154,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     clean: false,
     report: defaultReport(config.report, plan.directories.some(directory => existsSync(directory.srcDir))),
     sourcemap: config.sourcemap || plan.sourcemap,
-    deps: { ...config.deps, neverBundle: [...plan.neverBundle, ...userNeverBundle === undefined ? [] : [userNeverBundle].flat()] },
+    deps: { ...config.deps, neverBundle: [...plan.neverBundle, ...userNeverBundle === undefined ? [] : [userNeverBundle].flat()], onlyBundle },
     dts,
     // Most of the time rolldown attributes to plugins is spent generating declarations, which the report cannot break down.
     checks: { ...!(config.checks && ('bundlerTimings' in config.checks || 'pluginTimings' in config.checks)) && { bundlerTimings: false }, ...config.checks },
@@ -184,6 +186,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       externalDependencyDeclarations(),
       runtimeExternals({ outDir, directories: plan.directories, packageName: pkg.name, preserveJsx: file => preservesJsx(plan, file) }),
       ...plan.config.replace ? [await replacePlugin(plan.config.replace)] : [],
+      ...userOnlyBundle === undefined && plan.config.onlyBundle ? [bundledPackages({ cwd, allowed: plan.config.onlyBundle, legacy: !!loadConfig, onError: fail })] : [],
       ...directoryPlugins,
     ],
   } satisfies UserConfig)

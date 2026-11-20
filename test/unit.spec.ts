@@ -10,7 +10,7 @@ import { version as nuxtVersion } from 'nuxt/package.json'
 import { version } from '../package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
-import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs } from '../src/build/build.ts'
+import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs, onBuildError } from '../src/build/build.ts'
 import type { BuildPlan } from '../src/build/build.ts'
 import { resolveModuleOptions, resolveOutDir } from '../src/build/options.ts'
 import { resolveCwdArg } from '../src/commands/_shared.ts'
@@ -21,7 +21,7 @@ import { defaultReport, reportsSummary, sizeBreakdown } from '../src/tsdown/repo
 import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
-import { runtimeExternals } from '../src/tsdown/externals.ts'
+import { bundledPackages, runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
@@ -131,6 +131,56 @@ describe('runtimeExternals', () => {
       .replace('"/dist/runtime/lazy.js"', '"../runtime/lazy.js"'))
     const dotted = runtimeExternals({ outDir: '/dist', directories: [{ srcDir: runtimeSrcDir, outDir: '/dist/.runtime', ext: 'js' }] }).renderChunk as typeof renderChunk
     expect(dotted('import plugin from "/dist/.runtime/plugin.js";\n', { fileName: 'module.mjs', imports: ['/dist/.runtime/plugin.js'], dynamicImports: [] }, { dir: '/dist' })?.code).toBe('import plugin from "./.runtime/plugin.js";\n')
+  })
+})
+
+describe('bundledPackages', () => {
+  it('should fail on the installed packages that `allowed` leaves out, naming the files and packages that import them', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-bundled-'))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    for (const name of ['@scope/allowed', '@scope/bundled', 'transitive', 'listed']) {
+      await mkdir(join(cwd, 'node_modules', name), { recursive: true })
+      await writeFile(join(cwd, 'node_modules', name, 'package.json'), JSON.stringify({ name }))
+    }
+    const id = (path: string) => join(cwd, path)
+    const importers: Record<string, string[]> = {
+      [id('node_modules/@scope/allowed/index.js')]: [id('src/module.ts')],
+      [id('node_modules/@scope/bundled/index.js')]: [id('src/module.ts'), id('node_modules/@scope/bundled/inner.js')],
+      [id('node_modules/@scope/bundled/inner.js')]: [id('node_modules/@scope/bundled/index.js')],
+      [id('node_modules/transitive/index.js')]: [id('node_modules/@scope/bundled/inner.js')],
+      [id('node_modules/listed/index.js')]: [id('src/utils.ts')],
+    }
+    const bundle = (ids: string[]) => ({ 'module.mjs': { type: 'chunk', moduleIds: [id('src/module.ts'), ...ids] }, 'styles.css': { type: 'asset' } })
+    const onError = vi.fn(async () => {})
+    const generateBundle = bundledPackages({ cwd, allowed: [/^@scope\/allowed$/g, 'listed'], legacy: false, onError }).generateBundle as (this: unknown, options: unknown, bundle: unknown) => Promise<void>
+    const context = { getModuleInfo: (moduleId: string) => ({ importers: importers[moduleId] ?? [] }) }
+
+    await generateBundle.call(context, {}, bundle([id('node_modules/@scope/allowed/index.js'), id('node_modules/listed/index.js')]))
+    await generateBundle.call(context, {}, bundle([id('node_modules/@scope/allowed/index.js')]))
+    expect(onError).not.toHaveBeenCalled()
+
+    const failure = generateBundle.call(context, {}, bundle(Object.keys(importers)))
+    await expect(failure).rejects.toThrow(diagnostic('NUXT_MB_B0004'))
+    const message = await failure.catch((error: Error) => error.message)
+    expect(message.split('\n').slice(1)).toEqual([
+      '  - `@scope/bundled`, imported by src/module.ts',
+      '  - `transitive`, imported by `@scope/bundled`',
+    ])
+    expect(onError).toHaveBeenCalledOnce()
+  })
+})
+
+describe('onBuildError', () => {
+  it('should only explain declaration failures of a build that are not diagnostics', async () => {
+    const outDir = await mkdtemp(join(tmpdir(), 'module-builder-failed-'))
+    onTestFinished(() => rm(outDir, { recursive: true, force: true }))
+    const explained = vi.spyOn(warnings, 'NUXT_MB_B0202').mockImplementation(() => undefined as never)
+    onTestFinished(() => explained.mockRestore())
+    const plan = { cwd: outDir, outDir, isolatedDeclarations: true, directories: [] } as unknown as BuildPlan
+    await onBuildError(plan, errors.NUXT_MB_C0003({ files: ['module.mjs'] }), { keepOutput: true })
+    expect(explained).not.toHaveBeenCalled()
+    await onBuildError(plan, new Error('TS9007: Function must have an explicit return type annotation'), { keepOutput: true })
+    expect(explained).toHaveBeenCalledOnce()
   })
 })
 

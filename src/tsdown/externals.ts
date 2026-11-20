@@ -1,7 +1,10 @@
+import { existsSync } from 'node:fs'
 import { isAbsolute, join, normalize, relative } from 'pathe'
 import type { Rolldown } from 'tsdown'
 
 import { rewriteAppAliases } from '../build/aliases.ts'
+import { errors } from '../diagnostics.ts'
+import type { BundledPackage } from '../diagnostics.ts'
 import { scriptExtension } from '../transpile/specifiers.ts'
 import { DECLARATION_RE, isInside, NODE_MODULES_RE, probe, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
 
@@ -35,6 +38,75 @@ export function externalDependencyDeclarations(): Rolldown.Plugin {
       }
     },
   }
+}
+
+export interface BundledPackagesOptions {
+  cwd: string
+  /** The packages that may be bundled. */
+  allowed: Array<string | RegExp>
+  /** Whether the options come from `build.config.*` or `package.json` rather than a tsdown config. */
+  legacy: boolean
+  /** Called with the error before it is thrown. */
+  onError: (error: Error) => Promise<void>
+}
+
+/**
+ * Fails the build when a chunk bundles a file from a package in `node_modules` that `allowed`
+ * leaves out, as tsdown's `deps.onlyBundle` does, with a diagnostic that names its importers.
+ */
+export function bundledPackages({ cwd, allowed, legacy, onError }: BundledPackagesOptions): Rolldown.Plugin {
+  const isAllowed = (name: string) => allowed.some((pattern) => {
+    if (typeof pattern === 'string') {
+      return pattern === name
+    }
+    pattern.lastIndex = 0
+    return pattern.test(name)
+  })
+  return {
+    name: 'nuxt-module-builder:bundled-packages',
+    async generateBundle(_options, bundle) {
+      const found = new Map<string, Set<string>>()
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== 'chunk') {
+          continue
+        }
+        for (const id of chunk.moduleIds) {
+          const name = installedPackage(id)
+          if (!name || isAllowed(name)) {
+            continue
+          }
+          const importers = found.get(name) ?? new Set()
+          found.set(name, importers)
+          for (const importer of this.getModuleInfo(id)?.importers ?? []) {
+            const from = installedPackage(importer)
+            if (from !== name) {
+              importers.add(from ? `\`${from}\`` : relative(cwd, normalize(importer)))
+            }
+          }
+        }
+      }
+      if (found.size) {
+        const packages: BundledPackage[] = [...found].map(([name, importers]) => ({ name, importers: [...importers] }))
+        const error = errors.NUXT_MB_B0004({ packages, legacy, sources: [join(cwd, 'package.json'), ...packages.flatMap(({ importers }) => importers.filter(importer => !importer.startsWith('`')).map(importer => join(cwd, importer)))] })
+        await onError(error)
+        throw error
+      }
+    },
+  }
+}
+
+const NODE_MODULES = '/node_modules/'
+
+/** The name of the package in `node_modules` that `id` belongs to, read from its path as tsdown does. */
+function installedPackage(id: string) {
+  const file = normalize(id)
+  const index = file.lastIndexOf(NODE_MODULES)
+  if (index === -1) {
+    return
+  }
+  const [first, second] = file.slice(index + NODE_MODULES.length).split('/')
+  const name = first?.startsWith('@') && second ? `${first}/${second}` : first
+  return name && existsSync(join(file.slice(0, index + NODE_MODULES.length), name, 'package.json')) ? name : undefined
 }
 
 export interface RuntimeExternalsOptions {

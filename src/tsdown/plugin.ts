@@ -25,7 +25,8 @@ export interface BuilderPlugin extends TsdownPlugin {
  * ```
  *
  * It sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`, so the config leaves
- * them out apart from additional `deps.neverBundle` entries.
+ * them out apart from additional `deps.neverBundle` entries. Unless the config sets
+ * `deps.onlyBundle`, the build fails when it bundles a package from `node_modules`.
  */
 export function builder(options: BuilderOptions = {}): BuilderPlugin {
   return createBuilder(options, {})

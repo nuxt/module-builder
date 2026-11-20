@@ -32,6 +32,13 @@ function describeUnpublishable(items: UnpublishableItem[]) {
   }).join(' ')
 }
 
+/** A package that the bundled entries bundle from `node_modules`. */
+export interface BundledPackage {
+  name: string
+  /** The files, relative to the module root, and the other packages that import it. */
+  importers: string[]
+}
+
 /** Definitions of the {@link errors}. */
 export const errorCodes = {
   NUXT_MB_B0001: {
@@ -51,6 +58,14 @@ export const errorCodes = {
     why: '`@nuxt/module-builder` builds with `tsdown`, which is a peer dependency and is not installed.',
     fix: (): string => `Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`.`,
     docs: '#step-1-install-v2-and-tsdown',
+  },
+  NUXT_MB_B0004: {
+    why: (p: { packages: BundledPackage[] }): string => [
+      'The bundled entries bundle these packages, which `package.json` does not list in `dependencies` or `peerDependencies`:',
+      ...p.packages.map(({ name, importers }) => `  - \`${name}\`${importers.length ? `, imported by ${importers.join(', ')}` : ''}`),
+    ].join('\n'),
+    fix: (p: { legacy: boolean }): string => `For each one, if apps that install the module need it, move it to \`dependencies\` or \`peerDependencies\`. If bundling it is intended, list it in ${p.legacy ? '`rollup.inlineDependencies` in the build config' : '`deps.onlyBundle` in the tsdown config'}. If the app provides it, add it to ${p.legacy ? '`externals` in the build config' : '`builder({ externals })`'}.`,
+    docs: '#bundled-packages',
   },
 
   NUXT_MB_C0001: {

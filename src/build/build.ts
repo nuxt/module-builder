@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import type { NuxtModule } from '@nuxt/schema'
+import { Diagnostic } from 'nostics'
 import type { TsConfigResult } from 'get-tsconfig'
 import { glob, globSync } from 'tinyglobby'
 
@@ -182,6 +183,9 @@ export interface BuildErrorOptions {
 export async function onBuildError(plan: BuildPlan, error: unknown, { directory = isDirectoryError(plan, error), keepOutput }: BuildErrorOptions): Promise<void> {
   if (!keepOutput) {
     await rm(plan.outDir, { recursive: true, force: true })
+  }
+  if (error instanceof Diagnostic) {
+    return
   }
   if (plan.isolatedDeclarations && !directory) {
     warnings.NUXT_MB_B0202(undefined, { method: 'error' })

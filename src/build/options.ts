@@ -72,6 +72,12 @@ export interface ModuleConfig {
   /** Directories built file by file, in the same way as `src/runtime`. */
   directories: DirectoryEntry[]
   neverBundle: RegExp[]
+  /**
+   * The packages from `node_modules` that the bundled entries may bundle, unless the tsdown config
+   * sets `deps.onlyBundle`: any other fails the build. `false` allows every package, and
+   * `undefined` leaves tsdown's hint.
+   */
+  onlyBundle?: Array<string | RegExp> | false
   replace?: ReplaceOptions
   /** Set when source maps are enabled in `build.config.ts`. */
   sourcemap?: boolean
@@ -96,7 +102,7 @@ export interface OptionsCollector {
  * cannot be applied are passed to `report`, by their path.
  */
 export function createOptionsCollector(cwd: string, outDir: string): OptionsCollector {
-  const config: ModuleConfig = { entries: {}, directories: [], neverBundle: [] }
+  const config: ModuleConfig = { entries: {}, directories: [], neverBundle: [], onlyBundle: [] }
   const replace: ReplaceOptions = { values: {} }
   const runtime = { srcDir: resolve(cwd, 'src/runtime'), outDir: resolve(outDir, 'runtime') }
 

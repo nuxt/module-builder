@@ -76,6 +76,17 @@ describe('translateBuildConfig', () => {
     }).unsupported).toEqual([])
   })
 
+  it('should only fail on bundled packages that are not dependencies while unbuild would have failed', () => {
+    expect(translate({}).onlyBundle).toEqual([])
+    expect(translate({ failOnWarn: true }).onlyBundle).toEqual([])
+    expect(translate({ failOnWarn: false }).onlyBundle).toBeUndefined()
+    expect(translate({ rollup: { inlineDependencies: true } }).onlyBundle).toBe(false)
+    expect(translate({ failOnWarn: false, rollup: { inlineDependencies: true } }).onlyBundle).toBe(false)
+    expect(translate({ rollup: { inlineDependencies: ['defu', '@scope/pkg/sub', /^fake-/] } }).onlyBundle).toEqual(['defu', '@scope/pkg', /^fake-/])
+    expect(translate({ rollup: { inlineDependencies: ['defu'] } }, { rollup: { inlineDependencies: true } }).onlyBundle).toEqual(['defu'])
+    expect(translate({ rollup: { inlineDependencies: [42] } }).unsupported).toEqual(['config0: rollup.inlineDependencies'])
+  })
+
   it('should keep supported hooks, ignore mkdist hooks and reject the rest', () => {
     const before = () => {}
     const done = () => {}
@@ -430,6 +441,20 @@ export default defineBuildConfig({
       },
     })
 
+    const bundling = (options: Record<string, unknown>): FixtureOptions => ({
+      from: base,
+      config: false,
+      module: source => `// @ts-ignore untyped\nimport { value } from 'fake-inlined'\n${source}\nexport const inlined: unknown = value\n`,
+      pkg: pkg => ({ ...pkg, build: options }),
+      files: {
+        'node_modules/fake-inlined/package.json': JSON.stringify({ name: 'fake-inlined', type: 'module', exports: './index.js' }),
+        'node_modules/fake-inlined/index.js': `export const value = 'inlined-fake-inlined'\n`,
+      },
+    })
+    dirs.undeclared = await fixture('.temp-legacy/undeclared', bundling({}))
+    dirs.failOnWarn = await fixture('.temp-legacy/fail-on-warn', bundling({ failOnWarn: false }))
+    dirs.inlineDependencies = await fixture('.temp-legacy/inline-dependencies', bundling({ rollup: { inlineDependencies: ['fake-inlined'] } }))
+
     dirs.example = await fixture('.temp-legacy/example', { config: false })
     dirs.exampleEjected = await fixture('.temp-legacy/example-ejected')
     dirs.withField = await fixture('.temp-legacy/with-field', { config: 'export default {\n  plugins: [builder()],\n}\n', pkg: pkg => ({ ...pkg, build: { entries: ['./src/utils'] } }) })
@@ -446,6 +471,9 @@ export default defineBuildConfig({
       step('withField', cli(['build', dirs.withField])),
       step('withField:prepare', cli(['prepare', dirs.withField])),
       step('withFile', tsdown(dirs.withFile)),
+      step('undeclared', cli(['build', dirs.undeclared])),
+      step('failOnWarn', cli(['build', dirs.failOnWarn])),
+      step('inlineDependencies', cli(['build', dirs.inlineDependencies])),
     ])
   })
 
@@ -548,5 +576,20 @@ export default defineBuildConfig({
     }
     expect(expectFailed('withFile')).toContain('NUXT_MB_D0002')
     expect(expectFailed('withFile')).toContain('delete the file')
+  })
+
+  it('should fail when the build bundles a package that is not a dependency, with the build config\'s ways out', () => {
+    const output = expectFailed('undeclared')
+    expect(output).toContain('[NUXT_MB_B0004]')
+    expect(output).toContain('`fake-inlined`, imported by src/module.ts')
+    expect(output).toContain('`rollup.inlineDependencies` in the build config')
+  })
+
+  it('should bundle a package that is not a dependency when the build config sets `failOnWarn: false` or lists it in `rollup.inlineDependencies`', async () => {
+    expect(expectBuilt('failOnWarn')).toContain('- fake-inlined')
+    expect(expectBuilt('inlineDependencies')).not.toContain('fake-inlined')
+    for (const name of ['failOnWarn', 'inlineDependencies']) {
+      expect(await read(dirs[name]!, 'dist/module.mjs'), name).toContain('inlined-fake-inlined')
+    }
   })
 })

@@ -229,7 +229,9 @@ export default {
     module: (source: string) => `import { existsSync } from 'node:fs'\n${['dep', 'peer', 'dev', 'undeclared'].map(name => `import { value as ${name} } from 'fake-${name}'`).join('\n')}\n\n${source}\nexport const values: unknown[] = [existsSync, dep, peer, dev, undeclared]\n`,
     files: fakePackages,
   }
-  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: PLUGIN, ...dependencies })
+  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: `export default { deps: { onlyBundle: ['fake-dev', 'fake-undeclared'] }, plugins: [builder()] }\n`, ...dependencies })
+  dirs.undeclared = await fixture('.temp-builder/undeclared', { config: PLUGIN, ...dependencies })
+  dirs.anyBundled = await fixture('.temp-builder/any-bundled', { config: `export default { deps: { onlyBundle: false }, plugins: [builder()] }\n`, ...dependencies })
   dirs.onlyBundle = await fixture('.temp-builder/only-bundle', { config: `export default { deps: { onlyBundle: ['fake-dev'] }, plugins: [builder()] }\n`, ...dependencies })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
@@ -256,6 +258,8 @@ export default {
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
     step('dependencies', tsdown(dirs.dependencies)),
+    step('undeclared', tsdown(dirs.undeclared)),
+    step('anyBundled', tsdown(dirs.anyBundled)),
     step('onlyBundle', tsdown(dirs.onlyBundle)),
     step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
       .then(async () => snapshots.declarations = await read(dirs.nested!, 'dist/module.d.mts'))
@@ -288,16 +292,31 @@ describe('builder', () => {
     expect(JSON.parse(await read(dir, 'dist/module.json'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
   })
 
-  it('should leave dependencies, peer dependencies and Node builtins external, and bundle every other package, unless `deps.onlyBundle` leaves it out', async () => {
-    const output = expectBuilt('dependencies')
+  it('should leave dependencies, peer dependencies and Node builtins external, and bundle the packages that `deps.onlyBundle` lists', async () => {
+    expectBuilt('dependencies')
     const module = await read(dirs.dependencies!, 'dist/module.mjs')
     for (const name of ['node:fs', 'fake-dep', 'fake-peer']) {
       expect(module).toContain(`from "${name}"`)
     }
     for (const name of ['fake-dev', 'fake-undeclared']) {
       expect(module).toContain(`inlined-${name}`)
-      expect(output).toContain(`- ${name}`)
     }
+  })
+
+  it('should fail the build when it bundles a package that is not a dependency, unless the tsdown config sets `deps.onlyBundle`', async () => {
+    const failure = expectFailed('undeclared')
+    expect(failure).toContain('NUXT_MB_B0004: ')
+    expect(failure).toContain('`fake-dev`, imported by src/module.ts')
+    expect(failure).toContain('`fake-undeclared`, imported by src/module.ts')
+    expect(failure).not.toContain('`fake-dep`')
+    expect(failure).toContain('`deps.onlyBundle` in the tsdown config')
+    expect(failure).not.toMatch(/^\s+at /m)
+    expect(exists(dirs.undeclared!, 'dist')).toBe(false)
+    expect(await read(dirs.anyBundled!, 'dist/module.mjs')).toBe(await read(dirs.dependencies!, 'dist/module.mjs'))
+    expect(expectBuilt('anyBundled')).not.toContain('onlyBundle')
+  })
+
+  it('should fail the build with tsdown\'s own error when it bundles a package that the `deps.onlyBundle` of the tsdown config leaves out', () => {
     const failure = expectFailed('onlyBundle')
     expect(failure).toContain('fake-undeclared is located in node_modules but is not included in deps.onlyBundle')
     expect(failure).not.toContain('fake-dev is located')
