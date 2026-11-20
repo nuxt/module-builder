@@ -28,8 +28,6 @@ interface DeclarationEmit {
   declarations: Map<string, string>
   /** Diagnostics that prevent correct declarations: syntax errors, emit errors and skipped files. */
   errors: string[]
-  /** Other type errors in the emitted files, which do not affect their declarations. */
-  warnings: string[]
 }
 
 export interface DeclarationProgram {
@@ -42,10 +40,10 @@ export interface DeclarationProgram {
  * A declaration-only program over every file of the tsconfig plus `roots`, so ambient
  * declarations apply and inferred types are named by package. The tsconfig's `references` are
  * left out, so files of referenced projects are read from source rather than from their output.
+ * It doesn't type check (`noCheck`): only syntax and declaration emit errors are reported.
  */
 export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const { default: ts } = await import('typescript')
-  const classifier = import('vue-sfc-transformer/core')
   const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, configHost(ts)) : undefined
   const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
   const rootNames = new Set([...projectFiles(parsed, cwd), ...roots, ...declaration.ambient ? [declaration.ambient] : []])
@@ -61,6 +59,7 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
     declarationMap: false,
     noEmit: false,
     isolatedDeclarations: false,
+    noCheck: true,
     composite: false,
     incremental: false,
     tsBuildInfoFile: undefined,
@@ -74,10 +73,8 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
       const program = createProgram()
-      const { isDeclarationEmitDiagnostic } = await classifier
       const declarations = new Map<string, string>()
       const errors: ts.Diagnostic[] = []
-      const warnings: ts.Diagnostic[] = []
       const skipped: string[] = []
       for (const file of files) {
         const source = program.getSourceFile(file)
@@ -87,9 +84,6 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
         }
         const reported = errors.length
         errors.push(...program.getSyntacticDiagnostics(source))
-        for (const diagnostic of program.getSemanticDiagnostics(source)) {
-          (isDeclarationEmitDiagnostic({ code: diagnostic.code, kind: 'semantic' }) ? errors : warnings).push(diagnostic)
-        }
         const result = program.emit(source, (_name, text, _bom, _error, sources) => {
           const emitted = sources?.[0]?.fileName
           if (emitted) {
@@ -108,7 +102,6 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
           ...new Set(formatDiagnostics(ts, errors.filter(isError), cwd)),
           ...skipped.map(file => `${relative(cwd, file)}: no declaration was emitted`),
         ],
-        warnings: [...new Set(formatDiagnostics(ts, warnings.filter(isError), cwd))],
       }
     },
   }
@@ -118,14 +111,14 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
   return {
     ...declarationProgram,
     async emit(files) {
-      const stored = contentCache<{ declarations: Array<[string, string]>, warnings: string[] }>(cwd, cache, { typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
+      const stored = contentCache<Array<[string, string]>>(cwd, cache, { format: 2, typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
       const hit = await stored.read()
       if (hit) {
-        return { declarations: new Map(hit.declarations), errors: [], warnings: hit.warnings }
+        return { declarations: new Map(hit), errors: [] }
       }
       const result = await declarationProgram.emit(files)
       if (!result.errors.length) {
-        await stored.write({ declarations: [...result.declarations], warnings: result.warnings }, new Map(program!.getSourceFiles().map(file => [file.fileName, file.text])))
+        await stored.write([...result.declarations], new Map(program!.getSourceFiles().map(file => [file.fileName, file.text])))
       }
       return result
     },

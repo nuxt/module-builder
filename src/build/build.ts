@@ -3,7 +3,6 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
 import { dirname, join, normalize, relative, resolve } from 'pathe'
 import type { NuxtModule } from '@nuxt/schema'
-import { parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
 import { glob, globSync } from 'tinyglobby'
 
@@ -65,8 +64,6 @@ export interface BuildPlan {
   directoryPaths: Record<string, string[]>
   /** Changes whenever the types Nuxt generates in `.nuxt` change. */
   generatedTypesHash: string
-  /** The command that type checks the module with the tsconfig in its root, `-b` when it has `references`. */
-  typeCheck: string
   /** Set by {@link prepareBuild}. */
   prepared?: PreparedBuild
 }
@@ -120,7 +117,6 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
-    typeCheck: (tsconfigs.replaced ? parseTsconfig(tsconfigs.replaced) : tsconfigs.root?.config)?.references?.length ? 'vue-tsc -b --noEmit' : 'vue-tsc --noEmit',
   }
 }
 

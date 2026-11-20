@@ -52,11 +52,6 @@ export const errorCodes = {
     fix: (): string => `Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`.`,
     docs: '#install-tsdown',
   },
-  NUXT_MB_B0201: {
-    why: (p: { message: string }): string => p.message,
-    fix: (p: { command: string }): string => `Run the module's own type check, \`${p.command}\`, and fix the errors that it reports. Those that it doesn't report come from build-time aliases such as \`#build/*\`, which are typed as \`any\` while declarations are generated, and can be ignored.`,
-    docs: '#other-type-errors',
-  },
 
   NUXT_MB_C0001: {
     why: (p: { options: Array<{ option: string, reason: string }> }): string => [
@@ -355,7 +350,7 @@ function details(diagnostic: Diagnostic<unknown>, style: Style = PLAIN): string[
 }
 
 /** A diagnostic as text: `[CODE] why`, then its `fix` and docs. The `sources` it names are linked. */
-export function formatDiagnostic(diagnostic: Diagnostic<unknown>, style: Style = PLAIN): string {
+function formatDiagnostic(diagnostic: Diagnostic<unknown>, style: Style = PLAIN): string {
   return [`${style.dim(`[${diagnostic.name}]`)} ${style.text(diagnostic.message, diagnostic.sources ?? [])}`, ...details(diagnostic, style)].join('\n')
 }
 

@@ -26,8 +26,6 @@ export interface VueDeclarations {
   declarations: Map<string, string>
   /** Diagnostics that prevent correct declarations. */
   errors: DeclarationMessage[]
-  /** Other type errors in the sources, which do not affect their declarations. */
-  warnings: DeclarationMessage[]
 }
 
 /**
@@ -50,7 +48,8 @@ export async function createDeclarationSession(): Promise<VueDeclarationSession>
 
 /**
  * Emits declarations for `.vue` files and TypeScript sources from one program over
- * `tsconfig`, so scripts can import types from single-file components.
+ * `tsconfig`, so scripts can import types from single-file components. The program doesn't type
+ * check: only syntax and declaration emit errors are reported.
  */
 export async function emitDeclarations(files: string[], options: VueDeclarationOptions): Promise<VueDeclarations> {
   const { emitVueDeclarations, isDeclarationEmitDiagnostic } = await import('vue-sfc-transformer/core')
@@ -61,13 +60,12 @@ export async function emitDeclarations(files: string[], options: VueDeclarationO
     cacheVersion: options.cacheVersion,
     emitLegacyDeclarationAlias: true,
     session: options.session,
+    typeCheck: false,
   })
-  const errors = diagnostics.filter(diagnostic => diagnostic.category === 'error')
   const format = (diagnostic: DeclarationDiagnostic): DeclarationMessage => ({ file: diagnostic.file, message: formatDiagnostic(diagnostic, options.cwd) })
   return {
     declarations,
-    errors: errors.filter(diagnostic => isDeclarationEmitDiagnostic(diagnostic)).map(format),
-    warnings: errors.filter(diagnostic => !isDeclarationEmitDiagnostic(diagnostic)).map(format),
+    errors: diagnostics.filter(diagnostic => diagnostic.category === 'error' && isDeclarationEmitDiagnostic(diagnostic)).map(format),
   }
 }
 
