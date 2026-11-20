@@ -181,6 +181,22 @@ export default {
     'tsconfig.json': REFERENCES('./tsconfig.module.json'),
   }
   dirs.moduleProject = await fixture('.temp-builder/module-project', { config: PLUGIN, module: source => source + FIELDS, files: moduleProject })
+  const typescriptDocs = (await read(repoRoot, 'docs/5.typescript.md')).replaceAll('\r\n', '\n')
+  const isolatedTsconfig = typescriptDocs.slice(typescriptDocs.indexOf('### `isolatedDeclarations`')).match(/```json \[tsconfig\.module\.json\]\n([\s\S]*?)```/)![1]!
+  dirs.isolatedAsDocumented = await fixture('.temp-builder/isolated-as-documented', {
+    config: PLUGIN,
+    module: source => [
+      `import type { NuxtModule } from '@nuxt/schema'`,
+      source.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
+      'export default module',
+    ].join('\n'),
+    files: {
+      'src/utils.ts': 'export const myModuleUtils = (): void => {}\n',
+      'src/runtime/plugins/plugin.ts': source => `import type { Plugin } from '#app'\n${source.replace('export default defineNuxtPlugin(', 'const plugin: Plugin = defineNuxtPlugin(')}\nexport default plugin\n`,
+      'tsconfig.module.json': isolatedTsconfig,
+      'tsconfig.json': REFERENCES('./tsconfig.module.json'),
+    },
+  })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -221,7 +237,10 @@ export default {
     ]),
     ...Object.keys(variants).map(name => step(name, tsdown(dirs[name]!))),
     step('contexts', tsdown(dirs.contexts)).then(() => step('contexts:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.contexts }))),
-    step('moduleProject', tsdown(dirs.moduleProject, [], { CI: '' })),
+    step('moduleProject', tsdown(dirs.moduleProject)),
+    step('isolatedAsDocumented:prepare', cli(['prepare', dirs.isolatedAsDocumented]))
+      .then(() => step('isolatedAsDocumented:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolatedAsDocumented })))
+      .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
     step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
@@ -367,12 +386,17 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await read(dirs.contexts!, 'dist/runtime/logger.d.ts')).toContain('import("fake-logger").LoggerInstance')
   })
 
+  it('should type check and generate the module entry\'s declarations with oxc with the documented `isolatedDeclarations` tsconfig', async () => {
+    expect(expectBuilt('isolatedAsDocumented:typecheck')).toBe('')
+    expect(expectBuilt('isolatedAsDocumented')).not.toContain('create program for module')
+    expect(await read(dirs.isolatedAsDocumented!, 'dist/module.d.mts')).toContain('NuxtModule<ModuleOptions>')
+  })
+
   it('should give tsdown the project that includes the module entry, unless the config sets `tsconfig`', async () => {
     const ownsField = async (dir: string) => (await read(dir, 'dist/module.mjs')).includes('\tvalue;')
     const output = expectBuilt('moduleProject')
     expect(output).toContain('tsconfig: tsconfig.module.json')
-    expect(output).toContain('ℹ [NUXT_MB_B0205]')
-    expect(output.match(/fix: Set `isolatedDeclarations: true` in (`[^`]+`)/)?.[1]).toBe('`tsconfig.module.json`')
+    expect(output).not.toContain('isolatedDeclarations')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)

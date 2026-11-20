@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { version } from '../package.json'
@@ -950,34 +950,6 @@ describe('writeSourceTypes', () => {
       'src/siblings.d.ts': `export interface ModuleRuntimeConfig { secret: string }\n`,
     })).toEqual([])
     await rm(cwd, { recursive: true, force: true })
-  })
-})
-
-describe('isolatedDeclarations nudge', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    vi.unstubAllEnvs()
-  })
-
-  const loadShouldNudge = async () => (await import('../src/build/build.ts')).shouldNudge
-
-  it('should nudge at most once per process', async () => {
-    vi.stubEnv('CI', undefined)
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(false)).toBe(true)
-    expect(shouldNudge(false)).toBe(false)
-  })
-
-  it('should stay silent in CI', async () => {
-    vi.stubEnv('CI', 'true')
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(false)).toBe(false)
-  })
-
-  it('should stay silent when isolated declarations are already enabled', async () => {
-    vi.stubEnv('CI', undefined)
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(true)).toBe(false)
   })
 })
 

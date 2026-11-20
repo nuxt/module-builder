@@ -420,7 +420,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* .
 export default module
 ```
 
-Without `isolatedDeclarations`, the build prints a reminder once per run outside CI. Both settings work. See [`isolatedDeclarations`](./5.typescript.md#isolateddeclarations).
+Leaving it off is fine: the build then generates these declarations with TypeScript, alongside the runtime files, and reuses them while their inputs are unchanged. See [`isolatedDeclarations`](./5.typescript.md#isolateddeclarations).
 
 ### Publishing source exports
 
