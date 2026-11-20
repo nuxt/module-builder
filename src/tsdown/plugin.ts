@@ -58,6 +58,9 @@ export function createBuilder(options: BuilderOptions, setupOptions: SetupOption
     async buildEnd(error) {
       await session?.onBuildEnd(error)
     },
+    async closeWatcher() {
+      await session?.onCloseWatcher()
+    },
     generateBundle: {
       order: 'post',
       async handler(_options, bundle) {

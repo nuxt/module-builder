@@ -187,6 +187,14 @@ export default {
       'tsconfig.json': JSON.stringify({ files: [], references: ['./.nuxt/tsconfig.node.json', './tsconfig.app.json', './.nuxt/tsconfig.server.json', './.nuxt/tsconfig.shared.json'].map(path => ({ path })) }),
     },
   })
+  dirs.nested = await fixture('.temp-builder/nested', {
+    config: PLUGIN,
+    module: source => `import { one } from './lib/one.ts'\nimport { two } from './lib/two.ts'\n\n${source}\nexport const both = [one, two] as const\n`,
+    files: {
+      'src/lib/one.ts': `export interface One { name: string }\n\nexport const one: One = { name: 'one' }\n`,
+      'src/lib/two.ts': `import type { One } from './one.ts'\n\nexport interface Two extends One { size: number }\n\nexport const two: Two = { name: 'two', size: 2 }\n`,
+    },
+  })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
     module: source => source + FIELDS,
@@ -208,6 +216,7 @@ export default {
     step('moduleProject', tsdown(dirs.moduleProject, [], { CI: '' })),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
+    step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })),
     step('appProject', tsdown(dirs.appProject)),
     step('published', run('node', [tsdownBin], { cwd: repoRoot })).then(() => step('published:import', run('node', ['--input-type=module', '-e', `const root = await import('@nuxt/module-builder')\nconst { builder } = await import('@nuxt/module-builder/tsdown')\nconsole.log(JSON.stringify(['builder' in root, builder().name]))`]))),
   ])
@@ -352,5 +361,10 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)
     expect(expectBuilt('singleTsconfig')).toContain('tsconfig: tsconfig.json')
     expect(await read(dirs.singleTsconfig!, 'dist/module.d.mts')).toBe(await read(dirs.moduleProject!, 'dist/module.d.mts'))
+  })
+
+  it('should generate the declarations of module code outside the module project from one program', async () => {
+    expect(expectBuilt('nested').match(/create program for module/g)).toHaveLength(1)
+    expect(await read(dirs.nested!, 'dist/module.d.mts')).toContain('interface Two extends One {')
   })
 })
