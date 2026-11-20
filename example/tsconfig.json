@@ -1,14 +1,14 @@
 {
-  "files": [],
-  "exclude": [
-    "dist",
-    "node_modules",
-    "playground"
-  ],
   "references": [
     { "path": "./.nuxt/tsconfig.node.json" },
     { "path": "./.nuxt/tsconfig.app.json" },
     { "path": "./.nuxt/tsconfig.server.json" },
     { "path": "./.nuxt/tsconfig.shared.json" }
+  ],
+  "files": [],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "playground"
   ]
 }

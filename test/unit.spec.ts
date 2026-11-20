@@ -142,6 +142,19 @@ describe('upgrade guide', () => {
     expect(links.filter(([, docs]) => !docs.startsWith('#') || !anchors.includes(docs.slice(1)))).toEqual([])
   })
 
+  it('should list the keys of every tsconfig example in the order that `jsonc/sort-keys` in `@antfu/eslint-config` expects', async () => {
+    const order = ['extends', 'compilerOptions', 'references', 'files', 'include', 'exclude']
+    const compilerOrder = ['tsBuildInfoFile', 'types', 'allowJs', 'declaration', 'isolatedDeclarations', 'erasableSyntaxOnly']
+    const docs = join(fileURLToPath(new URL('..', import.meta.url)), 'docs')
+    const pages = [...(await readdir(docs)).filter(file => file.endsWith('.md')).map(file => join(docs, file)), join(docs, '../README.md')]
+    const examples = (await Promise.all(pages.map(async page => [...(await readFile(page, 'utf8')).matchAll(/^```json[^\n]*\n([\s\S]*?)^```/gm)]
+      .map(([, body]) => JSON.parse(body!.replace(/^\/\/.*$/gm, '')) as Record<string, unknown>)
+      .filter(json => Object.keys(json).every(key => order.includes(key)))))).flat()
+    const unsorted = (keys: string[], expected: string[]) => keys.some(key => !expected.includes(key)) || keys.join() !== [...keys].sort((a, b) => expected.indexOf(a) - expected.indexOf(b)).join()
+    expect(examples.length).toBeGreaterThan(10)
+    expect(examples.filter(json => unsorted(Object.keys(json), order) || unsorted(Object.keys(json.compilerOptions ?? {}), compilerOrder))).toEqual([])
+  })
+
   it('should link diagnostics to the guide at the release tag of this version', () => {
     expect(GUIDE_URL).toBe(`https://github.com/nuxt/module-builder/blob/v${version}/docs/upgrade-v2.md`)
     expect(errors.NUXT_MB_C0004().docs).toBe(`${GUIDE_URL}#tsdown-config`)
