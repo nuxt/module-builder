@@ -25,7 +25,7 @@ import { runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
-import { createDeclarationProgram } from '../src/transpile/declarations.ts'
+import { createDeclarationProgram, restoreImports } from '../src/transpile/declarations.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
@@ -1704,6 +1704,37 @@ describe('createDeclarationProgram', () => {
     await writeFile(dep, `export interface Dep { value: number }\nexport declare function make(): Dep\n`)
     await emit('server', sourceFiles)
     expect(parsed()).not.toContain(depFile)
+  })
+
+  it('should keep the type imports from aliases into `.nuxt` that the declarations it emits refer to', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, '.nuxt'))
+    const tsconfig = join(cwd, 'tsconfig.json')
+    await writeFile(tsconfig, JSON.stringify({ compilerOptions: { strict: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true, paths: { '#build/*': ['./.nuxt/*'] } }, files: ['a.ts'] }))
+    await writeFile(join(cwd, 'a.ts'), `import type { Icon } from '#build/icons'\n\nexport interface Props { icon: Icon }\n`)
+    const program = await createDeclarationProgram({ cwd, tsconfig: { path: tsconfig, config: parseTsconfig(tsconfig) }, paths: {} }, [join(cwd, 'a.ts')])
+    expect((await program.emit([join(cwd, 'a.ts')])).declarations.get(join(cwd, 'a.ts'))).toContain(`import type { Icon } from '#build/icons';`)
+  })
+
+  it('should restore each kind of import that a declaration refers to without importing it', async () => {
+    const source = [
+      `import DefaultCfg, { type Kept } from '#build/cfg'`,
+      `import type * as Icons from '#build/icons'`,
+      `import type { Base } from '#build/base'`,
+      `import type { Reexported } from '#build/reexported'`,
+      `import type { Unused } from '#build/unused'`,
+    ].join('\n')
+    const emitted = `export interface Kept {}\nexport interface Box extends Base { cfg: typeof DefaultCfg.value; icon: Icons.Sub.Props; kept: Kept; }\nexport type { Reexported };\n`
+    expect(await restoreImports(emitted, 'box.ts', source)).toBe([
+      `import type DefaultCfg from '#build/cfg';`,
+      `import type * as Icons from '#build/icons';`,
+      `import type { Base } from '#build/base';`,
+      `import type { Reexported } from '#build/reexported';`,
+      emitted,
+    ].join('\n'))
+    const sfc = `<script setup lang="ts" generic="T extends Array<'>'>">\nimport type { Icon } from '#build/icons'\n</script>\n`
+    expect(await restoreImports('export declare const icon: Icon;\n', 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nexport declare const icon: Icon;\n`)
   })
 
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {

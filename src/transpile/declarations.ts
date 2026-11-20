@@ -90,6 +90,10 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
             declarations.set(emitted, text)
           }
         }, undefined, true)
+        const text = declarations.get(file)
+        if (text !== undefined) {
+          declarations.set(file, await restoreImports(text, file, source.text))
+        }
         errors.push(...result.diagnostics)
         if ((result.emitSkipped || !declarations.has(file)) && errors.length === reported) {
           skipped.push(file)
@@ -111,7 +115,7 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, so
   return {
     ...declarationProgram,
     async emit(files) {
-      const stored = contentCache<Array<[string, string]>>(cwd, cache, { format: 2, typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
+      const stored = contentCache<Array<[string, string]>>(cwd, cache, { format: 3, typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
       const hit = await stored.read()
       if (hit) {
         return { declarations: new Map(hit), errors: [] }
@@ -177,6 +181,68 @@ function formatDiagnostics(ts: typeof import('typescript'), diagnostics: ts.Diag
     const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start)
     return `${relative(cwd, diagnostic.file.fileName)}(${line + 1},${character + 1}): error TS${diagnostic.code}: ${message}`
   })
+}
+
+const SFC_SCRIPT_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script\b[^>]*>/gi
+
+/**
+ * `declaration` with the imports of `source` (`code`, the file's contents) that it refers to by
+ * name but no longer imports. TypeScript leaves out a named type import from a module declared
+ * as `declare module '#build/*'` while keeping the references to it, and the app that installs
+ * the module resolves the alias.
+ */
+export async function restoreImports(declaration: string, source: string, code: string): Promise<string> {
+  const { default: ts } = await import('typescript')
+  const script = source.endsWith('.vue') ? [...code.matchAll(SFC_SCRIPT_RE)].map(([, content]) => content).join('\n') : code
+  const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const known = new Set<string>()
+  const referenced = new Set<string>()
+  const visit = (node: ts.Node) => {
+    if ((ts.isTypeReferenceNode(node) || ts.isTypeQueryNode(node) || ts.isExpressionWithTypeArguments(node)) && !ts.isImportTypeNode(node)) {
+      let name: ts.Node = ts.isTypeReferenceNode(node) ? node.typeName : ts.isTypeQueryNode(node) ? node.exprName : node.expression
+      while (ts.isQualifiedName(name) || ts.isPropertyAccessExpression(name)) {
+        name = ts.isQualifiedName(name) ? name.left : name.expression
+      }
+      if (ts.isIdentifier(name)) {
+        referenced.add(name.text)
+      }
+    }
+    if (ts.isExportSpecifier(node) && !node.parent.parent.moduleSpecifier) {
+      referenced.add((node.propertyName ?? node.name).text)
+    }
+    if (ts.isExportAssignment(node) && ts.isIdentifier(node.expression)) {
+      referenced.add(node.expression.text)
+    }
+    if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isTypeParameterDeclaration(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
+      known.add(node.name.text)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(emitted)
+  const missing = [...referenced].filter(name => !known.has(name))
+  if (!missing.length) {
+    return declaration
+  }
+  const imports: string[] = []
+  for (const statement of ts.createSourceFile(source, script, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS).statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.importClause) {
+      continue
+    }
+    const clause = statement.importClause
+    const specifier = `'${statement.moduleSpecifier.text.replaceAll('\'', '\\\'')}'`
+    const bindings = clause.namedBindings
+    if (clause.name && missing.includes(clause.name.text)) {
+      imports.push(`import type ${clause.name.text} from ${specifier};`)
+    }
+    if (bindings && ts.isNamespaceImport(bindings) && missing.includes(bindings.name.text)) {
+      imports.push(`import type * as ${bindings.name.text} from ${specifier};`)
+    }
+    const named = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter(element => missing.includes(element.name.text)) : []
+    if (named.length) {
+      imports.push(`import type { ${named.map(element => element.propertyName ? `${element.propertyName.text} as ${element.name.text}` : element.name.text).join(', ')} } from ${specifier};`)
+    }
+  }
+  return imports.length ? `${imports.join('\n')}\n${declaration}` : declaration
 }
 
 const UNNAMEABLE_TYPE_RE = /^(.+?)\((\d+),\d+\): error TS\d+: (.*cannot be named.*)$/
