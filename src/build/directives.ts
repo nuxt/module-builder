@@ -3,8 +3,8 @@ import type ts from 'typescript'
 import type { Transform } from '../transpile/transpile-dir.ts'
 
 const DIRECTIVE_RE = /@ts-(?:expect-error|ignore|nocheck|check)\b/g
-const FIRST_LINE_DIRECTIVE_RE = /^\/(?:\/\/?|\*+)[\t ]*@ts-(?:expect-error|ignore|nocheck|check)\b/
-const LAST_LINE_DIRECTIVE_RE = /^[\t *]*@ts-(?:expect-error|ignore)\b/
+const LINE_DIRECTIVE_RE = /^\/\/\/?[\t ]*@ts-(?:expect-error|ignore|nocheck|check)\b/
+const BLOCK_DIRECTIVE_RE = /^[\t /*]*@ts-(?:expect-error|ignore)\b/
 const LINE_TERMINATOR_RE = /\r\n?|[\n\u2028\u2029]/
 const NOT_LINE_TERMINATOR_RE = /[^\n\r\u2028\u2029]/g
 
@@ -36,9 +36,9 @@ async function blankDirectiveComments(source: string, lang: string) {
   return result
 }
 
-/** Whether TypeScript reads `comment` as a directive: on its first line, or on the last line of a block comment. */
+/** Whether TypeScript reads `comment` as a directive, which a block comment holds on its last line. */
 function isDirective(comment: string) {
-  return FIRST_LINE_DIRECTIVE_RE.test(comment) || (comment.startsWith('/*') && LAST_LINE_DIRECTIVE_RE.test(comment.split(LINE_TERMINATOR_RE).at(-1)!))
+  return comment.startsWith('/*') ? BLOCK_DIRECTIVE_RE.test(comment.split(LINE_TERMINATOR_RE).at(-1)!) : LINE_DIRECTIVE_RE.test(comment)
 }
 
 /**

@@ -181,6 +181,10 @@ describe('withoutDirectiveComments', () => {
       ' * @ts-ignore on a line that is not the last',
       ' */',
       'export const middle = 5',
+      '/* @ts-ignore on the first line of a block',
+      ' * that does not end with it',
+      ' */',
+      'export const first = 6',
       '// remove the @ts-ignore below',
       '',
     ].join('\n')
@@ -207,6 +211,10 @@ describe('withoutDirectiveComments', () => {
       '* @ts-ignore on a line that is not the last',
       '*/',
       'export const middle = 5;',
+      '/* @ts-ignore on the first line of a block',
+      '* that does not end with it',
+      '*/',
+      'export const first = 6;',
       '// remove the @ts-ignore below',
       '',
     ].join('\n'))
@@ -219,7 +227,7 @@ describe('withoutDirectiveComments', () => {
   })
 
   it('should keep the line terminators of a directive comment, so that a `return` before it still ends there', async () => {
-    const { code } = await transform('file.ts', 'export function f() {\n  return /* @ts-ignore\u2028*/ 42\n}\n', { lang: 'ts' })
+    const { code } = await transform('file.ts', 'export function f() {\n  return /*\u2028@ts-ignore */ 42\n}\n', { lang: 'ts' })
     expect(code).toMatch(/return;\s+42;/)
   })
 
