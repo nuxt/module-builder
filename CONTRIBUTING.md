@@ -94,7 +94,7 @@ With a root tsconfig that has `references`, it then lists the module's TypeScrip
 
 ### Module code loads with Node
 
-Nuxt 5, and a playground that loads the module from its sources, import `src/module.ts` with Node as written. Node strips types and resolves imports exactly as they are written. `findModuleCodeIssues` in `src/build/loader.ts` reports each import and each piece of syntax that breaks this, with its file, line, column and fix. `build`, `tsdown` and `prepare` all stop on these findings. Keep this check strict: code that passes it has to run under Node.
+Nuxt 5, and a playground that loads the module from its sources, import `src/module.ts` with Node as written. Node strips types and resolves imports exactly as they are written. `findModuleCodeIssues` in `src/build/loader.ts` reports each import and each piece of syntax that breaks this, with its file, line, column and fix. `build`, `tsdown` and `prepare` all stop on these findings. It follows relative imports without their extension to their files, so one run reports every file it reaches, and it lists the imports that resolve to no file as `unfollowed`, which only accompany other findings. Keep this check strict: code that passes it has to run under Node.
 
 ### Legacy code
 

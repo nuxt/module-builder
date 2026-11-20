@@ -8,7 +8,7 @@ import type { Diagnostic } from 'nostics'
 import { relative, resolve } from 'pathe'
 
 import type { BuildPlan } from '../build/build.ts'
-import { findModuleCodeIssues, importModule, moduleCodeError } from '../build/loader.ts'
+import { findModuleCodeIssues, hasLoadIssues, importModule, moduleCodeError } from '../build/loader.ts'
 import { bundledEntries, createOptionsCollector, entryName } from '../build/options.ts'
 import type { BuildHookName, ModuleConfig } from '../build/options.ts'
 import { errors, warnings } from '../diagnostics.ts'
@@ -214,7 +214,7 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
     const stubs = { 'unbuild': DEFINE_BUILD_CONFIG_STUB, '@nuxt/module-builder': DEFINE_BUILD_CONFIG_STUB }
     const unresolvable = findModuleCodeIssues(cwd, [file], [])
-    if (unresolvable.length) {
+    if (hasLoadIssues(unresolvable)) {
       const withoutFile = translateBuildConfig(fieldSource, { cwd, outDir })
       const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
       const entries = bundledEntries(cwd, withoutFile)

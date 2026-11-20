@@ -92,6 +92,8 @@ export interface ModuleCodeIssue {
   importedBy?: string
   /** What Node cannot load, and what to write instead. */
   message: string
+  /** Whether the issue is an import that the check cannot follow, so the files it imports are not checked. */
+  unfollowed?: true
 }
 
 const NON_ERASABLE: Array<[message: string, matches: (ts: typeof import('typescript'), node: ts.Node) => boolean]> = [
@@ -128,13 +130,17 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
       if (typeOnly) {
         continue
       }
+      if (typeof resolution === 'string' && resolution !== EXTERNAL) {
+        found.push({ file: relative(cwd, file), ...location, ...importedBy && { importedBy }, message: `\`${specifier}\` ${resolution}`, unfollowed: true })
+        continue
+      }
       if (VIRTUAL_ALIAS_RE.test(specifier)) {
         issue(location, `\`${specifier}\` only exists in a Nuxt app (move the code that uses it into a runtime file the module adds, or import types only)`)
       }
-      if (JSON_RE.test(resolution?.file ?? specifier) && !json) {
+      if (JSON_RE.test(typeof resolution === 'object' ? resolution.file : specifier) && !json) {
         issue(location, `\`${specifier}\` is JSON (use \`import pkg from '${specifier}' with { type: 'json' }\` and read \`pkg.version\`; destructuring \`pkg\` bundles the whole file)`)
       }
-      if (!resolution) {
+      if (typeof resolution !== 'object') {
         continue
       }
       if (UNLOADABLE_RE.test(resolution.file)) {
@@ -155,7 +161,7 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
       return
     }
     for (const { specifier, typeOnly, json: _, resolution, ...location } of analysis.imports) {
-      if (!typeOnly && resolution?.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
+      if (!typeOnly && typeof resolution === 'object' && resolution.via === 'relative' && resolution.file !== resolve(dirname(file), specifier)) {
         found.push({ file: relative(cwd, file), ...location, message: `\`${specifier}\` (use \`${relativeSpecifier(file, resolution.file)}\`)` })
       }
     }
@@ -163,10 +169,15 @@ export function findModuleCodeIssues(cwd: string, entries: string[], runtimeDirs
   return found.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column)
 }
 
+/** Whether Node cannot load the module code with these findings, apart from the imports the check cannot follow. */
+export function hasLoadIssues(found: ModuleCodeIssue[]): boolean {
+  return found.some(issue => !issue.unfollowed)
+}
+
 /** Fails for {@link findModuleCodeIssues} findings. */
 export function assertLoadableModuleCode(cwd: string, entries: string[], runtimeDirs: string[], otherEntries: string[] = []): void {
   const found = findModuleCodeIssues(cwd, entries, runtimeDirs, otherEntries)
-  if (found.length) {
+  if (hasLoadIssues(found)) {
     throw moduleCodeError(cwd, found)
   }
 }
@@ -183,9 +194,15 @@ interface Resolution {
   via: 'relative' | 'imports' | 'paths'
 }
 
+/** A package or an alias only a Nuxt app provides, which the check does not follow. */
+const EXTERNAL = 'external'
+
+/** A module source, {@link EXTERNAL}, or why the check cannot follow the import. */
+type SourceResolution = Resolution | typeof EXTERNAL | string
+
 interface SourceAnalysis {
   nonErasable: Array<{ line: number, column: number, message: string }>
-  imports: Array<{ specifier: string, typeOnly: boolean, json: boolean, line: number, column: number, resolution?: Resolution }>
+  imports: Array<{ specifier: string, typeOnly: boolean, json: boolean, line: number, column: number, resolution?: SourceResolution }>
 }
 
 interface Importer {
@@ -194,7 +211,7 @@ interface Importer {
 }
 
 function walkSources(cwd: string, entries: string[], visit: (file: string, analysis: SourceAnalysis, importer?: Importer) => void) {
-  const matchPath = pathsMatcher(cwd)
+  const paths = pathsMatcher(cwd)
   const seen = new Set<string>()
   const queue: Array<{ file: string, importer?: Importer }> = entries.map(entry => ({ file: resolve(cwd, entry) }))
   while (queue.length) {
@@ -205,8 +222,8 @@ function walkSources(cwd: string, entries: string[], visit: (file: string, analy
     seen.add(file)
     const analysis = analyseSource(file, readFileSync(file, 'utf8'))
     for (const entry of analysis.imports) {
-      entry.resolution = resolveSource(entry.specifier, dirname(file), cwd, matchPath)
-      if (entry.resolution && !entry.typeOnly && !UNLOADABLE_RE.test(entry.resolution.file)) {
+      entry.resolution = resolveSource(entry.specifier, dirname(file), cwd, paths)
+      if (typeof entry.resolution === 'object' && !entry.typeOnly && !UNLOADABLE_RE.test(entry.resolution.file)) {
         queue.push({ file: entry.resolution.file, importer: { file, line: entry.line } })
       }
     }
@@ -217,36 +234,48 @@ function walkSources(cwd: string, entries: string[], visit: (file: string, analy
 /**
  * The module source `specifier` reaches: a relative file, an entry in the `imports` of the
  * module's `package.json`, or a tsconfig `paths` alias. Packages and the aliases only a
- * Nuxt app provides are not followed.
+ * Nuxt app provides are {@link EXTERNAL}. A relative file or an alias that resolves to no file
+ * gives the reason instead.
  */
-function resolveSource(specifier: string, parentDir: string, cwd: string, matchPath: ReturnType<typeof pathsMatcher>): Resolution | undefined {
+function resolveSource(specifier: string, parentDir: string, cwd: string, paths: ReturnType<typeof pathsMatcher>): SourceResolution {
   if (VIRTUAL_ALIAS_RE.test(specifier)) {
-    return
+    return EXTERNAL
   }
   if (specifier.startsWith('.')) {
     const file = probe(resolve(parentDir, specifier))
-    return file ? { file, via: 'relative' } : undefined
+    return file ? { file, via: 'relative' } : 'resolves to no file'
   }
   if (specifier.startsWith('#')) {
     const imported = resolvePackageImport(specifier, parentDir)
+    if (imported?.target?.startsWith('./') && !imported.file) {
+      return 'maps to no file in the `imports` of `package.json`'
+    }
     if (imported) {
-      return imported.file && isInside(cwd, imported.file) && !NODE_MODULES_RE.test(imported.file) ? { file: imported.file, via: 'imports' } : undefined
+      return imported.file && isInside(cwd, imported.file) && !NODE_MODULES_RE.test(imported.file) ? { file: imported.file, via: 'imports' } : EXTERNAL
     }
   }
   else if (!PATH_ALIAS_RE.test(specifier) && resolveFrom(resolve(parentDir, 'index.js'), specifier)) {
-    return
+    return EXTERNAL
   }
   const name = packageName(specifier)
   const packageDir = name && findPackageDir(name, parentDir)
   if (packageDir && exportsSubpath(packageDir, `.${specifier.slice(name.length)}`)) {
-    return
+    return EXTERNAL
   }
-  for (const candidate of matchPath?.(specifier) || []) {
+  const candidates = paths.match?.(specifier) ?? []
+  for (const candidate of candidates) {
     const file = probe(candidate)
     if (file) {
       return { file, via: 'paths' }
     }
   }
+  if (name || specifier.includes(':')) {
+    return EXTERNAL
+  }
+  if (candidates.length) {
+    return 'is a tsconfig `paths` alias that resolves to no file'
+  }
+  return paths.readable ? 'matches no tsconfig `paths` alias' : 'is an alias, and the tsconfig that can map it in `paths` cannot be read'
 }
 
 /** Whether the package in `dir` exposes `subpath`, `.` or `./` followed by a path, to importers. */
@@ -259,8 +288,8 @@ function exportsSubpath(dir: string, subpath: string) {
   return keys.length ? !!importsKeyFor(keys, subpath) : subpath === '.'
 }
 
-/** Whether `specifier` matches the `imports` of the closest `package.json`, and the source file it maps to with the conditions of `import`. */
-function resolvePackageImport(specifier: string, parentDir: string): { file?: string } | undefined {
+/** Whether `specifier` matches the `imports` of the closest `package.json`, and the target and source file it maps to with the conditions of `import`. */
+function resolvePackageImport(specifier: string, parentDir: string): { target?: string, file?: string } | undefined {
   const scope = findUp(parentDir, dir => existsSync(join(dir, 'package.json')) ? dir : undefined)
   const { imports } = scope ? JSON.parse(readFileSync(join(scope, 'package.json'), 'utf8').replace(/^\uFEFF/, '')) as PackageJson : {}
   const key = isPlainObject(imports) ? importsKeyFor(Object.keys(imports), specifier) : undefined
@@ -270,7 +299,7 @@ function resolvePackageImport(specifier: string, parentDir: string): { file?: st
   const star = key.indexOf('*')
   const target = importTarget((imports as Record<string, unknown>)[key], star === -1 ? undefined : specifier.slice(star, specifier.length - key.length + star + 1))
   const file = target?.startsWith('./') ? resolve(scope, target) : undefined
-  return { file: file && isFile(file) ? file : undefined }
+  return { target, file: file && isFile(file) ? file : undefined }
 }
 
 function importTarget(target: unknown, match: string | undefined): string | undefined {
@@ -377,14 +406,14 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
   return found
 }
 
-function pathsMatcher(cwd: string) {
+function pathsMatcher(cwd: string): { match?: (specifier: string) => string[], readable: boolean } {
   // `prepare` checks module code before `nuxt prepare` has generated the `.nuxt/tsconfig.json`
-  // that module tsconfigs extend, so a tsconfig that cannot be resolved yet means no aliases.
+  // that module tsconfigs extend, so the aliases of a tsconfig that cannot be resolved yet are unknown.
   try {
     const tsconfig = getTsconfig(cwd)
-    return tsconfig ? createPathsMatcher(tsconfig) : undefined
+    return { match: tsconfig ? createPathsMatcher(tsconfig) ?? undefined : undefined, readable: true }
   }
   catch {
-    return undefined
+    return { readable: false }
   }
 }

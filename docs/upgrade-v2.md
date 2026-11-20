@@ -168,7 +168,7 @@ Before you run `prepare`:
 - If module code imports files that a build hook generates, commit them, or generate them in `dev:prepare` before `nuxt-module-build prepare`. tsdown's hooks don't run for `prepare`.
 - If your module is in a monorepo and has no `tsconfig.json` of its own, create the two tsconfigs of step 5 now. Otherwise, `prepare` reads the repository root's tsconfig, which can extend a `.nuxt` that doesn't exist yet.
 
-Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Node, it lists each problem with its file, line, and fix, and doesn't generate `.nuxt`. Fix them all, and run it again until it generates `.nuxt`.
+Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Node, it lists every problem with its file, line, and fix, and doesn't generate `.nuxt`. Fix them all, and run it again to generate `.nuxt`.
 
 ### Step 5: Switch to the module's own tsconfigs
 

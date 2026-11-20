@@ -33,7 +33,7 @@ import { augmentsNuxtTypes, writeSourceTypes, writeTypes } from '../src/build/ty
 import ts from 'typescript'
 import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
 import { withoutDirectiveComments } from '../src/build/directives.ts'
-import { findModuleCodeIssues, loadOxc } from '../src/build/loader.ts'
+import { findModuleCodeIssues, hasLoadIssues, loadOxc, moduleCodeError } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
 import prepareCommand from '../src/commands/prepare.ts'
@@ -584,6 +584,75 @@ describe('findModuleCodeIssues', () => {
       await writeFile(join(dir, 'src/module.ts'), `import { value } from 'esm-only'\nimport { local } from 'esm-only/local'\nexport default value + local\n`)
       expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
         expect.stringMatching(/^src\/module\.ts:2:23: `esm-only\/local` is a tsconfig `paths` alias/),
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('should list the syntax of every file it reaches together with the imports that reach it, in one pass', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-one-pass-'))
+    try {
+      await mkdir(join(dir, 'src/lib'), { recursive: true })
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/*': ['./*'] } } }))
+      await writeFile(join(dir, 'src/module.ts'), `import { options } from './options'\nexport default <object>options\n`)
+      await writeFile(join(dir, 'src/options.ts'), `import { Level } from './lib'\nimport { Context } from '~/src/lib/context'\nexport const options = { level: Level.High, context: new Context('') }\n`)
+      await writeFile(join(dir, 'src/lib/index.ts'), `export enum Level { High = 'high' }\n`)
+      await writeFile(join(dir, 'src/lib/context.ts'), `export class Context {\n  constructor(public name: string) {}\n}\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/lib/context.ts:2:15: parameter property (declare the field and assign it in the constructor)',
+        'src/lib/index.ts:1:1: `enum` (use an `as const` object and a union type of its values)',
+        'src/module.ts:1:25: `./options` (use `./options.ts`)',
+        'src/module.ts:2:16: angle-bracket type assertion (write `value as Type`)',
+        'src/options.ts:1:23: `./lib` (use `./lib/index.ts`)',
+        'src/options.ts:2:25: `~/src/lib/context` is a tsconfig `paths` alias (use `./lib/context.ts`, or an entry in the `imports` of `package.json`)',
+      ])
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('should name the imports that it cannot follow, and fail only on the other findings', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'module-builder-unfollowed-'))
+    try {
+      await mkdir(join(dir, 'src'))
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', type: 'module', imports: { '#internal/*': './src/internal/*.ts', '#external': 'external-pkg' } }))
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/lib/*': ['./lib/*'] } } }))
+      await writeFile(join(dir, 'src/module.ts'), [
+        `import { generated } from './generated.ts'`,
+        `import { helper } from '#internal/helper'`,
+        `import { lib } from '~/lib/missing'`,
+        `import { other } from '@/other'`,
+        `import { external } from '#external'`,
+        `import type { Types } from './types.ts'`,
+        `import { optional } from 'uninstalled-pkg'`,
+        `export default [generated, helper, lib, other, external, optional]`,
+        `export type { Types }`,
+        ``,
+      ].join('\n'))
+      const found = findModuleCodeIssues(dir, ['./src/module.ts'], [])
+      expect(list(found)).toEqual([
+        'src/module.ts:1:27: `./generated.ts` resolves to no file',
+        'src/module.ts:2:24: `#internal/helper` maps to no file in the `imports` of `package.json`',
+        'src/module.ts:3:21: `~/lib/missing` is a tsconfig `paths` alias that resolves to no file',
+        'src/module.ts:4:23: `@/other` matches no tsconfig `paths` alias',
+      ])
+      expect(hasLoadIssues(found)).toBe(false)
+
+      await writeFile(join(dir, 'src/module.ts'), `import { generated } from './generated.ts'\nexport enum Mode { On }\nexport default generated\n`)
+      const message = moduleCodeError(dir, findModuleCodeIssues(dir, ['./src/module.ts'], [])).message.split('\n')
+      expect(message.slice(1)).toEqual([
+        '  - src/module.ts:2:1: `enum` (use an `as const` object and a union type of its values)',
+        'The check stopped at these imports, so the files they import may have more of these problems:',
+        '  - src/module.ts:1:27: `./generated.ts` resolves to no file',
+      ])
+
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ extends: './.nuxt/tsconfig.json' }))
+      await writeFile(join(dir, 'src/module.ts'), `import { lib } from '~/lib/missing'\nexport default lib\n`)
+      expect(list(findModuleCodeIssues(dir, ['./src/module.ts'], []))).toEqual([
+        'src/module.ts:1:21: `~/lib/missing` is an alias, and the tsconfig that can map it in `paths` cannot be read',
       ])
     }
     finally {

@@ -42,11 +42,16 @@ export interface BundledPackage {
 /** Definitions of the {@link errors}. */
 export const errorCodes = {
   NUXT_MB_B0001: {
-    why: (p: { issues: ModuleCodeIssue[] }): string => [
-      'Module code has to load with Node, which strips types and resolves imports as written:',
-      ...new Set(p.issues.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)),
-    ].join('\n'),
-    fix: 'Change each one as suggested.',
+    why: (p: { issues: ModuleCodeIssue[] }): string => {
+      const line = ({ file, line, column, importedBy, message }: ModuleCodeIssue) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`
+      const unfollowed = p.issues.filter(issue => issue.unfollowed)
+      return [
+        'Module code has to load with Node, which strips types and resolves imports as written:',
+        ...new Set(p.issues.filter(issue => !issue.unfollowed).map(line)),
+        ...unfollowed.length ? ['The check stopped at these imports, so the files they import may have more of these problems:', ...new Set(unfollowed.map(line))] : [],
+      ].join('\n')
+    },
+    fix: (p: { issues: ModuleCodeIssue[] }): string => p.issues.some(issue => issue.unfollowed) ? 'Change each one as suggested. Once the imports that the check stopped at resolve, run it again to check the files that they import.' : 'Change each one as suggested.',
     docs: '#step-4-make-module-code-load-with-node',
   },
   NUXT_MB_B0002: {
