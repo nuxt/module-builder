@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
+import { version } from '../package.json'
 import { basename, dirname, join, resolve } from 'pathe'
 import { parseTsconfig } from 'get-tsconfig'
 import { analyseSources, finishBuild, hashGeneratedTypes, moduleTsconfigs, resolveBuild } from '../src/build/build.ts'
@@ -28,8 +29,9 @@ import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { errorCodes, errors, warningCodes, warnings } from '../src/diagnostics.ts'
-import { findModuleCodeIssues } from '../src/build/loader.ts'
+import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
+import { withoutDirectiveComments } from '../src/build/directives.ts'
+import { findModuleCodeIssues, loadOxc } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
 import prepareCommand from '../src/commands/prepare.ts'
@@ -135,7 +137,130 @@ describe('upgrade guide', () => {
     const anchors = await guideAnchors()
     const links = Object.entries({ ...errorCodes, ...warningCodes }).flatMap(([code, { docs }]) => docs ? [[code, docs] as const] : [])
     expect(links.length).toBeGreaterThan(0)
-    expect(links.filter(([, docs]) => !docs.startsWith('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#') || !anchors.includes(docs.split('#')[1]!))).toEqual([])
+    expect(links.filter(([, docs]) => !docs.startsWith('#') || !anchors.includes(docs.slice(1)))).toEqual([])
+  })
+
+  it('should link diagnostics to the guide at the release tag of this version', () => {
+    expect(GUIDE_URL).toBe(`https://github.com/nuxt/module-builder/blob/v${version}/docs/upgrade-v2.md`)
+    expect(errors.NUXT_MB_C0004().docs).toBe(`${GUIDE_URL}#tsdown-config`)
+    expect(errors.NUXT_MB_D0004({ options: [{ option: 'stub', section: 'stub-builds' }] }).message).toContain(`(${GUIDE_URL}#stub-builds)`)
+  })
+})
+
+describe('withoutDirectiveComments', () => {
+  const transform = withoutDirectiveComments(loadOxc()!.transform)
+
+  it('should leave TypeScript directive comments out of the output, and keep every other comment', async () => {
+    const source = [
+      '// @ts-nocheck',
+      '/**',
+      ' * Documented.',
+      ' */',
+      '// @ts-expect-error virtual module',
+      'import value from \'#virtual\'',
+      '/*! licence */',
+      '// #region helpers',
+      'export const set = /* @__PURE__ */ new Set([value])',
+      '// #endregion',
+      '// a plain comment',
+      'const object = { /* @ts-ignore */ key: 1 }',
+      '/** @ts-ignore */',
+      'export const text: string = `',
+      '// @ts-ignore in a template',
+      '` + \'// @ts-ignore in a string\' + object.key',
+      'export function last(): object {',
+      '  // @ts-expect-error at the end of a block',
+      '}',
+      'export const empty = { /* @ts-ignore in an empty object */ }',
+      '/// @ts-expect-error with three slashes',
+      'export const triple = 3',
+      '/*',
+      ' * @ts-ignore on the last line of a block */',
+      'export const block = 4',
+      '/**',
+      ' * @ts-ignore on a line that is not the last',
+      ' */',
+      'export const middle = 5',
+      '/* @ts-ignore on the first line of a block',
+      ' * that does not end with it',
+      ' */',
+      'export const first = 6',
+      'export function params(/* @ts-ignore in empty parameters */) {}',
+      'params(first, /* @ts-ignore after the last argument */)',
+      '// remove the @ts-ignore below',
+      '',
+    ].join('\n')
+    const { code } = await transform('file.ts', source, { lang: 'ts' })
+    expect(code).toBe([
+      '/**',
+      '* Documented.',
+      '*/',
+      'import value from "#virtual";',
+      '/*! licence */',
+      '// #region helpers',
+      'export const set = /* @__PURE__ */ new Set([value]);',
+      '// #endregion',
+      '// a plain comment',
+      'const object = { key: 1 };',
+      'export const text = `',
+      '// @ts-ignore in a template',
+      '` + "// @ts-ignore in a string" + object.key;',
+      'export function last() {}',
+      'export const empty = {};',
+      'export const triple = 3;',
+      'export const block = 4;',
+      '/**',
+      '* @ts-ignore on a line that is not the last',
+      '*/',
+      'export const middle = 5;',
+      '/* @ts-ignore on the first line of a block',
+      '* that does not end with it',
+      '*/',
+      'export const first = 6;',
+      'export function params() {}',
+      'params(first);',
+      '// remove the @ts-ignore below',
+      '',
+    ].join('\n'))
+  })
+
+  it('should leave directive comments out of JSX, and keep JSX text', async () => {
+    const { code } = await transform('file.tsx', 'export const C = () => (\n  <div>\n    {/* @ts-ignore */}\n    // @ts-ignore as text\n  </div>\n)\n', { lang: 'tsx', jsx: 'preserve' })
+    expect(code).not.toContain('/* @ts-ignore */')
+    expect(code).toContain('// @ts-ignore as text')
+  })
+
+  it('should keep the line terminators of a directive comment, so that a `return` before it still ends there', async () => {
+    const { code } = await transform('file.ts', 'export function f() {\n  return /*\u2028@ts-ignore */ 42\n}\n', { lang: 'ts' })
+    expect(code).toMatch(/return;\s+42;/)
+  })
+
+  it('should keep source positions, so that the source map matches the source', async () => {
+    const plain = await loadOxc()!.transform('file.ts', '\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
+    const directive = await transform('file.ts', '// @ts-ignore\n\nexport const a = 1\n', { lang: 'ts', sourcemap: true })
+    expect((directive.map as { mappings: string }).mappings).toBe((plain.map as { mappings: string }).mappings)
+  })
+})
+
+describe('install commands in the docs', () => {
+  it('should install a range of `@nuxt/module-builder` that includes this version', async () => {
+    const docsDir = fileURLToPath(new URL('../docs', import.meta.url))
+    const files = [fileURLToPath(new URL('../README.md', import.meta.url)), ...(await readdir(docsDir)).filter(file => file.endsWith('.md')).map(file => join(docsDir, file))]
+    const ranges: Array<[file: string, range: string | undefined]> = []
+    for (const file of files) {
+      for (const line of (await readFile(file, 'utf8')).split('\n')) {
+        if (/\b(?:pnpm|npm|yarn|bun) (?:add|install|i)\b.*@nuxt\/module-builder\b/.test(line)) {
+          ranges.push([basename(file), line.match(/@nuxt\/module-builder@([^\s`]+)/)?.[1]])
+        }
+        const dependency = line.match(/"@nuxt\/module-builder": "([~^][^"]+)"/)?.[1]
+        if (dependency) {
+          ranges.push([basename(file), dependency])
+        }
+      }
+    }
+    expect(ranges.length).toBeGreaterThan(3)
+    const prerelease = version.includes('-')
+    expect(ranges.filter(([, range]) => !range || !satisfies(version, range) || range.includes('-') !== prerelease)).toEqual([])
   })
 })
 
@@ -160,6 +285,22 @@ describe('command docs', () => {
 describe('hints', () => {
   it('should suggest installing the peer range of tsdown when it is missing', () => {
     expect(errors.NUXT_MB_B0003().fix).toMatch(/pnpm add -D tsdown@"\^[\d.]+"`\.$/)
+  })
+
+  it('should give a thrown diagnostic its fix and docs as its stack, and unwrap it from a build error with the stack of its cause', () => {
+    const plain = errors.NUXT_MB_C0004()
+    expect(plain.stack).toBe([
+      `NUXT_MB_C0004: ${plain.message}`,
+      '├▶ fix: Call `builder()` in each config that builds the module.',
+      `╰▶ see: ${GUIDE_URL}#tsdown-config`,
+    ].join('\n'))
+    const cause = new Error('boom')
+    const caused = errors.NUXT_MB_B0002({ file: 'dist/module.mjs', reason: 'boom', cause })
+    expect(unwrapBuildError({ errors: [caused] })).toBe(caused)
+    expect(caused.stack).toMatch(/^NUXT_MB_B0002: [^\n]+\n╰▶ fix: [^\n]+\nCaused by: Error: boom\n {4}at /)
+    const both = { errors: [plain, caused] }
+    expect(unwrapBuildError(both)).toBe(both)
+    expect(unwrapBuildError(plain)).toBe(plain)
   })
 })
 
@@ -551,11 +692,33 @@ describe('deprecation checks', () => {
       const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
       expect(message).toContain(link(pathToFileURL(join(root, 'package.json')).href, 'package.json'))
       expect(message).toContain(link(pathToFileURL(join(root, 'dist/util.d.mts')).href, './dist/util.d.mts'))
-      expect(message).toContain('https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#typesversions-paths\x07')
+      expect(message).toContain(`${GUIDE_URL}#typesversions-paths\x07`)
       expect(message).not.toContain(pathToFileURL(join(root, 'dist/util')).href + '\x07')
     }
     finally {
       warn.mockRestore()
+      vi.unstubAllEnvs()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('should link the directories and tsconfig that the note about unchecked files names', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-unchecked-'))
+    await mkdir(join(root, 'test'))
+    await writeFile(join(root, 'tsconfig.json'), '{}')
+    await writeFile(join(root, 'vitest.config.ts'), '')
+    vi.stubEnv('FORCE_HYPERLINK', '1')
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => {})
+    try {
+      warnings.NUXT_MB_C0303({ groups: [['test/', 2], ['vitest.config.ts', 1]], sources: [`${join(root, 'test')}/`, join(root, 'vitest.config.ts'), join(root, 'tsconfig.json')] }, { method: 'info' })
+      const message = String(info.mock.calls[0]![0])
+      const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
+      expect(message).toContain(link(pathToFileURL(join(root, 'test')).href, 'test/'))
+      expect(message).toContain(link(pathToFileURL(join(root, 'vitest.config.ts')).href, 'vitest.config.ts'))
+      expect(message).toContain(link(pathToFileURL(join(root, 'tsconfig.json')).href, 'tsconfig.json'))
+    }
+    finally {
+      info.mockRestore()
       vi.unstubAllEnvs()
       await rm(root, { recursive: true, force: true })
     }
@@ -965,6 +1128,24 @@ describe('builder options', () => {
       '  - `noExternal`: use `deps.alwaysBundle`',
       '  - `deps.neverBundle`: list the imports that are never bundled',
     ].join('\n')))
+  })
+
+  it('should turn off rolldown\'s timings report unless the config sets it', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'module-builder-checks-'))
+    onTestFinished(() => rm(root, { recursive: true, force: true }))
+    await mkdir(join(root, '.nuxt'))
+    await mkdir(join(root, 'src'))
+    await writeFile(join(root, '.nuxt/tsconfig.json'), '{}')
+    await writeFile(join(root, 'src/module.ts'), 'export default {}\n')
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'my-module' }))
+    const checks = async (config: UserConfig) => {
+      await setupBuilder(config, {}, {}, {})
+      return config.checks
+    }
+    expect(await checks({ cwd: root })).toEqual({ bundlerTimings: false })
+    expect(await checks({ cwd: root, checks: { legacyCjs: false } })).toEqual({ bundlerTimings: false, legacyCjs: false })
+    expect(await checks({ cwd: root, checks: { bundlerTimings: true } })).toEqual({ bundlerTimings: true })
+    expect(await checks({ cwd: root, checks: { pluginTimings: true } })).toEqual({ pluginTimings: true })
   })
 })
 

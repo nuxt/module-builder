@@ -7,12 +7,13 @@ import { globalLogger } from 'tsdown'
 import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, directoryPluginName, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
+import { withoutDirectiveComments } from '../build/directives.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
 import { sourcePathsPackError, unpublishablePathsError } from '../build/package.ts'
 import { prepareModule } from '../commands/prepare.ts'
-import { errors, formatDiagnostic, useBuildLogger, warnings } from '../diagnostics.ts'
+import { errors, formatDiagnostic, unwrapBuildError, useBuildLogger, warnings } from '../diagnostics.ts'
 import { transpileDir, TYPE_ERRORS_WARNING } from '../transpile/transpile-dir.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
@@ -95,7 +96,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     outBase: relative(outDir, directory.outDir),
     extension: directory.ext,
     paths: plan.directoryPaths,
-    transform: loadOxc()!.transform,
+    transform: withoutDirectiveComments(loadOxc()!.transform),
     sourcemap: plan.sourcemap,
     cacheVersion: plan.generatedTypesHash,
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
@@ -153,6 +154,8 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     sourcemap: config.sourcemap || plan.sourcemap,
     deps: { ...config.deps, neverBundle: [...plan.neverBundle, ...userNeverBundle === undefined ? [] : [userNeverBundle].flat()] },
     dts,
+    // Most of the time rolldown attributes to plugins is spent generating declarations, which the report cannot break down.
+    checks: { ...!(config.checks && ('bundlerTimings' in config.checks || 'pluginTimings' in config.checks)) && { bundlerTimings: false }, ...config.checks },
     inputOptions: async (inputOptions, format, context) => {
       const options = typeof userInputOptions === 'function' ? await userInputOptions(inputOptions, format, context) ?? inputOptions : { ...inputOptions, ...userInputOptions }
       return {
@@ -196,6 +199,12 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
       useBuildLogger(resolved.logger)
       watch = !!resolved.watch
       resolvedConfig = resolved
+      const { runBuild } = resolved
+      if (typeof runBuild === 'function') {
+        resolved.runBuild = task => runBuild(task).catch((error: unknown) => {
+          throw unwrapBuildError(error)
+        })
+      }
       const changed = [
         ...resolved.format !== 'es' ? ['format'] : [],
         ...Object.keys(resolved.entry).length !== Object.keys(plan.entries).length || Object.entries(plan.entries).some(([name, input]) => !resolved.entry[name] || resolve(cwd, resolved.entry[name]) !== resolve(cwd, input)) ? ['entry'] : [],

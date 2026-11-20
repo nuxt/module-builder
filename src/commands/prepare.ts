@@ -13,6 +13,7 @@ import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
 import type { ModuleConfig } from '../build/options.ts'
 import { selfReferencePaths } from '../build/package.ts'
 import { writeSourceTypes } from '../build/types.ts'
+import { noteUncheckedFiles } from '../build/unchecked.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
@@ -214,6 +215,9 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig):
   })
   await writeSourceTypes(sourceTypesDir, entryPath)
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
+  if (perContext) {
+    await noteUncheckedFiles(cwd, { outDir, exclude: rootConfig.exclude ?? [] })
+  }
   if (name && perContext) {
     const roots = [...Object.values(entries).flatMap(input => probe(resolve(cwd, input)) ?? []).filter(file => !runtimeDirs.some(dir => isInside(dir, file))), ...own.sources]
     const tsconfigs = await moduleTsconfigs(cwd)

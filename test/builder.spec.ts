@@ -1,6 +1,7 @@
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
+import { GUIDE_URL } from '../src/diagnostics.ts'
 import type { Result } from './utils.ts'
 import { bin, cli, exists, fixture, read, repoRoot, run, tsdown, tsdownBin } from './utils.ts'
 
@@ -255,7 +256,7 @@ describe('builder', () => {
         expect(output, command).toContain('NUXT_MB_C0101')
         expect(output, command).toContain(message)
         expect(output, command).toContain('├▶ fix: Point them at the build output')
-        expect(output, command).toContain('╰▶ see: https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#publishing-source-exports')
+        expect(output, command).toContain(`╰▶ see: ${GUIDE_URL}#publishing-source-exports`)
       }
       expect(exists(dirs[`unpublishable-${name}`]!, 'dist')).toBe(false)
     }
@@ -284,6 +285,14 @@ describe('builder', () => {
   it('should fail when `outputOptions` changes the file names of the bundled entries, and remove the partial output', () => {
     expect(expectFailed('entryFileNames')).toMatch(/NUXT_MB_C0003: .*: `(module|utils)\.mjs`, `(module|utils)\.mjs`\./)
     expect(exists(dirs.entryFileNames!, 'dist')).toBe(false)
+  })
+
+  it('should print the diagnostics it fails with without a stack, from every stage of the build', () => {
+    for (const name of ['unpublishable-source:tsdown', 'format', 'packageImports', 'entryFileNames']) {
+      const output = expectFailed(name)
+      expect(output, name).toMatch(/ERROR {2}NUXT_MB_C0\d{3}: /)
+      expect(output, name).not.toMatch(/^\s+at /m)
+    }
   })
 
   it('should break the size report down by entry and runtime directory only when it is a summary', () => {

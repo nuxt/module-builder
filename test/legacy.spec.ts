@@ -7,12 +7,11 @@ import ts from 'typescript'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { bundledEntries, entryName } from '../src/build/options.ts'
+import { GUIDE_URL } from '../src/diagnostics.ts'
 import { assertNoLegacyBuildConfig, loadBuildConfig, translateBuildConfig, unsupportedOptionsError, warnDeprecatedBuildConfig } from '../src/legacy/build-config.ts'
 import { logger } from '../src/utils.ts'
 import type { FixtureOptions, Result } from './utils.ts'
 import { cli, diagnostic, exists, fixture, guideAnchors, listFiles, read, repoRoot, reported, staticImports, tsdown } from './utils.ts'
-
-const GUIDE_URL = 'https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md'
 
 const exampleDir = fileURLToPath(new URL('../example', import.meta.url))
 

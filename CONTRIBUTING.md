@@ -35,7 +35,7 @@ The package has three entry points:
 |---|---|
 | `src/commands/` | The CLI subcommands, plus `config-file.ts`, which finds the module's tsdown config and reads the `builder()` options from it. |
 | `src/tsdown/` | The `builder()` plugin. `plugin.ts` creates it, and `setup.ts` turns the tsdown config into a build. It adds the plugins, hooks into tsdown's lifecycle, and handles watch mode. `externals.ts`, `unchanged.ts` and `report.ts` are the plugins and helpers that `setup.ts` uses. `build.ts` runs tsdown for `nuxt-module-build build`. |
-| `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations. |
+| `src/build/` | The build itself, independent of tsdown's plugin API:<br>`options.ts` resolves `builder()` options.<br>`build.ts` resolves a `BuildPlan` and runs the steps before and after the bundle.<br>`loader.ts` imports module code and checks that Node can load it.<br>`package.ts` holds the `package.json` checks.<br>`types.ts` and `module-declarations.ts` write `types.d.mts` and the declarations `prepare` generates.<br>`aliases.ts` rewrites `#app` in declarations.<br>`directives.ts` wraps the oxc transform of runtime files so that TypeScript directive comments are left out.<br>`unchecked.ts` finds the TypeScript files that no tsconfig the module references includes, for `prepare`'s note. |
 | `src/transpile/` | `transpileDir()`, the internal rolldown plugin that transpiles a directory file by file. It transforms scripts with oxc and `.vue` files with `vue.ts`, compiles stylesheets with `stylesheets.ts`, emits declarations with `declarations.ts`, rewrites import specifiers with `specifiers.ts`, and resolves the tsconfig of each file with `tsconfig.ts`. It imports nothing outside the directory but `src/utils.ts`, so it can be extracted later. |
 | `src/legacy/` | Compatibility with v1 and unbuild (see [Legacy code](#legacy-code)). |
 | `src/diagnostics.ts` | The codes of every error and warning the builder reports (see [Diagnostics](#diagnostics)). |
@@ -90,6 +90,8 @@ That writes `.nuxt`, including:
 - `.nuxt/module-builder/types.d.mts`, which source exports point at;
 - the declarations that resolve the module's own package name inside its type checks.
 
+With a root tsconfig that has `references`, it then lists the module's TypeScript files that none of the referenced projects include, once per process and outside CI.
+
 ### Module code loads with Node
 
 Nuxt 5, and a playground that loads the module from its sources, import `src/module.ts` with Node as written. Node strips types and resolves imports exactly as they are written. `findModuleCodeIssues` in `src/build/loader.ts` reports each import and each piece of syntax that breaks this, with its file, line, column and fix. `build`, `tsdown` and `prepare` all stop on these findings. Keep this check strict: code that passes it has to run under Node.
@@ -118,7 +120,7 @@ Errors and warnings that a module author can act on are [nostics](https://www.np
 
 There are two catalogs:
 
-- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so the `fix` and docs lines are added to the stack after its first line. `nuxt-module-build` prints a thrown diagnostic without its stack instead.
+- `errors` for diagnostics that are thrown, as in `throw errors.NUXT_MB_C0012({ label, path })`. Creating one prints nothing. `tsdown` and rolldown print the stack of an error, so a diagnostic's stack is its first line followed by the `fix` and docs lines, without frames. rolldown wraps an error thrown from a plugin hook in a build error with its own frames, so `setupBuilder` unwraps a build error made of one diagnostic before tsdown prints it, with the stack of its `cause` after it. `nuxt-module-build` prints a thrown diagnostic with `formatDiagnostic` instead, followed by its `cause`.
 - `warnings` for diagnostics that are printed when created, as warnings, or as info or errors when the call passes `{ method }`.
 
 During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`), so the build's `logLevel`, `failOnWarn` and `suppressWarnings` apply to them. `setupBuilder` hands it tsdown's global logger, then the logger of the resolved config. Outside a build, as in `nuxt-module-build prepare`, they are printed with `logger` from `src/utils.ts`. tsdown is a peer dependency, so `src/diagnostics.ts` only imports its types.
@@ -126,7 +128,7 @@ During a build, diagnostics are printed with tsdown's logger (`useBuildLogger()`
 To add one, add an entry to `errorCodes` or `warningCodes` with the next free number in its group:
 
 - `why` says what is wrong and becomes the message. `fix` says what to do. Neither repeats the other.
-- `docs` is the URL of the heading of `docs/upgrade-v2.md` that explains it, or `false`.
+- `docs` is the `#anchor` of the heading of `docs/upgrade-v2.md` that explains it, or `false`. The printed link points at the guide at the release tag of the version that prints it, `GUIDE_URL`.
 - The call passes `sources`: the absolute path of every file that the `why` or `fix` names, with `:line:column` when it names a position. In a terminal, each file that exists is linked where the `why` or `fix` names it, by the end of its path. URLs in the text and the docs link are linked as well.
 - The tsconfig sets `isolatedDeclarations`, so `why` and `fix` are string literals or functions with a `: string` return type, and `docs` is a string literal.
 
