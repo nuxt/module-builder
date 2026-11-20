@@ -2,6 +2,7 @@ import type { TsConfigResult } from 'get-tsconfig'
 import { relative } from 'pathe'
 import type ts from 'typescript'
 
+import { contentCache } from './cache.ts'
 import { projectFiles, writeDeclarationPaths } from './tsconfig.ts'
 
 export interface DeclarationProgramOptions {
@@ -9,7 +10,18 @@ export interface DeclarationProgramOptions {
   tsconfig: TsConfigResult | undefined
   /** `paths` added to the tsconfig's. */
   paths: Record<string, string[]>
+  /** Keeps the results of each `emit` without errors under this name in the module's cache, see `contentCache`. */
+  cache?: string
+  /**
+   * Parsed declaration files that the programs given the same map share. A declaration file
+   * (`.d.ts`) parses and binds the same under every option besides `languageVersion`,
+   * `impliedNodeFormat`, `jsDocParsingMode` and module detection, so programs over different
+   * projects can share it. Other files are parsed by each program.
+   */
+  sourceFiles?: SourceFileCache
 }
+
+export type SourceFileCache = Map<string, ts.SourceFile>
 
 interface DeclarationEmit {
   /** Declarations keyed by source path. */
@@ -31,7 +43,7 @@ export interface DeclarationProgram {
  * declarations apply and inferred types are named by package. The tsconfig's `references` are
  * left out, so files of referenced projects are read from source rather than from their output.
  */
-export async function createDeclarationProgram({ cwd, tsconfig, paths }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
+export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const { default: ts } = await import('typescript')
   const classifier = import('vue-sfc-transformer/core')
   const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig.path, {}, configHost(ts)) : undefined
@@ -56,9 +68,9 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
     declarationDir: undefined,
   }
   let program: ts.Program | undefined
-  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options })
+  const createProgram = () => program ??= ts.createProgram({ rootNames: [...rootNames], options, host: sourceFiles && sharingHost(ts, options, sourceFiles) })
 
-  return {
+  const declarationProgram: DeclarationProgram = {
     resolve: (specifier, importer) => ts.resolveModuleName(specifier, importer, options, ts.sys).resolvedModule?.resolvedFileName,
     async emit(files) {
       const program = createProgram()
@@ -100,6 +112,58 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths }: Declara
       }
     },
   }
+  if (!cache) {
+    return declarationProgram
+  }
+  return {
+    ...declarationProgram,
+    async emit(files) {
+      const stored = contentCache<{ declarations: Array<[string, string]>, warnings: string[] }>(cwd, cache, { typescript: ts.version, cwd, options, rootNames: [...rootNames], files })
+      const hit = await stored.read()
+      if (hit) {
+        return { declarations: new Map(hit.declarations), errors: [], warnings: hit.warnings }
+      }
+      const result = await declarationProgram.emit(files)
+      if (!result.errors.length) {
+        await stored.write({ declarations: [...result.declarations], warnings: result.warnings }, new Map(program!.getSourceFiles().map(file => [file.fileName, file.text])))
+      }
+      return result
+    },
+  }
+}
+
+const DECLARATION_FILE_RE = /\.d\.(?:[^/]+\.)?[cm]?ts$/
+
+function sharingHost(ts: typeof import('typescript'), options: ts.CompilerOptions, sourceFiles: SourceFileCache): ts.CompilerHost {
+  const host = ts.createCompilerHost(options, true)
+  const getSourceFile = host.getSourceFile.bind(host)
+  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
+    if (shouldCreateNewSourceFile || !DECLARATION_FILE_RE.test(fileName)) {
+      return getSourceFile(fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile)
+    }
+    const { languageVersion, impliedNodeFormat, jsDocParsingMode, setExternalModuleIndicator } = typeof languageVersionOrOptions === 'object' ? languageVersionOrOptions : { languageVersion: languageVersionOrOptions } as ts.CreateSourceFileOptions
+    const key = [fileName, languageVersion, impliedNodeFormat, jsDocParsingMode].join('\0')
+    const cached = sourceFiles.get(key)
+    if (cached && cached.text === host.readFile(fileName) && sameModuleIndicator(cached, setExternalModuleIndicator)) {
+      return cached
+    }
+    const sourceFile = getSourceFile(fileName, languageVersionOrOptions, onError)
+    if (sourceFile) {
+      sourceFiles.set(key, sourceFile)
+    }
+    return sourceFile
+  }
+  return host
+}
+
+/** Whether `setExternalModuleIndicator` of the requesting program decides as the one that parsed `file` did. */
+function sameModuleIndicator(file: ts.SourceFile, setExternalModuleIndicator: ((file: ts.SourceFile) => void) | undefined) {
+  if (!setExternalModuleIndicator) {
+    return true
+  }
+  const probe = Object.create(file) as ts.SourceFile & { externalModuleIndicator?: unknown }
+  setExternalModuleIndicator(probe)
+  return probe.externalModuleIndicator === (file as typeof probe).externalModuleIndicator
 }
 
 function configHost(ts: typeof import('typescript')): ts.ParseConfigFileHost {

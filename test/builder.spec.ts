@@ -1,3 +1,4 @@
+import { readdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -17,9 +18,14 @@ const sizeRows = (output: string) => [...output.matchAll(/(dist\/(?:module\.mjs|
 
 const dirs: Record<string, string> = {}
 const results: Record<string, Result> = {}
+const snapshots: Record<string, string> = {}
 const step = async (name: string, result: Promise<Result>) => {
   results[name] = await result
   return results[name]
+}
+const resultTimes = async (dir: string) => {
+  const results = join(dir, 'node_modules/.cache/transpile-dir/results')
+  return Promise.all((await readdir(results)).sort().map(async file => [file, (await stat(join(results, file))).mtimeMs]))
 }
 const expectBuilt = (name: string) => {
   expect(results[name]!.exitCode, results[name]!.output).toBe(0)
@@ -216,7 +222,17 @@ export default {
     step('moduleProject', tsdown(dirs.moduleProject, [], { CI: '' })),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
-    step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })),
+    step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
+      .then(async () => snapshots.declarations = await read(dirs.nested!, 'dist/module.d.mts'))
+      .then(() => step('nested:unchanged', tsdown(dirs.nested!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })))
+      .then(() => step('nested:prepare-unchanged', cli(['prepare', dirs.nested!])))
+      .then(async () => snapshots.prepared = await read(dirs.nested!, '.nuxt/module-builder/declarations/src/lib/two.d.ts'))
+      .then(async () => snapshots.results = JSON.stringify(await resultTimes(dirs.nested!)))
+      .then(() => step('nested:prepare-again', cli(['prepare', dirs.nested!])))
+      .then(async () => snapshots.resultsAgain = JSON.stringify(await resultTimes(dirs.nested!)))
+      .then(() => writeFile(join(dirs.nested!, 'src/lib/two.ts'), `import type { One } from './one.ts'\n\nexport interface Two extends One { size: number, label: string }\n\nexport const two: Two = { name: 'two', size: 2, label: 'two' }\n`))
+      .then(() => step('nested:changed', tsdown(dirs.nested!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })))
+      .then(() => step('nested:prepare', cli(['prepare', dirs.nested!]))),
     step('appProject', tsdown(dirs.appProject)),
     step('published', run('node', [tsdownBin], { cwd: repoRoot })).then(() => step('published:import', run('node', ['--input-type=module', '-e', `const root = await import('@nuxt/module-builder')\nconst { builder } = await import('@nuxt/module-builder/tsdown')\nconsole.log(JSON.stringify(['builder' in root, builder().name]))`]))),
   ])
@@ -365,6 +381,19 @@ describe('with a root tsconfig that only lists references', () => {
 
   it('should generate the declarations of module code outside the module project from one program', async () => {
     expect(expectBuilt('nested').match(/create program for module/g)).toHaveLength(1)
-    expect(await read(dirs.nested!, 'dist/module.d.mts')).toContain('interface Two extends One {')
+    expect(snapshots.declarations).toContain('interface Two extends One {\n  size: number;\n}')
+  })
+
+  it('should reuse the declarations of module code until a file they were generated from changes', async () => {
+    expect(expectBuilt('nested:unchanged')).not.toContain('create program for module')
+    expect(expectBuilt('nested:changed').match(/create program for module/g)).toHaveLength(1)
+    expect(await read(dirs.nested!, 'dist/module.d.mts')).toContain('interface Two extends One {\n  size: number;\n  label: string;\n}')
+    expectBuilt('nested:prepare-unchanged')
+    expect(snapshots.prepared).not.toContain('label')
+    expectBuilt('nested:prepare-again')
+    expect(snapshots.results).toMatch(/entry-declarations-.*module-declarations-/)
+    expect(snapshots.resultsAgain).toBe(snapshots.results)
+    expectBuilt('nested:prepare')
+    expect(await read(dirs.nested!, '.nuxt/module-builder/declarations/src/lib/two.d.ts')).toContain('label: string;')
   })
 })

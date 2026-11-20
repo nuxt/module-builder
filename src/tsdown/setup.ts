@@ -137,7 +137,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
   const compilerOptions = { paths: plan.declarationPaths }
-  const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, watch: () => watch })
+  const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, cacheVersion: plan.generatedTypesHash, watch: () => watch })
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: entryDeclarations ?? 'oxc' as const,

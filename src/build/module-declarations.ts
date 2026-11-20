@@ -54,7 +54,7 @@ export interface ModuleDeclarationOptions {
 export async function writeModuleDeclarations(cwd: string, dir: string, { tsconfig, entry, roots, paths, imports }: ModuleDeclarationOptions): Promise<void> {
   await writeSourceTypes(dir, entry, join(dir, relative(cwd, entry)))
   const isModuleCode = (file: string) => isSourceScript(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
-  const program = await createDeclarationProgram({ cwd, tsconfig, paths }, [...roots, ...imports ? [imports] : []])
+  const program = await createDeclarationProgram({ cwd, tsconfig, paths, cache: 'module-declarations' }, [...roots, ...imports ? [imports] : []])
   const oxc = hasIsolatedDeclarations(tsconfig) ? loadOxc() : null
   const targetOf = (specifier: string, source: string) => (RELATIVE_RE.test(specifier) ? probe(resolve(dirname(source), specifier)) : undefined) ?? program.resolve(specifier, source)
   const declarations = new Map<string, string>()

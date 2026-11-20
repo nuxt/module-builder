@@ -122,9 +122,9 @@ function isForeignBuildFile(file: string, dir: string) {
   return NUXT_BUILD_DIR_RE.test(file) && !isOwnBuildFile(file, dir)
 }
 
-/** The package a bare specifier names, or `undefined` for an alias or a specifier with a protocol. */
+/** The package a bare specifier names, or `undefined` for a path, an alias or a specifier with a protocol. */
 export function packageName(specifier: string): string | undefined {
-  return specifier.startsWith('#') || /^[~@]\//.test(specifier) || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
+  return /^(?:[#./]|[~@]\/)/.test(specifier) || specifier.includes(':') ? undefined : specifier.match(PACKAGE_NAME_RE)?.[0]
 }
 
 function parseProject(ts: typeof import('typescript'), path: string, vue: boolean) {

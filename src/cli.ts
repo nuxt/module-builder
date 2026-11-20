@@ -1,8 +1,11 @@
 #!/usr/bin/env node
+import module from 'node:module'
 import { defineCommand, runMain } from 'citty'
 import type { CommandDef } from 'citty'
 import pkg from '../package.json' with { type: 'json' }
 import { reportFailure } from './diagnostics.ts'
+
+module.enableCompileCache?.()
 
 const { name, description, version } = pkg
 
