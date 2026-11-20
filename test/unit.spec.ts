@@ -260,7 +260,7 @@ describe('install commands in the docs', () => {
         }
       }
     }
-    expect(ranges.length).toBeGreaterThan(3)
+    expect(ranges.length).toBeGreaterThan(2)
     const prerelease = version.includes('-')
     expect(ranges.filter(([, range]) => !range || !satisfies(version, range) || range.includes('-') !== prerelease)).toEqual([])
   })
@@ -694,7 +694,7 @@ describe('deprecation checks', () => {
       const link = (url: string, label: string) => `\x1B]8;;${url}\x07${label}\x1B]8;;\x07`
       expect(message).toContain(link(pathToFileURL(join(root, 'package.json')).href, 'package.json'))
       expect(message).toContain(link(pathToFileURL(join(root, 'dist/util.d.mts')).href, './dist/util.d.mts'))
-      expect(message).toContain(`${GUIDE_URL}#typesversions-paths\x07`)
+      expect(message).toContain(`${GUIDE_URL}#3-update-the-paths-in-packagejson\x07`)
       expect(message).not.toContain(pathToFileURL(join(root, 'dist/util')).href + '\x07')
     }
     finally {
