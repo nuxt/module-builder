@@ -101,7 +101,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     moduleTsconfig,
     rootTsconfig: tsconfigs.root,
     ...moduleTsconfig && moduleTsconfig.path !== tsconfigs.root?.path && !tsconfigs.replaced && { moduleProject: moduleTsconfig.path },
-    isolatedDeclarations: hasIsolatedDeclarations(moduleTsconfig),
+    isolatedDeclarations: config.isolatedDeclarations ?? hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
     declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
     declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
@@ -188,7 +188,7 @@ export async function onBuildError(plan: BuildPlan, error: unknown, { directory 
     return
   }
   if (plan.isolatedDeclarations && !directory) {
-    warnings.NUXT_MB_B0202(undefined, { method: 'error' })
+    warnings.NUXT_MB_B0202({ setting: plan.config?.isolatedDeclarations ? '`declarations.isolated`' : 'the tsconfig\'s `isolatedDeclarations`' }, { method: 'error' })
   }
   else if (/\bTS\d{4}\b/.test(String((error as Error | undefined)?.message))) {
     warnings.NUXT_MB_B0203(undefined, { method: 'error' })

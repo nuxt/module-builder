@@ -72,6 +72,11 @@ export const errorCodes = {
     fix: (p: { legacy: boolean }): string => `For each one, if apps that install the module need it, move it to \`dependencies\` or \`peerDependencies\`. If bundling it is intended, list it in ${p.legacy ? '`rollup.inlineDependencies` in the build config' : '`deps.onlyBundle` in the tsdown config'}. If the app provides it, add it to ${p.legacy ? '`externals` in the build config' : '`builder({ externals })`'}.`,
     docs: '#bundled-packages',
   },
+  NUXT_MB_B0005: {
+    why: (p: { version: string }): string => `\`@nuxt/module-builder\` uses the JavaScript API of the module's \`typescript\`, which needs \`${pkg.peerDependencies.typescript}\`, and the module has \`typescript@${p.version}\`, which has no JavaScript API.`,
+    fix: (p: { engine: string }): string => `Install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`. To generate declarations with TypeScript 7, install it next to TypeScript 6 and set \`declarations.engine\` to \`${p.engine}\` in \`builder()\`.`,
+    docs: false,
+  },
 
   NUXT_MB_C0001: {
     why: (p: { options: Array<{ option: string, reason: string }> }): string => [
@@ -169,6 +174,22 @@ export const errorCodes = {
     docs: '#other-tsconfig-layouts',
   },
 
+  NUXT_MB_C0401: {
+    why: (p: { engine: string, setting: string }): string => `${p.setting} selects the \`${p.engine}\` declaration engine, and the module does not have it installed.`,
+    fix: (p: { install: string, fallback: string }): string => `Install it with \`${p.install}\`, or select \`${p.fallback}\` to use the module's own TypeScript.`,
+    docs: false,
+  },
+  NUXT_MB_C0402: {
+    why: (p: { engine: string, name: string, found: string }): string => `The \`${p.engine}\` declaration engine needs the TypeScript 7.1 API, and \`${p.name}\` resolves to \`${p.found}\`.`,
+    fix: (p: { install: string }): string => `Update it with \`${p.install}\`.`,
+    docs: false,
+  },
+  NUXT_MB_C0403: {
+    why: (p: { value: string }): string => `\`NUXT_MODULE_BUILDER_DECLARATION_ENGINE\` is \`${p.value}\`, which is not a declaration engine.`,
+    fix: (p: { engines: string[] }): string => `Set it to one of ${list(p.engines)}, or unset it.`,
+    docs: false,
+  },
+
   NUXT_MB_D0001: {
     why: (p: { command: string }): string => `The \`--stub\` option of \`${p.command}\` has been removed.`,
     fix: 'With pnpm or Yarn 4, point `package.json` at the module\'s sources. Otherwise, build `dist` with `tsdown` and rebuild it with `tsdown --watch`.',
@@ -202,7 +223,7 @@ export const warningCodes = {
     docs: '#preparing-nuxt',
   },
   NUXT_MB_B0202: {
-    why: 'Declaration generation failed under `isolatedDeclarations`, which requires an explicit type annotation on every exported value.',
+    why: (p: { setting: string }): string => `The declarations of the bundled entries are generated with oxc, as ${p.setting} selects, which requires an explicit type annotation on every exported value, and some have none.`,
     fix: 'Give each export that an error names an explicit type. Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',
     docs: '#isolated-declarations',
   },
@@ -244,6 +265,11 @@ export const warningCodes = {
     why: (p: { groups: Array<[path: string, files: number]> }): string => `No project that \`tsconfig.json\` references includes these TypeScript files, so \`vue-tsc -b\` does not type check them: ${p.groups.map(([path, files]) => path.endsWith('/') ? `\`${path}\` (${files} ${files === 1 ? 'file' : 'files'})` : `\`${path}\``).join(', ')}.`,
     fix: 'Reference a tsconfig that includes them, such as a `tsconfig.test.json` for tests and config files, or add them to the `exclude` of `tsconfig.json`.',
     docs: '#tests-and-config-files',
+  },
+  NUXT_MB_C0404: {
+    why: (p: { engine: string, reason: string }): string => `The \`${p.engine}\` declaration engine cannot run here: ${p.reason}. Declarations are generated with the JavaScript API of the module's own TypeScript instead.`,
+    fix: (p: { engine: string }): string => `Nothing to change for this build. To generate declarations with \`${p.engine}\`, build on a platform that it supports.`,
+    docs: false,
   },
 
   NUXT_MB_D0101: {

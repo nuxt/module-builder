@@ -1,12 +1,17 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
+import { parseTsconfig } from 'get-tsconfig'
+import { normalize } from 'pathe'
 import type { UserConfig } from 'tsdown'
 
 import builderPkg from '../../package.json' with { type: 'json' }
 import { contentCache } from '../transpile/cache.ts'
 import type { ContentCache } from '../transpile/cache.ts'
-import { restoreImports } from '../transpile/declarations.ts'
+import { createDeclarationProgram, declarationError, restoreImports } from '../transpile/declarations.ts'
+import type { DeclarationProgram } from '../transpile/declarations.ts'
+import type { DeclarationEngine } from '../transpile/engine.ts'
+import { DECLARATION_RE } from '../utils.ts'
 
 /** The `Generator` interface of rolldown-plugin-dts. */
 export type DeclarationGenerator = Required<Omit<Extract<NonNullable<Extract<UserConfig['dts'], object>['generator']>, object>, 'addFile'>>
@@ -22,6 +27,8 @@ export interface EntryDeclarationOptions {
   cacheVersion: string
   /** Whether the build is watched, which keeps the worker between builds. */
   watch: () => boolean
+  /** The compiler, rolldown-plugin-dts's `tsc` emit by default. */
+  engine?: DeclarationEngine
 }
 
 type Request = { type: 'emit', file: string } | { type: 'invalidate', file: string } | { type: 'inputs' }
@@ -188,38 +195,115 @@ async function cacheKey(modules: WorkerModules, dtsOptions: Record<string, unkno
   }
 }
 
+interface Backend {
+  /** Starts what the first emit needs, ahead of it. */
+  start: () => void
+  emit: (code: string, fileName: string) => Promise<GeneratorResult>
+  /** The files the program of the latest emits read, when it is still available. */
+  inputs: () => Promise<Map<string, string | undefined> | undefined>
+  invalidate: (fileName: string) => void
+  /** Called after each build. */
+  release: () => Promise<void>
+  close: () => Promise<void>
+}
+
+/** rolldown-plugin-dts's `tsc` emit in a worker thread, which a watched build keeps until `close`. */
+function workerBackend(modules: WorkerModules, dtsOptions: Record<string, unknown>, watch: () => boolean): Backend {
+  let worker: ReturnType<typeof createWorker> | undefined
+  const start = () => {
+    if (worker?.exited) {
+      worker = undefined
+    }
+    return worker ??= createWorker(modules, dtsOptions)
+  }
+  return {
+    start,
+    emit: (_code, fileName) => start().call<GeneratorResult>({ type: 'emit', file: fileName }),
+    async inputs() {
+      return worker && !worker.exited ? new Map(await worker.call<Array<[string, string]>>({ type: 'inputs' })) : undefined
+    },
+    invalidate(fileName) {
+      worker?.call({ type: 'invalidate', file: fileName }).catch(() => {})
+    },
+    async release() {
+      if (!watch()) {
+        await worker?.terminate()
+        worker = undefined
+      }
+    },
+    async close() {
+      await worker?.terminate()
+      worker = undefined
+    },
+  }
+}
+
+/** A program of `engine` over every file of the tsconfig, opened again for each build so the engine updates it. */
+function engineBackend(options: EntryDeclarationOptions & { tsconfig: string, engine: DeclarationEngine }): Backend {
+  let program: Promise<DeclarationProgram> | undefined
+  const open = () => program ??= createDeclarationProgram({
+    cwd: options.cwd,
+    tsconfig: { path: options.tsconfig, config: parseTsconfig(options.tsconfig) },
+    paths: options.compilerOptions.paths as Record<string, string[]>,
+    engine: options.engine,
+    include: () => true,
+  }, [])
+  return {
+    start() {},
+    async emit(code, fileName) {
+      const file = normalize(fileName)
+      if (DECLARATION_RE.test(file)) {
+        return { code }
+      }
+      const { declarations, errors } = await (await open()).emit([file])
+      const declaration = declarations.get(file)
+      if (errors.length || declaration === undefined) {
+        return { error: declarationError(errors).message }
+      }
+      return { code: file.endsWith('.json') ? patchJsonDts((await import('typescript')).default, declaration) : declaration }
+    },
+    async inputs() {
+      return program && (await program).inputs()
+    },
+    invalidate() {
+      program = undefined
+    },
+    async release() {
+      program = undefined
+    },
+    async close() {
+      program = undefined
+    },
+  }
+}
+
 /**
  * The declaration generator of the bundled entries: rolldown-plugin-dts's `tsc` emit in a worker
- * thread, which a watched build keeps until `close`. The declarations of a build are kept in the
- * module's cache and reused, without a program, while none of the files that build's program read
- * have changed.
+ * thread, or a program of `engine`. The declarations of a build are kept in the module's cache
+ * and reused, without a program, while none of the files that build's program read have changed.
  */
 export function entryDeclarationGenerator(options: EntryDeclarationOptions): DeclarationGenerator & { close: () => Promise<void> } {
-  let worker: ReturnType<typeof createWorker> | undefined
-  let modules: WorkerModules | undefined
+  let backend: Backend | undefined
   let cache: ContentCache<Record<string, GeneratorResult>> | undefined
   let cached: Map<string, GeneratorResult> | undefined
   let emitted = new Map<string, GeneratorResult>()
   let mixed = false
   let invalidated = false
   const dtsOptions = { cwd: options.cwd, tsconfig: options.tsconfig, compilerOptions: options.compilerOptions, generator: 'tsc' }
-  const start = () => {
-    if (worker?.exited) {
-      worker = undefined
-    }
-    return worker ??= createWorker(modules!, dtsOptions)
-  }
 
   return {
     async init() {
       if (!cache) {
-        modules = workerModules()
-        cache = contentCache(options.cwd, 'entry-declarations', await cacheKey(modules, dtsOptions, options.cacheVersion))
+        const modules = workerModules()
+        const { engine, tsconfig } = options
+        backend = engine && tsconfig ? engineBackend({ ...options, tsconfig, engine }) : workerBackend(modules, dtsOptions, options.watch)
+        const key = await cacheKey(modules, dtsOptions, options.cacheVersion)
+        cache = contentCache(options.cwd, 'entry-declarations', engine ? { ...key, engine: engine.name, version: engine.version } : key)
         const stored = await cache.read()
         cached = stored && new Map(Object.entries(stored))
       }
       if (!cached) {
-        start()
+        backend!.start()
       }
     },
     async emit(code, fileName) {
@@ -228,7 +312,7 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
         mixed = true
         return hit
       }
-      const result = await start().call<GeneratorResult>({ type: 'emit', file: fileName })
+      const result = await backend!.emit(code, fileName)
       if (result.error) {
         mixed = true
       }
@@ -241,24 +325,21 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
       return result
     },
     async dispose() {
-      if (worker && !worker.exited && emitted.size && !mixed && !invalidated) {
-        await cache!.write(Object.fromEntries(emitted), new Map(await worker.call<Array<[string, string]>>({ type: 'inputs' })))
+      const inputs = emitted.size && !mixed && !invalidated ? await backend?.inputs() : undefined
+      if (inputs) {
+        await cache!.write(Object.fromEntries(emitted), inputs)
       }
       emitted = new Map()
       mixed = false
-      if (!options.watch()) {
-        await worker?.terminate()
-        worker = undefined
-      }
+      await backend?.release()
     },
     invalidate(fileName) {
       invalidated = true
       cached = undefined
-      worker?.call({ type: 'invalidate', file: fileName }).catch(() => {})
+      backend?.invalidate(fileName)
     },
     async close() {
-      await worker?.terminate()
-      worker = undefined
+      await backend?.close()
     },
   }
 }

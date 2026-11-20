@@ -4,6 +4,7 @@ import { dirname, join, normalize, relative, resolve } from 'pathe'
 
 import { warnings } from '../diagnostics.ts'
 import { createDeclarationProgram } from '../transpile/declarations.ts'
+import type { DeclarationEngine } from '../transpile/engine.ts'
 import { moduleSpecifiers, rewriteSpecifiers } from '../transpile/specifiers.ts'
 import { hasIsolatedDeclarations, isModuleFile } from '../transpile/tsconfig.ts'
 import { isInside, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
@@ -44,6 +45,10 @@ export interface ModuleDeclarationOptions {
   paths: Record<string, string[]>
   /** A declaration file the program lists so that the module's dependencies resolve from the module root, see `writeDependencyImports`. */
   imports?: string
+  /** The compiler, the module's own TypeScript by default. */
+  engine?: DeclarationEngine
+  /** Generates them with oxc, by default when the tsconfig sets `isolatedDeclarations`. */
+  isolated?: boolean
 }
 
 /**
@@ -51,11 +56,11 @@ export interface ModuleDeclarationOptions {
  * declarations, and a `types.d.mts` over them with the module's type augmentations.
  * Declaration errors are reported as a warning, and the other declarations are written.
  */
-export async function writeModuleDeclarations(cwd: string, dir: string, { tsconfig, entry, roots, paths, imports }: ModuleDeclarationOptions): Promise<void> {
+export async function writeModuleDeclarations(cwd: string, dir: string, { tsconfig, entry, roots, paths, imports, engine, isolated = hasIsolatedDeclarations(tsconfig) }: ModuleDeclarationOptions): Promise<void> {
   await writeSourceTypes(dir, entry, join(dir, relative(cwd, entry)))
   const isModuleCode = (file: string) => isSourceScript(file) && isModuleFile(file, cwd) && !NUXT_DIR_RE.test(relative(cwd, file))
-  const program = await createDeclarationProgram({ cwd, tsconfig, paths, cache: 'module-declarations' }, [...roots, ...imports ? [imports] : []])
-  const oxc = hasIsolatedDeclarations(tsconfig) ? loadOxc() : null
+  const program = await createDeclarationProgram({ cwd, tsconfig, paths, cache: 'module-declarations', engine }, [...roots, ...imports ? [imports] : []])
+  const oxc = isolated ? loadOxc() : null
   const targetOf = (specifier: string, source: string) => (RELATIVE_RE.test(specifier) ? probe(resolve(dirname(source), specifier)) : undefined) ?? program.resolve(specifier, source)
   const declarations = new Map<string, string>()
   const errors: string[] = []

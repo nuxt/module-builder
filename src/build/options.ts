@@ -4,6 +4,8 @@ import { errors } from '../diagnostics.ts'
 import { assertNoLegacyBuildConfig } from '../legacy/build-config.ts'
 import { escapeRegExp, isInside, isPlainObject, probe, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
+import { ENGINES } from '../transpile/engine.ts'
+import type { DeclarationEngineName } from '../transpile/engine.ts'
 import type { BuildPlan } from './build.ts'
 
 export const NUXT_EXTERNALS: (string | RegExp)[] = [
@@ -55,6 +57,35 @@ export interface BuilderOptions {
   externals?: Array<string | RegExp>
   /** Compile-time replacements in bundled entries, as `{ search: replacement }` or the options of rolldown's replace plugin. */
   replace?: Record<string, string> | ReplaceOptions
+  /** How declarations are generated. */
+  declarations?: DeclarationOptions
+}
+
+export interface DeclarationOptions {
+  /**
+   * The compiler that generates the declarations of TypeScript sources: the module code that
+   * `prepare` writes, the bundled entries, and runtime directories without `.vue` files.
+   * Experimental, apart from `'typescript'`.
+   *
+   * - `'typescript'`: the module's own `typescript` (the default), through its JavaScript API up
+   *   to 6 and its native API from 7.1.
+   * - `'typescript7'`: TypeScript 7.1 or later, installed next to the module's own under the alias
+   *   `@typescript/typescript7`.
+   * - `'tsrs'`: tsrs, a Rust port of TypeScript 7.1.
+   *
+   * Where a native compiler cannot run, declarations are generated with the JavaScript API of the
+   * module's own TypeScript, and a warning. The `NUXT_MODULE_BUILDER_DECLARATION_ENGINE`
+   * environment variable takes precedence.
+   */
+  engine?: DeclarationEngineName
+  /**
+   * Generates the declarations of the bundled entries, and of the module code that `prepare`
+   * writes, with oxc from each file on its own. Every export of those files then needs an
+   * explicit type, and the build fails naming each one that lacks it. The module's type check is
+   * unaffected. `false` generates them with `engine` instead. By default, the module-code
+   * tsconfig's `isolatedDeclarations` decides.
+   */
+  isolated?: boolean
 }
 
 export interface DirectoryEntry {
@@ -81,6 +112,10 @@ export interface ModuleConfig {
   replace?: ReplaceOptions
   /** Set when source maps are enabled in `build.config.ts`. */
   sourcemap?: boolean
+  /** The compiler set in `declarations.engine`. */
+  declarationEngine?: DeclarationEngineName
+  /** `declarations.isolated`. */
+  isolatedDeclarations?: boolean
   /** Runs the hooks of a `build.config.ts`. */
   callHook?: (hook: BuildHookName, plan: BuildPlan) => Promise<void>
 }
@@ -219,6 +254,7 @@ export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: stri
   const unsupported: string[] = []
   const report = (option: string) => unsupported.push(option)
   const collector = createOptionsCollector(cwd, outDir)
+  let declarations: Pick<ModuleConfig, 'declarationEngine' | 'isolatedDeclarations'> = {}
   for (const [key, value] of Object.entries(options)) {
     if (value === undefined) {
       continue
@@ -232,6 +268,9 @@ export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: stri
     else if (key === 'replace' && isPlainObject(value) && isPlainObject(value.values)) {
       collector.replaceOptions(value, 'replace', report)
     }
+    else if (key === 'declarations') {
+      declarations = declarationOptions(value, report)
+    }
     else if (key === 'replace') {
       collector.replaceValues(value, 'replace', report)
     }
@@ -242,7 +281,28 @@ export function resolveModuleOptions(cwd: string, pkg: PackageJson, outDir: stri
   if (unsupported.length) {
     throw errors.NUXT_MB_C0009({ options: unsupported })
   }
-  return collector.finish(pkg)
+  return { ...collector.finish(pkg), ...declarations }
+}
+
+export function isDeclarationEngine(value: unknown): value is DeclarationEngineName {
+  return Object.values(ENGINES).includes(value as DeclarationEngineName)
+}
+
+function declarationOptions(value: unknown, report: Report): Pick<ModuleConfig, 'declarationEngine' | 'isolatedDeclarations'> {
+  if (!isPlainObject(value)) {
+    report('declarations')
+    return {}
+  }
+  for (const [key, option] of Object.entries(value)) {
+    const valid = key === 'engine' ? option === undefined || isDeclarationEngine(option) : key === 'isolated' && (option === undefined || typeof option === 'boolean')
+    if (!valid) {
+      report(key === 'engine' || key === 'isolated' ? `declarations.${key}: ${JSON.stringify(option)}` : `declarations.${key}`)
+    }
+  }
+  return {
+    ...isDeclarationEngine(value.engine) && { declarationEngine: value.engine },
+    ...typeof value.isolated === 'boolean' && { isolatedDeclarations: value.isolated },
+  }
 }
 
 /** The output name of an entry without an explicit `name`. */

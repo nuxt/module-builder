@@ -19,6 +19,8 @@ export interface DeclarationProgramOptions {
   cache?: string
   /** The compiler, the module's own TypeScript by default. */
   engine?: DeclarationEngine
+  /** Which files of the tsconfig become roots: those of the module, see `isModuleFile`, by default. */
+  include?: (file: string) => boolean
   /** Parsed declaration files shared with other programs given the same map, without `engine`. See `TscEngineOptions`. */
   sourceFiles?: SourceFileCache
 }
@@ -34,6 +36,8 @@ export interface DeclarationProgram {
   emit: (files: string[]) => Promise<DeclarationEmit>
   /** The file `specifier` resolves to from `importer`, with the program's options. */
   resolve: (specifier: string, importer: string) => string | undefined
+  /** Every file the program read, with the text it read where known. */
+  inputs: () => Promise<Map<string, string | undefined>>
 }
 
 /**
@@ -42,11 +46,11 @@ export interface DeclarationProgram {
  * left out, so files of referenced projects are read from source rather than from their output.
  * It doesn't type check (`noCheck`): only syntax and declaration emit errors are reported.
  */
-export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, engine, sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
+export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, engine, include = file => isModuleFile(file, cwd), sourceFiles }: DeclarationProgramOptions, roots: string[]): Promise<DeclarationProgram> {
   const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
   const options: ProjectOptions = {
     tsconfig: tsconfig?.path,
-    include: file => isModuleFile(file, cwd),
+    include,
     roots: [...roots, ...declaration.ambient ? [declaration.ambient] : []],
     compilerOptions: {
       allowJs: true,
@@ -76,19 +80,21 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, en
 
   const declarationProgram: DeclarationProgram = {
     resolve: base.resolve,
+    inputs: async () => (await emitter()).inputs(),
     async emit(files) {
-      const { declarations, diagnostics, skipped } = await (await emitter()).emit(files)
+      const { declarations, diagnostics } = await (await emitter()).emit(files)
       for (const file of files) {
         const text = declarations.get(file)
         if (text !== undefined) {
           declarations.set(file, await restoreImports(text, file, await readFile(file, 'utf8')))
         }
       }
+      const reported = diagnostics.filter(isReported)
       return {
         declarations,
         errors: [
-          ...new Set(diagnostics.filter(diagnostic => diagnostic.category === 'error').map(diagnostic => formatDiagnostic(diagnostic, cwd))),
-          ...skipped.map(file => `${relative(cwd, file)}: no declaration was emitted`),
+          ...new Set(reported.map(diagnostic => formatDiagnostic(diagnostic, cwd))),
+          ...files.filter(file => !declarations.has(file) && !reported.some(diagnostic => diagnostic.file === file)).map(file => `${relative(cwd, file)}: no declaration was emitted`),
         ],
       }
     },
@@ -107,11 +113,49 @@ export async function createDeclarationProgram({ cwd, tsconfig, paths, cache, en
       }
       const result = await declarationProgram.emit(files)
       if (!result.errors.length) {
-        await stored.write([...result.declarations], await (await emitter()).inputs())
+        await stored.write([...result.declarations], await declarationProgram.inputs())
       }
       return result
     },
   }
+}
+
+/** The codes TypeScript 7 reports where TypeScript 6 reports another code of the same class. */
+export const REMAPPED_CODES: Record<number, number> = {
+  2883: 2742,
+  9013: 9007,
+}
+
+const MAPPER_RANGES: Array<[number, number]> = [[18065, 18073], [18075, 18079], [18081, 18083], [18099, 18099], [18118, 18123]]
+const EMIT_CODES = new Set([2527, 4118, 5088, 7056])
+const EMIT_RANGES: Array<[number, number]> = [[4000, 4103], [4106, 4108]]
+
+export type DeclarationDiagnosticClass = 'portability' | 'isolated' | 'missing' | 'emit'
+
+/**
+ * The class of a declaration emit diagnostic: an inferred type that cannot be named, an
+ * `isolatedDeclarations` error, a file that a content mapper could not map (so its declaration is
+ * missing), or another error of declaration emit. Other codes, such as those of type errors, have
+ * none.
+ */
+export function declarationDiagnosticClass(code: number): DeclarationDiagnosticClass | undefined {
+  const original = REMAPPED_CODES[code] ?? code
+  const within = (ranges: Array<[number, number]>) => ranges.some(([start, end]) => original >= start && original <= end)
+  if (original === 2742) {
+    return 'portability'
+  }
+  if (original >= 9005 && original <= 9039) {
+    return 'isolated'
+  }
+  if (within(MAPPER_RANGES)) {
+    return 'missing'
+  }
+  return EMIT_CODES.has(original) || within(EMIT_RANGES) ? 'emit' : undefined
+}
+
+/** Whether a diagnostic fails the build: an error of parsing, or of declaration emit. */
+function isReported(diagnostic: EngineDiagnostic) {
+  return diagnostic.category === 'error' && (diagnostic.kind === 'syntactic' || declarationDiagnosticClass(diagnostic.code) !== undefined)
 }
 
 /** A diagnostic formatted as tsc prints it, with its file relative to `cwd`. */

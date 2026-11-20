@@ -1,11 +1,23 @@
 import { createRequire } from 'node:module'
 import type ts from 'typescript'
 
-type DeclarationEngineName = 'tsc' | 'tsgo' | 'tsrs'
+/** The values of `declarations.engine`. */
+export const ENGINES = {
+  /** The module's own `typescript`: its JavaScript API up to 6, its native API from 7.1. */
+  typescript: 'typescript',
+  /** TypeScript 7.1 or later through its native API, the module's own or installed next to it. */
+  typescript7: 'typescript7',
+  /** tsrs, through the TypeScript 7.1 API. */
+  tsrs: 'tsrs',
+} as const
+
+export type DeclarationEngineName = typeof ENGINES[keyof typeof ENGINES]
 
 export interface EngineDiagnostic {
   code: number
   category: 'error' | 'warning' | 'suggestion' | 'message'
+  /** Whether parsing or declaration emit reported it. */
+  kind: 'syntactic' | 'emit'
   /** Absolute path of the file it is reported in. */
   file?: string
   /** 1-based. */
@@ -21,8 +33,6 @@ interface EngineEmit {
   declarations: Map<string, string>
   /** The syntax and emit diagnostics of the requested files, in order. */
   diagnostics: EngineDiagnostic[]
-  /** Requested files that are not in the program, or got no declaration and no diagnostic. */
-  skipped: string[]
 }
 
 export interface ProjectOptions {
@@ -80,7 +90,7 @@ export interface TscEngineOptions {
 /** The module's own TypeScript, with its JavaScript API. */
 export function createTscEngine({ sourceFiles }: TscEngineOptions = {}): TscEngine {
   return {
-    name: 'tsc',
+    name: ENGINES.typescript,
     get version() {
       return (createRequire(import.meta.url)('typescript/package.json') as { version: string }).version
     },
@@ -100,28 +110,22 @@ export function createTscEngine({ sourceFiles }: TscEngineOptions = {}): TscEngi
         async emit(files) {
           const program = createProgram()
           const declarations = new Map<string, string>()
-          const diagnostics: ts.Diagnostic[] = []
-          const skipped: string[] = []
+          const diagnostics: EngineDiagnostic[] = []
           for (const file of files) {
             const source = program.getSourceFile(file)
             if (!source) {
-              skipped.push(file)
               continue
             }
-            const reported = diagnostics.length
-            diagnostics.push(...program.getSyntacticDiagnostics(source))
+            diagnostics.push(...program.getSyntacticDiagnostics(source).map(diagnostic => engineDiagnostic(ts, diagnostic, 'syntactic')))
             const result = program.emit(source, (_name, text, _bom, _error, sources) => {
               const emitted = sources?.[0]?.fileName
               if (emitted) {
                 declarations.set(emitted, text)
               }
             }, undefined, true)
-            diagnostics.push(...result.diagnostics)
-            if ((result.emitSkipped || !declarations.has(file)) && diagnostics.length === reported) {
-              skipped.push(file)
-            }
+            diagnostics.push(...result.diagnostics.map(diagnostic => engineDiagnostic(ts, diagnostic, 'emit')))
           }
-          return { declarations, diagnostics: diagnostics.map(diagnostic => engineDiagnostic(ts, diagnostic)), skipped }
+          return { declarations, diagnostics }
         },
       }
     },
@@ -131,10 +135,11 @@ export function createTscEngine({ sourceFiles }: TscEngineOptions = {}): TscEngi
 
 const CATEGORIES = ['warning', 'error', 'suggestion', 'message'] as const
 
-function engineDiagnostic(ts: typeof import('typescript'), diagnostic: ts.Diagnostic): EngineDiagnostic {
+function engineDiagnostic(ts: typeof import('typescript'), diagnostic: ts.Diagnostic, kind: EngineDiagnostic['kind']): EngineDiagnostic {
   const position = diagnostic.file && diagnostic.start !== undefined ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start) : undefined
   return {
     code: diagnostic.code,
+    kind,
     category: CATEGORIES[diagnostic.category],
     message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     ...position && { file: diagnostic.file!.fileName, line: position.line + 1, column: position.character + 1 },

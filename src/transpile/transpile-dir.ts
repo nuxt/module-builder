@@ -9,6 +9,7 @@ import type { VueDeclarationSession, Transform as VueTransform } from 'vue-sfc-t
 import { getOrCreate, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import { createDeclarationProgram, DeclarationError, declarationError, restoreImports } from './declarations.ts'
 import type { DeclarationProgram, SourceFileCache } from './declarations.ts'
+import type { DeclarationEngine } from './engine.ts'
 import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
 import { createTsconfigResolver, typeResolutionFs, writeDependencyImports, writeDerivedTsconfig } from './tsconfig.ts'
@@ -77,6 +78,8 @@ export interface TranspileDirOptions {
   resolveExternal: ResolveExternal
   /** Paths relative to the output directory, without extension, that mirrored files are not emitted at. */
   reserved: string[]
+  /** The compiler of the declarations of scripts outside single-file component programs, the module's own TypeScript by default. */
+  engine?: DeclarationEngine
   /** The plugin's name, which rolldown prints with its errors. `transpile-dir` by default. */
   name?: string
 }
@@ -387,7 +390,7 @@ class DirectoryBuild {
   }
 
   private program(tsconfig: TsConfigResult | undefined) {
-    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths, cache: 'directory-declarations', sourceFiles: this.sourceFiles }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
+    return getOrCreate(this.programs, tsconfig?.path, () => createDeclarationProgram({ cwd: this.options.cwd, tsconfig, paths: this.options.paths, cache: 'directory-declarations', engine: this.options.engine, sourceFiles: this.sourceFiles }, [...this.scripts, ...this.outside.keys(), ...this.imports ? [this.imports] : []]))
   }
 
   /** The program shared by single-file components and TypeScript sources. */
