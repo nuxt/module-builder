@@ -87,6 +87,7 @@ In watch mode the output directory is kept, unchanged files aren't rewritten (`u
 That writes `.nuxt`, including:
 
 - the tsconfigs of each context;
+- with a root tsconfig that has `references`, `.nuxt/module-builder/app.d.ts`, which the node tsconfig includes in place of `.nuxt/nuxt.d.ts`: its references without Nitro's `types/nitro-imports.d.ts`, so the module code project doesn't load the server sources that the server's auto-imports point at;
 - `.nuxt/module-builder/types.d.mts`, which source exports point at;
 - the declarations that resolve the module's own package name inside its type checks.
 

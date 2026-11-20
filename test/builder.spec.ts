@@ -197,6 +197,20 @@ export default {
       'tsconfig.json': REFERENCES('./tsconfig.module.json'),
     },
   })
+  dirs.serverImports = await fixture('.temp-builder/server-imports', {
+    config: PLUGIN,
+    remove: ['.nuxt'],
+    module: source => source
+      .replace('import { defineNuxtModule, addPlugin, createResolver } from \'@nuxt/kit\'', 'import { defineNuxtModule, addPlugin, addServerHandler, addServerImportsDir, createResolver } from \'@nuxt/kit\'')
+      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    addServerImportsDir(resolver.resolve(\'./runtime/server/utils\'))\n    addServerHandler({ route: \'/api/count\', handler: resolver.resolve(\'./runtime/server/api/count.get\') })'),
+    files: {
+      'src/runtime/server/utils/counter.ts': `export class Counter {\n  constructor(public count: number) {}\n}\n\nexport const useCounter = (): Counter => new Counter(0)\n`,
+      'src/runtime/server/api/count.get.ts': `import { defineEventHandler } from 'h3'\n\nexport default defineEventHandler(() => ({ count: 1 }))\n`,
+      'src/runtime/composables/useCount.ts': `export const useCount = () => $fetch('/api/count')\n`,
+      'tsconfig.module.json': JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { erasableSyntaxOnly: true } }),
+      'tsconfig.json': REFERENCES('./tsconfig.module.json'),
+    },
+  })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -252,6 +266,9 @@ export default {
     ...Object.keys(variants).map(name => step(name, tsdown(dirs[name]!))),
     step('contexts', tsdown(dirs.contexts)).then(() => step('contexts:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.contexts }))),
     step('moduleProject', tsdown(dirs.moduleProject)),
+    step('serverImports:prepare', cli(['prepare', dirs.serverImports!]))
+      .then(() => step('serverImports:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.serverImports })))
+      .then(() => step('serverImports:files', run(bin('vue-tsc'), ['-p', 'tsconfig.module.json', '--noEmit', '--listFilesOnly'], { cwd: dirs.serverImports }))),
     step('isolatedAsDocumented:prepare', cli(['prepare', dirs.isolatedAsDocumented]))
       .then(() => step('isolatedAsDocumented:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolatedAsDocumented })))
       .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
@@ -432,6 +449,16 @@ describe('with a root tsconfig that only lists references', () => {
 
   it('should name a dependency in runtime declarations by its package when only another part of the module imports it', async () => {
     expect(await read(dirs.contexts!, 'dist/runtime/logger.d.ts')).toContain('import("fake-logger").LoggerInstance')
+  })
+
+  it('should leave the server auto-imports out of the module project, and keep the types of server routes', () => {
+    expectBuilt('serverImports:prepare')
+    expect(expectBuilt('serverImports:typecheck')).toBe('')
+    const files = expectBuilt('serverImports:files')
+    expect(files).not.toContain('src/runtime/server/utils/counter.ts')
+    expect(files).not.toContain('.nuxt/types/nitro-imports.d.ts')
+    expect(files).toContain('src/runtime/server/api/count.get.ts')
+    expect(files).toContain('.nuxt/types/nitro-routes.d.ts')
   })
 
   it('should type check and generate the module entry\'s declarations with oxc with the documented `isolatedDeclarations` tsconfig', async () => {
