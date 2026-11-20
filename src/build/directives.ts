@@ -43,8 +43,7 @@ function isDirective(comment: string) {
 
 /**
  * The comment that holds `offset`, or `undefined` when `offset` is not in a comment, such as in
- * a string, a template or JSX text. Of the comments between two tokens of one node, only those
- * after its last child or its first token are found.
+ * a string, a template or JSX text.
  */
 function commentAt(ts: typeof import('typescript'), sourceFile: ts.SourceFile, offset: number) {
   const text = sourceFile.text
@@ -64,15 +63,17 @@ function commentAt(ts: typeof import('typescript'), sourceFile: ts.SourceFile, o
       return true
     })
     if (!containing) {
-      if (before) {
-        return holding(before.end)
-      }
-      if (node.kind < ts.SyntaxKind.FirstNode) {
+      if (!before && node.kind < ts.SyntaxKind.FirstNode) {
         return
       }
-      const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, sourceFile.languageVariant, text, undefined, node.getStart(sourceFile))
-      scanner.scan()
-      return holding(scanner.getTokenEnd())
+      // Between its children, a node holds only punctuation, keywords and trivia.
+      const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, sourceFile.languageVariant, text, undefined, before ? before.end : node.getStart(sourceFile))
+      for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken && scanner.getTokenStart() <= offset; kind = scanner.scan()) {
+        if ((kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) && offset < scanner.getTokenEnd()) {
+          return { pos: scanner.getTokenStart(), end: scanner.getTokenEnd() }
+        }
+      }
+      return
     }
     if (offset < containing.getStart(sourceFile)) {
       return holding(containing.pos)

@@ -185,6 +185,8 @@ describe('withoutDirectiveComments', () => {
       ' * that does not end with it',
       ' */',
       'export const first = 6',
+      'export function params(/* @ts-ignore in empty parameters */) {}',
+      'params(first, /* @ts-ignore after the last argument */)',
       '// remove the @ts-ignore below',
       '',
     ].join('\n')
@@ -215,6 +217,8 @@ describe('withoutDirectiveComments', () => {
       '* that does not end with it',
       '*/',
       'export const first = 6;',
+      'export function params() {}',
+      'params(first);',
       '// remove the @ts-ignore below',
       '',
     ].join('\n'))
