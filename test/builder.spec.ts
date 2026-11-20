@@ -219,6 +219,18 @@ export default {
       'src/lib/two.ts': `import type { One } from './one.ts'\n\nexport interface Two extends One { size: number }\n\nexport const two: Two = { name: 'two', size: 2 }\n`,
     },
   })
+  const fakePackages = Object.fromEntries(['fake-dep', 'fake-peer', 'fake-dev', 'fake-undeclared'].flatMap(name => [
+    [`node_modules/${name}/package.json`, JSON.stringify({ name, type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } })],
+    [`node_modules/${name}/index.js`, `export const value = 'inlined-${name}'\n`],
+    [`node_modules/${name}/index.d.ts`, `export declare const value: string\n`],
+  ]))
+  const dependencies = {
+    pkg: (pkg: Record<string, unknown>) => ({ ...pkg, dependencies: { ...pkg.dependencies as object, 'fake-dep': '1.0.0' }, peerDependencies: { 'fake-peer': '1.0.0' }, devDependencies: { ...pkg.devDependencies as object, 'fake-dev': '1.0.0' } }),
+    module: (source: string) => `import { existsSync } from 'node:fs'\n${['dep', 'peer', 'dev', 'undeclared'].map(name => `import { value as ${name} } from 'fake-${name}'`).join('\n')}\n\n${source}\nexport const values: unknown[] = [existsSync, dep, peer, dev, undeclared]\n`,
+    files: fakePackages,
+  }
+  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: PLUGIN, ...dependencies })
+  dirs.onlyBundle = await fixture('.temp-builder/only-bundle', { config: `export default { deps: { onlyBundle: ['fake-dev'] }, plugins: [builder()] }\n`, ...dependencies })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
     module: source => source + FIELDS,
@@ -243,6 +255,8 @@ export default {
       .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
+    step('dependencies', tsdown(dirs.dependencies)),
+    step('onlyBundle', tsdown(dirs.onlyBundle)),
     step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
       .then(async () => snapshots.declarations = await read(dirs.nested!, 'dist/module.d.mts'))
       .then(() => step('nested:unchanged', tsdown(dirs.nested!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })))
@@ -272,6 +286,21 @@ describe('builder', () => {
     expect(module).not.toContain('bundled-fake-ext')
     expect(module).toContain('from "./runtime/utils/answer.js"')
     expect(JSON.parse(await read(dir, 'dist/module.json'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
+  })
+
+  it('should leave dependencies, peer dependencies and Node builtins external, and bundle every other package, unless `deps.onlyBundle` leaves it out', async () => {
+    const output = expectBuilt('dependencies')
+    const module = await read(dirs.dependencies!, 'dist/module.mjs')
+    for (const name of ['node:fs', 'fake-dep', 'fake-peer']) {
+      expect(module).toContain(`from "${name}"`)
+    }
+    for (const name of ['fake-dev', 'fake-undeclared']) {
+      expect(module).toContain(`inlined-${name}`)
+      expect(output).toContain(`- ${name}`)
+    }
+    const failure = expectFailed('onlyBundle')
+    expect(failure).toContain('fake-undeclared is located in node_modules but is not included in deps.onlyBundle')
+    expect(failure).not.toContain('fake-dev is located')
   })
 
   it('should write files a plugin emits before checking the paths of `package.json`', async () => {
