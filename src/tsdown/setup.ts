@@ -88,7 +88,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
 
   if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
     warnings.NUXT_MB_B0101(undefined, { method: 'info' })
-    await prepareModule(cwd, { config: buildConfig, outDir, pkg })
+    await prepareModule(cwd, { config: buildConfig, outDir, pkg }, { declarations: false })
   }
 
   const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })

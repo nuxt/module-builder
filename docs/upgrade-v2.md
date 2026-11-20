@@ -849,7 +849,7 @@ The declaration program starts from your module's own files only. Files the tsco
 
 ## Preparing .nuxt
 
-Declarations are generated against the tsconfigs in `.nuxt`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` first in your module's `dev:prepare` script, as in [Developing a module](#developing-a-module), so the build doesn't have to:
+Declarations are generated against the tsconfigs in `.nuxt`, so a build runs `nuxt-module-build prepare` first when `.nuxt` is missing. Unless `src/module.ts` exports `ModuleHooks`, `ModuleRuntimeHooks`, `ModuleRuntimeConfig` or `ModulePublicRuntimeConfig`, or module code has a `declare module` or `declare global`, it leaves out the declarations of module code in `.nuxt/module-builder/declarations`, which only the module's own type check reads, so run `nuxt-module-build prepare` before `vue-tsc -b --noEmit`. `prepare` loads `src/module.ts` with Node, so the rules in [Module code loads with Node](#module-code-loads-with-node) are checked there too. Keep `prepare` first in your module's `dev:prepare` script, as in [Developing a module](#developing-a-module), so the build doesn't have to:
 
 ```json
 {

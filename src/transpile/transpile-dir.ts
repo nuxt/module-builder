@@ -108,8 +108,9 @@ const VUE_DECLARATION_RE = /\.(?:d\.vue\.ts|vue\.d\.ts)$/
  * exports, `.vue` files go through `vue-sfc-transformer`, stylesheets are processed, other
  * files are copied, and declarations come from one TypeScript program over the directory.
  * `api.outputs` maps every discovered or mirrored source of the latest build to the path it
- * is emitted at, relative to the output directory. Under watch, the declaration program of
- * single-file components reuses the sources the previous build parsed, until the watcher closes.
+ * is emitted at, relative to the output directory. The declaration programs of single-file
+ * components share one session, so the programs of a build reuse each other's parsed sources, and
+ * under watch those of the previous build, until the watcher closes.
  */
 export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { api: { readonly outputs: Promise<Map<string, string>> } } {
   let work: Promise<{ build: DirectoryBuild, files: Emitted[] } | { error: unknown }> | undefined
@@ -128,11 +129,14 @@ export function transpileDir(options: TranspileDirOptions): Rolldown.Plugin & { 
       for (const file of files) {
         this.addWatchFile(file)
       }
-      const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort(), this.meta.watchMode ? () => session ??= createDeclarationSession() : undefined)
+      const build = latestBuild = new DirectoryBuild(options, files.map(file => normalize(file)).sort(), () => session ??= createDeclarationSession())
       work = build.run().then(files => ({ build, files }), (error: unknown) => ({ error }))
     },
     async buildEnd() {
       await work
+      if (!this.meta.watchMode) {
+        session = undefined
+      }
       for (const source of latestBuild?.outputs.keys() ?? []) {
         this.addWatchFile(source)
       }
@@ -182,9 +186,9 @@ class DirectoryBuild {
   private extension: string
   private dtsExtension: string
   private options: TranspileDirOptions
-  private session: (() => Promise<VueDeclarationSession>) | undefined
+  private session: () => Promise<VueDeclarationSession>
 
-  constructor(options: TranspileDirOptions, files: string[], session?: () => Promise<VueDeclarationSession>) {
+  constructor(options: TranspileDirOptions, files: string[], session: () => Promise<VueDeclarationSession>) {
     this.options = options
     this.session = session
     this.extension = `.${options.extension}`
@@ -404,7 +408,7 @@ class DirectoryBuild {
         cwd: this.options.cwd,
         cacheVersion: this.options.cacheVersion,
         tsconfig: tsconfig && await writeDerivedTsconfig(this.options.cwd, tsconfig, this.options.paths, { vue: true, imports: this.imports }),
-        session: await this.session?.(),
+        session: await this.session(),
       })
     })()
   }

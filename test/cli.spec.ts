@@ -890,9 +890,10 @@ describe('a module that imports runtime code, built through a symlink, under a p
 describe('a module with `isolatedDeclarations` and no `.nuxt`', () => {
   const dist = () => join(dirs.isolated!, 'dist')
 
-  it('should prepare the module before building it', async () => {
+  it('should prepare the module before building it, with the declarations its augmentations of Nuxt\'s types read', async () => {
     expect(expectBuilt('isolated')).toContain('[NUXT_MB_B0101]')
     expect(await read(dist(), 'runtime/composables/useAliasedApp.d.ts')).toMatch(/import\("nuxt\/app"\)\.NuxtApp/)
+    expect(exists(dirs.isolated!, '.nuxt/module-builder/declarations/types.d.mts')).toBe(true)
   })
 
   it('should build an annotated module while still inferring runtime types', async () => {
