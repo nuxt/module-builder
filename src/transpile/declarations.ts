@@ -228,6 +228,7 @@ export async function restoreImports(declaration: string, source: string, code: 
   if (!missing.length) {
     return declaration
   }
+  const pending = new Set(missing)
   const imports: string[] = []
   for (const statement of ts.createSourceFile(source, script, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS).statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.importClause) {
@@ -236,13 +237,13 @@ export async function restoreImports(declaration: string, source: string, code: 
     const clause = statement.importClause
     const specifier = `'${statement.moduleSpecifier.text.replaceAll('\'', '\\\'')}'`
     const bindings = clause.namedBindings
-    if (clause.name && missing.includes(clause.name.text)) {
+    if (clause.name && pending.delete(clause.name.text)) {
       imports.push(`import type ${clause.name.text} from ${specifier};`)
     }
-    if (bindings && ts.isNamespaceImport(bindings) && missing.includes(bindings.name.text)) {
+    if (bindings && ts.isNamespaceImport(bindings) && pending.delete(bindings.name.text)) {
       imports.push(`import type * as ${bindings.name.text} from ${specifier};`)
     }
-    const named = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter(element => missing.includes(element.name.text)) : []
+    const named = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter(element => pending.delete(element.name.text)) : []
     if (named.length) {
       imports.push(`import type { ${named.map(element => element.propertyName ? `${ts.isStringLiteral(element.propertyName) ? JSON.stringify(element.propertyName.text) : element.propertyName.text} as ${element.name.text}` : element.name.text).join(', ')} } from ${specifier};`)
     }

@@ -1737,6 +1737,12 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports('export declare const icon: Icon;\n', 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nexport declare const icon: Icon;\n`)
   })
 
+  it('should restore an import once when both script blocks of a component import it', async () => {
+    const sfc = `<script lang="ts">\nimport type { Icon } from '#build/icons'\n</script>\n\n<script setup lang="ts">\nimport type { Icon } from '#build/icons'\nimport type { Size } from '#build/sizes'\n</script>\n`
+    const emitted = `export declare const icon: Icon;\nexport declare const size: Size;\n`
+    expect(await restoreImports(emitted, 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nimport type { Size } from '#build/sizes';\n${emitted}`)
+  })
+
   it('should restore an imported name written as a string literal', async () => {
     const source = `import type { 'icon-props' as IconProps, Size as IconSize } from '#build/icons'\n`
     const emitted = `export interface Props { icon: IconProps; size: IconSize; }\n`
