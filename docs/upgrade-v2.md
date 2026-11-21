@@ -242,7 +242,7 @@ If you publish with pnpm or Yarn 4, point `exports`, `imports`, and `main` at yo
 - `publishConfig.exports` and `publishConfig.imports` replace the top-level fields as a whole, so repeat every subpath and condition.
 - The root export's `types` condition points at `.nuxt/module-builder/types.d.mts`, which `prepare` writes. A subpath points at its source.
 - If you kept `types` in step 3, move it into `publishConfig`. Keep `typesVersions` at the top level, pointing at `dist`.
-- If code outside Nuxt loads a subpath with Node, keep that subpath pointing at `dist`. A Vite plugin for a plain Vite app is one example. Step 4 doesn't check its source.
+- If code outside Nuxt loads a subpath with Node, keep that subpath pointing at `dist`. A Vite plugin for a plain Vite app is one example. Step 4 doesn't check its source, and step 7 builds it.
 - Point [code that reaches into `dist`](./3.develop-and-publish.md#code-that-reaches-into-dist) by path, such as a test that imports `../dist/runtime/...`, at `src`.
 
 If you publish with npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. Step 7 builds `dist` in `dev:prepare`, and `tsdown --watch` rebuilds it while you develop. [Develop and Publish](./3.develop-and-publish.md#preparing-a-checkout) describes both setups.
@@ -257,7 +257,7 @@ In each script that runs the builder, change only the builder's commands, and ke
 - `nuxt-module-build prepare --stub` becomes `nuxt-module-build prepare`.
 - A script that only ran the stub build, such as `"stub": "nuxt-module-build build --stub ."`, has nothing left to run. Delete it, and remove it from the scripts that run it, such as `pnpm stub &&`.
 - In `dev:prepare`, run `nuxt-module-build prepare` first, before the build and every `nuxt prepare`. Add it if it isn't there.
-- If `package.json` points at `dist`, run `tsdown` in `dev:prepare` before the first `nuxt prepare`.
+- If `package.json` points at `dist`, run `tsdown` in `dev:prepare` before the first `nuxt prepare`. Do the same if a subpath stays at `dist` and the playground or tests load it.
 - The build empties `dist` first, so a command that writes into `dist` has to run after `tsdown`.
 - If `package.json` points at your sources, run `tsdown` as a command of `prepack` itself, so that the [pack checks](#publishing-source-exports) run. A `prepack` that runs another script, such as `pnpm run build`, isn't checked: move that script's commands into `prepack`.
 
