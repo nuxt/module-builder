@@ -244,7 +244,7 @@ export async function restoreImports(declaration: string, source: string, code: 
     }
     const named = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter(element => missing.includes(element.name.text)) : []
     if (named.length) {
-      imports.push(`import type { ${named.map(element => element.propertyName ? `${element.propertyName.text} as ${element.name.text}` : element.name.text).join(', ')} } from ${specifier};`)
+      imports.push(`import type { ${named.map(element => element.propertyName ? `${ts.isStringLiteral(element.propertyName) ? JSON.stringify(element.propertyName.text) : element.propertyName.text} as ${element.name.text}` : element.name.text).join(', ')} } from ${specifier};`)
     }
   }
   return imports.length ? `${imports.join('\n')}\n${declaration}` : declaration

@@ -1737,6 +1737,12 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports('export declare const icon: Icon;\n', 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nexport declare const icon: Icon;\n`)
   })
 
+  it('should restore an imported name written as a string literal', async () => {
+    const source = `import type { 'icon-props' as IconProps, Size as IconSize } from '#build/icons'\n`
+    const emitted = `export interface Props { icon: IconProps; size: IconSize; }\n`
+    expect(await restoreImports(emitted, 'icon.ts', source)).toBe(`import type { "icon-props" as IconProps, Size as IconSize } from '#build/icons';\n${emitted}`)
+  })
+
   it('should restore an import that a type parameter of the same name shadows only elsewhere', async () => {
     const source = `import type { Icon } from '#build/icons'\n`
     const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\n`
