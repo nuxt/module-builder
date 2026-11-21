@@ -197,7 +197,7 @@ export async function restoreImports(declaration: string, source: string, code: 
   const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const known = new Set<string>()
   const referenced: Array<[name: string, node: ts.Node]> = []
-  const typeParameters: Array<[name: string, scope: ts.Node]> = []
+  const typeParameters: Array<[name: string, scope: ts.Node, outside?: ts.Node]> = []
   const visit = (node: ts.Node) => {
     if ((ts.isTypeReferenceNode(node) || ts.isTypeQueryNode(node) || ts.isExpressionWithTypeArguments(node)) && !ts.isImportTypeNode(node)) {
       let name: ts.Node = ts.isTypeReferenceNode(node) ? node.typeName : ts.isTypeQueryNode(node) ? node.exprName : node.expression
@@ -215,7 +215,8 @@ export async function restoreImports(declaration: string, source: string, code: 
       referenced.push([node.expression.text, node])
     }
     if (ts.isTypeParameterDeclaration(node)) {
-      typeParameters.push([node.name.text, ts.isInferTypeNode(node.parent) ? ts.findAncestor(node.parent, ts.isConditionalTypeNode) ?? node.parent : node.parent])
+      const conditional = ts.isInferTypeNode(node.parent) ? ts.findAncestor(node.parent, ts.isConditionalTypeNode) : undefined
+      typeParameters.push(conditional ? [node.name.text, conditional, conditional.falseType] : [node.name.text, node.parent])
     }
     if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
       known.add(node.name.text)
@@ -224,7 +225,7 @@ export async function restoreImports(declaration: string, source: string, code: 
   }
   visit(emitted)
   const within = (node: ts.Node, scope: ts.Node) => !!ts.findAncestor(node, ancestor => ancestor === scope)
-  const missing = [...new Set(referenced.filter(([name, node]) => !known.has(name) && !typeParameters.some(([parameter, scope]) => parameter === name && within(node, scope))).map(([name]) => name))]
+  const missing = [...new Set(referenced.filter(([name, node]) => !known.has(name) && !typeParameters.some(([parameter, scope, outside]) => parameter === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
   if (!missing.length) {
     return declaration
   }

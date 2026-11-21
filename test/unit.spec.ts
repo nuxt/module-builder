@@ -1755,6 +1755,8 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports(shadowed, 'icon.ts', source)).toBe(shadowed)
     const unrelated = `${shadowed}export interface Props { icon: Icon; }\n`
     expect(await restoreImports(unrelated, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${unrelated}`)
+    const falseBranch = `export type PickIcon<T> = T extends { icon: infer Icon } ? Icon : Icon;\n`
+    expect(await restoreImports(falseBranch, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${falseBranch}`)
   })
 
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {
