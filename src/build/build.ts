@@ -77,7 +77,7 @@ export async function moduleTsconfigs(cwd: string): Promise<TsconfigResolver> {
 export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick<BuildPlan, 'cwd' | 'pkg' | 'outDir' | 'sourcemap' | 'config'>): Promise<BuildPlan> {
   const tsconfigs = await moduleTsconfigs(cwd)
   if (tsconfigs.replaced) {
-    const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', 'tsconfig.module.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
+    const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
     warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })
   }
 

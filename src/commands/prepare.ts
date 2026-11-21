@@ -217,7 +217,8 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
               const ownReference = nodeReferences.findIndex(isOwnTypes)
               nodeReferences.splice(ownReference === -1 ? nodeReferences.length : ownReference, ownReference === -1 ? 0 : 1, { path: join(sourceTypesDir, 'types.d.mts') })
               const { jsx, jsxImportSource } = tsConfig.compilerOptions ?? {}
-              nodeTsConfig.compilerOptions = { jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
+              // Module code loads with Node, so the module code project reports the syntax that type stripping cannot remove.
+              nodeTsConfig.compilerOptions = { ...rootConfig.references && { erasableSyntaxOnly: true }, jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
               nodeTsConfig.compilerOptions.paths = { ...tsConfig.compilerOptions?.paths, ...nodeTsConfig.compilerOptions.paths }
               // The module's own package resolves to declarations of module code here, so module code is not type checked in these parts.
               // Included rather than referenced from `nuxt.d.ts`, which `.nuxt/tsconfig.json` also includes.

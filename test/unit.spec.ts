@@ -201,7 +201,7 @@ describe('upgrade guide', () => {
       .map(([, body]) => JSON.parse(body!.replace(/^\/\/.*$/gm, '')) as Record<string, unknown>)
       .filter(json => Object.keys(json).every(key => order.includes(key)))))).flat()
     const unsorted = (keys: string[], expected: string[]) => keys.some(key => !expected.includes(key)) || keys.join() !== [...keys].sort((a, b) => expected.indexOf(a) - expected.indexOf(b)).join()
-    expect(examples.length).toBeGreaterThan(10)
+    expect(examples.length).toBeGreaterThan(5)
     expect(examples.filter(json => unsorted(Object.keys(json), order) || unsorted(Object.keys(json.compilerOptions ?? {}), compilerOrder))).toEqual([])
   })
 

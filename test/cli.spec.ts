@@ -25,7 +25,7 @@ const REFERENCES = (node: string) => JSON.stringify({
 
 const TEST_TSCONFIG = {
   extends: './.nuxt/tsconfig.node.json',
-  compilerOptions: { tsBuildInfoFile: './.nuxt/tsconfig.test.tsbuildinfo' },
+  compilerOptions: { tsBuildInfoFile: './.nuxt/tsconfig.test.tsbuildinfo', erasableSyntaxOnly: false },
   include: ['./.nuxt/nuxt.d.ts', './.nuxt/nuxt.node.d.ts', './test', './*.config.*'],
   exclude: ['./test/nuxt', './test/fixtures'],
 }
@@ -1533,7 +1533,7 @@ describe('prepare', () => {
   it('should explain a tsconfig above the module that cannot be read', () => {
     const output = expectFailed('noTsconfig')
     expect(output).toContain('[NUXT_MB_C0302] Cannot read `../tsconfig.json`, the nearest tsconfig above the module, which has no `tsconfig.json` of its own: ')
-    expect(output).toContain('fix: Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own')
+    expect(output).toContain('fix: Give the module a `tsconfig.json` of its own')
   })
 
   it('should keep `.nuxt/tsconfig.json` one program over the module\'s sources, with the generated tsconfigs adapted', async () => {
@@ -1541,6 +1541,7 @@ describe('prepare', () => {
     expectBuilt('legacyPrepare')
     const generated = async (name: string) => JSON.parse(await read(dir, `.nuxt/${name}.json`))
     expect((await generated('tsconfig.app')).compilerOptions.paths['my-module']).toEqual(['./module-builder/declarations/types.d.mts'])
+    expect((await generated('tsconfig.node')).compilerOptions.erasableSyntaxOnly).toBeUndefined()
     const legacy = await generated('tsconfig')
     expect(legacy.compilerOptions.paths['my-module']).toBeUndefined()
     expect(legacy.include).not.toContain('./module-builder/declarations/types.d.mts')

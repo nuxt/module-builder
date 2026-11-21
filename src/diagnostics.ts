@@ -165,7 +165,7 @@ export const errorCodes = {
 
   NUXT_MB_C0302: {
     why: (p: { path: string, reason: string, tsconfig: 'own' | 'parent' | 'referenced' }): string => `Cannot read \`${p.path}\`, ${{ own: 'the module\'s tsconfig', parent: 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own', referenced: 'a project that the tsconfig of the module references' }[p.tsconfig]}: ${p.reason}`,
-    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
+    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
     docs: '#other-tsconfig-layouts',
   },
 
@@ -237,7 +237,7 @@ export const warningCodes = {
   },
   NUXT_MB_C0301: {
     why: (p: { path: string }): string => `\`${p.path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead.`,
-    fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./tsconfig.module.json\`, which extends \`./.nuxt/tsconfig.node.json\`, and \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
+    fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./.nuxt/tsconfig.node.json\`, \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
     docs: '#other-tsconfig-layouts',
   },
   NUXT_MB_C0303: {

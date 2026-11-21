@@ -197,7 +197,7 @@ export default {
       'tsconfig.json': REFERENCES('./tsconfig.module.json'),
     },
   })
-  dirs.serverImports = await fixture('.temp-builder/server-imports', {
+  const serverImports = (name: string, files: Record<string, string>) => fixture(`.temp-builder/${name}`, {
     config: PLUGIN,
     remove: ['.nuxt'],
     module: source => source
@@ -207,10 +207,12 @@ export default {
       'src/runtime/server/utils/counter.ts': `export class Counter {\n  constructor(public count: number) {}\n}\n\nexport const useCounter = (): Counter => new Counter(0)\n`,
       'src/runtime/server/api/count.get.ts': `import { defineEventHandler } from 'h3'\n\nexport default defineEventHandler(() => ({ count: 1 }))\n`,
       'src/runtime/composables/useCount.ts': `export const useCount = () => $fetch('/api/count')\n`,
-      'tsconfig.module.json': JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { erasableSyntaxOnly: true } }),
-      'tsconfig.json': REFERENCES('./tsconfig.module.json'),
+      'src/standalone.ts': `export enum Mode { On = 'on' }\n`,
+      ...files,
     },
   })
+  dirs.serverImports = await serverImports('server-imports', { 'tsconfig.json': REFERENCES('./.nuxt/tsconfig.node.json') })
+  dirs.erasableRoot = await serverImports('erasable-root', { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { erasableSyntaxOnly: false } }) })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -268,7 +270,14 @@ export default {
     step('moduleProject', tsdown(dirs.moduleProject)),
     step('serverImports:prepare', cli(['prepare', dirs.serverImports!]))
       .then(() => step('serverImports:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.serverImports })))
-      .then(() => step('serverImports:files', run(bin('vue-tsc'), ['-p', 'tsconfig.module.json', '--noEmit', '--listFilesOnly'], { cwd: dirs.serverImports }))),
+      .then(() => step('serverImports:files', run(bin('vue-tsc'), ['-p', '.nuxt/tsconfig.node.json', '--noEmit', '--listFilesOnly'], { cwd: dirs.serverImports })))
+      .then(async () => {
+        await writeFile(join(dirs.serverImports!, 'tsconfig.module.json'), JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { erasableSyntaxOnly: false } }))
+        await writeFile(join(dirs.serverImports!, 'tsconfig.json'), REFERENCES('./tsconfig.module.json'))
+      })
+      .then(() => step('serverImports:own', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.serverImports }))),
+    step('erasableRoot:prepare', cli(['prepare', dirs.erasableRoot!]))
+      .then(() => step('erasableRoot:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.erasableRoot }))),
     step('isolatedAsDocumented:prepare', cli(['prepare', dirs.isolatedAsDocumented]))
       .then(() => step('isolatedAsDocumented:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolatedAsDocumented })))
       .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
@@ -451,9 +460,21 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await read(dirs.contexts!, 'dist/runtime/logger.d.ts')).toContain('import("fake-logger").LoggerInstance')
   })
 
-  it('should leave the server auto-imports out of the module project, and keep the types of server routes', () => {
+  it('should report the syntax that Node cannot strip in the module code project of the references layout, unless the module sets `erasableSyntaxOnly` itself', async () => {
     expectBuilt('serverImports:prepare')
-    expect(expectBuilt('serverImports:typecheck')).toBe('')
+    expect(results['serverImports:typecheck']!.output.trim().split('\n')).toEqual([expect.stringMatching(/^src\/standalone\.ts\(1,13\): error TS1294:/)])
+    const options = async (dir: string, part: string) => JSON.parse(await read(dir, `.nuxt/tsconfig.${part}.json`)).compilerOptions
+    expect((await options(dirs.serverImports!, 'node')).erasableSyntaxOnly).toBe(true)
+    for (const part of ['app', 'server', 'shared']) {
+      expect((await options(dirs.serverImports!, part)).erasableSyntaxOnly, part).toBeUndefined()
+    }
+    expect(expectBuilt('serverImports:own')).toBe('')
+    expectBuilt('erasableRoot:prepare')
+    expect(expectBuilt('erasableRoot:typecheck')).toBe('')
+    expect((await options(dirs.erasableRoot!, 'node')).erasableSyntaxOnly).toBe(false)
+  })
+
+  it('should leave the server auto-imports out of the module project, and keep the types of server routes', () => {
     const files = expectBuilt('serverImports:files')
     expect(files).not.toContain('src/runtime/server/utils/counter.ts')
     expect(files).not.toContain('.nuxt/types/nitro-imports.d.ts')
