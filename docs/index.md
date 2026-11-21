@@ -55,7 +55,7 @@ npm install
 npm run dev:prepare
 ```
 
-`dev:prepare` generates the `.nuxt` directories that type your module and its playground. To find out what each step does, read [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish).
+`dev:prepare` generates the `.nuxt` directories that type your module and its playground. To find out what each step does, read [Develop and Publish](/docs/api/module-builder/develop-and-publish).
 
 ## Manual installation
 
@@ -92,18 +92,18 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    }
    ```
 
-4. Point the `exports` of `package.json` at your module, as described in [Project Structure](/docs/guide/modules/module-builder/project-structure#packagejson).
-5. Create a `tsconfig.json` that references the tsconfigs in `.nuxt`, and a `tsconfig.module.json` for module code, as described in [TypeScript](/docs/guide/modules/module-builder/typescript).
+4. Point the `exports` of `package.json` at your module, as described in [Project Structure](/docs/api/module-builder/project-structure#packagejson).
+5. Create a `tsconfig.json` that references the tsconfigs in `.nuxt`, and a `tsconfig.module.json` for module code, as described in [TypeScript](/docs/api/module-builder/typescript).
 
-The `dev:prepare` script in step 3 is for a module that you publish with pnpm or Yarn 4. If you publish with npm, Yarn 3 or earlier, or bun, add `tsdown` before `nuxt prepare playground`. [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish#preparing-a-checkout) explains the difference.
+The `dev:prepare` script in step 3 is for a module that you publish with pnpm or Yarn 4. If you publish with npm, Yarn 3 or earlier, or bun, add `tsdown` before `nuxt prepare playground`. [Develop and Publish](/docs/api/module-builder/develop-and-publish#preparing-a-checkout) explains the difference.
 
 ## Next steps
 
-- [Project Structure](/docs/guide/modules/module-builder/project-structure): the files that `@nuxt/module-builder` reads.
-- [Commands](/docs/guide/modules/module-builder/commands): `tsdown`, `nuxt-module-build build`, and `nuxt-module-build prepare`.
-- [Develop and Publish](/docs/guide/modules/module-builder/develop-and-publish): the two development setups, the playground, and releases.
-- [Configuration](/docs/guide/modules/module-builder/configuration): `tsdown.config.ts`, extra entries, and externals.
-- [TypeScript](/docs/guide/modules/module-builder/typescript): your module's `tsconfig.json`, its declarations, and the rules for module code.
-- [Build Output](/docs/guide/modules/module-builder/output): the files in `dist`, and the size report.
-- [Exports](/docs/guide/modules/module-builder/exports): subpath exports, including runtime components.
-- [Upgrading to v2](/docs/guide/modules/module-builder/upgrade-v2): moving a module from v1.
+- [Project Structure](/docs/api/module-builder/project-structure): the files that `@nuxt/module-builder` reads.
+- [Commands](/docs/api/module-builder/commands): `tsdown`, `nuxt-module-build build`, and `nuxt-module-build prepare`.
+- [Develop and Publish](/docs/api/module-builder/develop-and-publish): the two development setups, the playground, and releases.
+- [Configuration](/docs/api/module-builder/configuration): `tsdown.config.ts`, extra entries, and externals.
+- [TypeScript](/docs/api/module-builder/typescript): your module's `tsconfig.json`, its declarations, and the rules for module code.
+- [Build Output](/docs/api/module-builder/output): the files in `dist`, and the size report.
+- [Exports](/docs/api/module-builder/exports): subpath exports, including runtime components.
+- [Upgrading to v2](/docs/api/module-builder/upgrade-v2): moving a module from v1.

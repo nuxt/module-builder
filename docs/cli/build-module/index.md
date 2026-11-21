@@ -13,11 +13,11 @@ npx nuxt build-module build [ROOTDIR] [--cwd=<directory>] [--outDir=<directory>]
 npx nuxt build-module prepare [ROOTDIR] [--cwd=<directory>]
 ```
 
-The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/module-builder`](/docs/guide/modules/module-builder) installs in your module. It's the same CLI as `nuxt-module-build`, with two subcommands. Without a subcommand, it prints its usage.
+The `build-module` command runs the `nuxt-build-module` binary that [`@nuxt/module-builder`](/docs/api/module-builder) installs in your module. It's the same CLI as `nuxt-module-build`, with two subcommands. Without a subcommand, it prints its usage.
 
 ## `build`
 
-Builds the module into `dist` for publishing. When the module has a `tsdown.config.ts`, `build` uses it. It produces the same output as `tsdown`. See [`build`](/docs/guide/modules/module-builder/commands#build).
+Builds the module into `dist` for publishing. When the module has a `tsdown.config.ts`, `build` uses it. It produces the same output as `tsdown`. See [`build`](/docs/api/module-builder/commands#build).
 
 ### Arguments
 
@@ -35,7 +35,7 @@ Builds the module into `dist` for publishing. When the module has a `tsdown.conf
 
 ## `prepare`
 
-Generates `.nuxt` in the module root, whose tsconfigs the module's `tsconfig.json` references. It also writes the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/guide/modules/module-builder/commands#prepare).
+Generates `.nuxt` in the module root, whose tsconfigs the module's `tsconfig.json` references. It also writes the declarations that the root export's `types` condition points at while `package.json` points at the module's sources. See [`prepare`](/docs/api/module-builder/commands#prepare).
 
 ### Arguments
 
