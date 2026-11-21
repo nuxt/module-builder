@@ -25,7 +25,7 @@ v2 builds your module with [tsdown](https://tsdown.dev) instead of unbuild. The 
 
 ## Steps
 
-### 1. Install v2 and `tsdown`
+### Step 1: Install v2 and `tsdown`
 
 Install v2 together with `tsdown`, which is a peer dependency:
 
@@ -43,7 +43,7 @@ Then change the other dependencies:
 - If your module's own code imports `unbuild`, `mkdist`, `jiti`, `defu`, or `magic-regexp`, add that package to its dependencies. v2 doesn't install them any more.
 - If `src/runtime` contains `.scss` or `.sass` files, run `pnpm add -D --ignore-workspace-root-check sass`. v2 compiles them with your module's own `sass` or `sass-embedded`.
 
-### 2. Move the build options into `tsdown.config.ts`
+### Step 2: Move the build options into `tsdown.config.ts`
 
 Create a `tsdown.config.ts` in the module root. A module without build options needs only the `builder()` plugin:
 
@@ -111,7 +111,7 @@ export default defineConfig({
 
 Then delete `build.config.ts`, and remove the `build` or `unbuild` field. With a `tsdown.config.ts`, the build fails while either of them is still there. [Configuration](./4.configuration.md) describes every option.
 
-### 3. Update the paths in `package.json`
+### Step 3: Update the paths in `package.json`
 
 v2 emits ES modules only, and writes the module entry's declarations as `.d.mts` files. In `exports`, `main`, `types`, and `typesVersions`:
 
@@ -137,7 +137,7 @@ Then decide whether your module supports `node10` consumers: projects that impor
 
 After each build, a warning lists any other path in these fields that the build didn't produce. Add the entry that produces it in step 2, or remove the path.
 
-### 4. Make module code load with Node
+### Step 4: Make module code load with Node
 
 `nuxt-module-build prepare` and the build load module code with Node, as Nuxt 5 does. Module code is `src/module.ts`, every file that it imports by value (runtime files included), and `tsdown.config.ts`. In these files:
 
@@ -169,7 +169,7 @@ Before you run `prepare`:
 
 Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Node, it lists each problem with its file, line, and fix, and doesn't generate `.nuxt`. Fix them all, and run it again until it generates `.nuxt`.
 
-### 5. Switch to the module's own tsconfigs
+### Step 5: Switch to the module's own tsconfigs
 
 `prepare` generates a tsconfig in `.nuxt` for each part of the module. Change `tsconfig.json` to reference them, as follows. Remove its `extends` and `include`, and keep its `compilerOptions` and `exclude`:
 
@@ -216,7 +216,7 @@ Run `pnpm exec nuxt-module-build prepare`, then `pnpm exec vue-tsc -b --noEmit`.
 
 To keep a single `tsconfig.json` that extends `./.nuxt/tsconfig.json` instead, see [Extending .nuxt/tsconfig.json](./5.typescript.md#extending-nuxttsconfigjson).
 
-### 6. Choose how the playground loads the module
+### Step 6: Choose how the playground loads the module
 
 The playground installs the module by its package name, so it loads whatever `package.json` points at. In v1, a stub build made `dist` load your sources. In v2, the package manager that publishes the module decides the setup.
 
@@ -247,7 +247,7 @@ If you publish with pnpm or Yarn 4, point `exports`, `imports`, and `main` at yo
 
 If you publish with npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. Step 7 builds `dist` in `dev:prepare`, and `tsdown --watch` rebuilds it while you develop. [Develop and Publish](./3.develop-and-publish.md#preparing-a-checkout) describes both setups.
 
-### 7. Update the scripts
+### Step 7: Update the scripts
 
 In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack`, `dev:prepare`, and any other script or CI workflow that runs the builder under one of its names:
 
@@ -285,21 +285,21 @@ If `package.json` points at your sources, they become:
 
 If `package.json` points at `dist`, `dev:prepare` builds `dist` after `prepare` instead: `nuxt-module-build prepare && tsdown && nuxt prepare playground && nuxt prepare docs`.
 
-### 8. Build
+### Step 8: Build
 
 1. Run `pnpm run dev:prepare`.
 2. Run `pnpm exec tsdown`.
 3. Fix what the build reports. Each message starts with a code and links to its section in [Build messages](#build-messages). Build again until the build passes.
 4. Run `pnpm run prepack` once, so that its other commands run too.
 
-### 9. Type check
+### Step 9: Type check
 
 Run your module's type-check script, and fix what it reports. [Errors from checking each part](./5.typescript.md#errors-from-checking-each-part) lists the errors that it can report.
 
 - The build doesn't type check, so run the script as a step of its own in CI, after `dev:prepare`.
 - The build types aliases such as `#build/*` as `any`. Annotate each export whose type is inferred through one, as [Other type errors](./5.typescript.md#other-type-errors) shows. Otherwise, `dist` declares it as `any`.
 
-### 10. Check the package
+### Step 10: Check the package
 
 1. Run `pnpm pack`. It writes a tarball, such as `my-module-1.0.0.tgz`.
 2. Run `pnpm dlx publint my-module-1.0.0.tgz`.
@@ -331,7 +331,7 @@ Each message that requires a change starts with a code, such as `NUXT_MB_D0001`,
 
 `tsdown.config.ts` builds the module with the `builder()` plugin:
 
-- Add `plugins: [builder()]` to the config, as in [step 2](#2-move-the-build-options-into-tsdownconfigts). `tsdown` and `nuxt-module-build build` fail with a tsdown config that doesn't use it.
+- Add `plugins: [builder()]` to the config, as in [step 2](#step-2-move-the-build-options-into-tsdownconfigts). `tsdown` and `nuxt-module-build build` fail with a tsdown config that doesn't use it.
 - Call `builder()` in the config that builds the module. One `builder()` plugin that two configs share fails the build, and so does an array with `builder()` in more than one config.
 - `builder()` takes `entries`, `externals`, and `replace`. Set every other option on the tsdown config itself.
 - `prepare` reads the module in the directory of the tsdown config, so the config can't set `cwd` to another directory.
@@ -358,14 +358,14 @@ The build empties the output directory before it writes to it, and `tsdown --wat
 
 `nuxt-module-build build --stub` and `nuxt-module-build prepare --stub` are removed.
 
-- With pnpm or Yarn 4, point `package.json` at your sources, as in [step 6](#6-choose-how-the-playground-loads-the-module), and remove the stub build from your scripts.
+- With pnpm or Yarn 4, point `package.json` at your sources, as in [step 6](#step-6-choose-how-the-playground-loads-the-module), and remove the stub build from your scripts.
 - With npm, Yarn 3 or earlier, or bun, replace the stub build with `tsdown`, after `nuxt-module-build prepare`. Run `tsdown --watch` next to `nuxt dev playground`.
 
-[Step 7](#7-update-the-scripts) lists every change to the scripts.
+[Step 7](#step-7-update-the-scripts) lists every change to the scripts.
 
 ### Preparing `.nuxt`
 
-The build generates declarations with the tsconfigs in `.nuxt`, so it runs `nuxt-module-build prepare` first when `.nuxt` is missing. Run `nuxt-module-build prepare` first in your `dev:prepare` script instead, as in [step 7](#7-update-the-scripts).
+The build generates declarations with the tsconfigs in `.nuxt`, so it runs `nuxt-module-build prepare` first when `.nuxt` is missing. Run `nuxt-module-build prepare` first in your `dev:prepare` script instead, as in [step 7](#step-7-update-the-scripts).
 
 The `.nuxt` that the build prepares can leave out the declarations that the module's own type check reads. Run `nuxt-module-build prepare` yourself before `vue-tsc -b --noEmit`.
 
@@ -435,7 +435,7 @@ See [Checks on published paths](./3.develop-and-publish.md#checks-on-published-p
 
 ### Other tsconfig layouts
 
-These messages appear when the module doesn't have the tsconfigs of step 5. Either its tsconfig extends another app's `.nuxt/tsconfig.json`, such as a monorepo root's, or the build reads the nearest tsconfig above the module. Give the module a `tsconfig.json` and a `tsconfig.module.json` in its own directory, as in [step 5](#5-switch-to-the-modules-own-tsconfigs). If one of the module's own tsconfigs can't be read, fix it, or generate the file it names before you run `prepare`. See [Monorepos](./5.typescript.md#monorepos).
+These messages appear when the module doesn't have the tsconfigs of step 5. Either its tsconfig extends another app's `.nuxt/tsconfig.json`, such as a monorepo root's, or the build reads the nearest tsconfig above the module. Give the module a `tsconfig.json` and a `tsconfig.module.json` in its own directory, as in [step 5](#step-5-switch-to-the-modules-own-tsconfigs). If one of the module's own tsconfigs can't be read, fix it, or generate the file it names before you run `prepare`. See [Monorepos](./5.typescript.md#monorepos).
 
 ### Tests and config files
 
@@ -445,7 +445,7 @@ Reference a `tsconfig.test.json` that includes them, as in [Tests and config fil
 
 ### `build.config.ts` and the `build` field
 
-`build.config.ts` and the `unbuild` field of `package.json` are deprecated. Without a `tsdown.config.ts`, the build still applies their options. Move them into `tsdown.config.ts`, as in [step 2](#2-move-the-build-options-into-tsdownconfigts).
+`build.config.ts` and the `unbuild` field of `package.json` are deprecated. Without a `tsdown.config.ts`, the build still applies their options. Move them into `tsdown.config.ts`, as in [step 2](#step-2-move-the-build-options-into-tsdownconfigts).
 
 Until then:
 
@@ -454,7 +454,7 @@ Until then:
 
 ### Unsupported build options
 
-Without a `tsdown.config.ts`, the build reads `build.config.ts` and the `build` field of `package.json`. It fails with a list of every option it can't apply, and the file that each comes from. [Step 2](#2-move-the-build-options-into-tsdownconfigts) moves the options that v2 supports into `tsdown.config.ts`. To keep `build.config.ts` for now, remove each listed option instead.
+Without a `tsdown.config.ts`, the build reads `build.config.ts` and the `build` field of `package.json`. It fails with a list of every option it can't apply, and the file that each comes from. [Step 2](#step-2-move-the-build-options-into-tsdownconfigts) moves the options that v2 supports into `tsdown.config.ts`. To keep `build.config.ts` for now, remove each listed option instead.
 
 #### Hooks
 
@@ -466,7 +466,7 @@ The module entry is bundled with tsdown's defaults for a Node library, so `rollu
 
 #### CommonJS output
 
-The build emits ES modules only, so `rollup.emitCJS: true` fails the build. Remove it, and update `package.json` as in [step 3](#3-update-the-paths-in-packagejson).
+The build emits ES modules only, so `rollup.emitCJS: true` fails the build. Remove it, and update `package.json` as in [step 3](#step-3-update-the-paths-in-packagejson).
 
 #### mkdist options
 
