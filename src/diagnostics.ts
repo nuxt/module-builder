@@ -40,7 +40,7 @@ export const errorCodes = {
       ...new Set(p.issues.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)),
     ].join('\n'),
     fix: 'Change each one as suggested.',
-    docs: '#module-code-loads-with-node',
+    docs: '#step-4-make-module-code-load-with-node',
   },
   NUXT_MB_B0002: {
     why: (p: { file: string, reason: string }): string => `Cannot load \`${p.file}\` to write \`module.json\`: ${p.reason}`,
@@ -50,7 +50,7 @@ export const errorCodes = {
   NUXT_MB_B0003: {
     why: '`@nuxt/module-builder` builds with `tsdown`, which is a peer dependency and is not installed.',
     fix: (): string => `Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`.`,
-    docs: '#install-tsdown',
+    docs: '#step-1-install-v2-and-tsdown',
   },
 
   NUXT_MB_C0001: {
@@ -157,7 +157,7 @@ export const errorCodes = {
   NUXT_MB_D0002: {
     why: (p: { file: string | undefined, field: string | undefined }): string => `${p.file ? `\`${p.file}\`` : `The \`${p.field}\` field of \`package.json\``} configures the build, and so does \`builder()\` in the tsdown config.`,
     fix: (p: { file: string | undefined }): string => `Move its options into \`builder()\` and ${p.file ? 'delete the file' : 'remove the field'}.`,
-    docs: '#moving-from-buildconfigts',
+    docs: '#step-2-move-the-build-options-into-tsdownconfigts',
   },
   NUXT_MB_D0003: {
     why: (p: { file: string }): string => `\`${p.file}\` exports a function, and \`@nuxt/module-builder\` v2 only reads a config object.`,
@@ -208,17 +208,17 @@ export const warningCodes = {
   NUXT_MB_C0201: {
     why: (p: { path: string }): string => `\`types\` in \`package.json\` points at \`${p.path}\`, which the build does not produce.`,
     fix: 'Set it to `./dist/types.d.mts`, which node10 module resolution reads, or remove it: bundler module resolution reads `exports` instead.',
-    docs: '#the-types-field',
+    docs: '#step-3-update-the-paths-in-packagejson',
   },
   NUXT_MB_C0202: {
     why: (p: { paths: Array<{ path: string, replacement: string }> }): string => `These \`typesVersions\` paths in \`package.json\` do not resolve under TypeScript's node10 module resolution, which probes for \`.d.ts\` but not for \`.d.mts\`: ${list(p.paths.map(({ path }) => path))}.`,
     fix: (p: { paths: Array<{ path: string, replacement: string }> }): string => `Write each path with its extension: ${p.paths.map(({ path, replacement }) => `\`${replacement}\` for \`${path}\``).join(', ')}.`,
-    docs: '#typesversions-paths',
+    docs: '#step-3-update-the-paths-in-packagejson',
   },
   NUXT_MB_C0203: {
     why: (p: { paths: string[] }): string => `These paths in \`package.json\` do not exist after the build, so imports that resolve to them will fail: ${list(p.paths)}.`,
     fix: 'Add the entry that produces each one, or remove the path.',
-    docs: '#paths-the-build-does-not-produce',
+    docs: '#step-3-update-the-paths-in-packagejson',
   },
   NUXT_MB_C0301: {
     why: (p: { path: string }): string => `\`${p.path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead.`,
@@ -234,12 +234,12 @@ export const warningCodes = {
   NUXT_MB_D0101: {
     why: (p: { file: string }): string => `\`${p.file}\` is deprecated. Its options are still applied.`,
     fix: (p: { importsUnbuild: boolean }): string => `${p.importsUnbuild ? 'Import `defineBuildConfig` from `@nuxt/module-builder` instead of `unbuild`. ' : ''}Move the options into \`builder()\` in \`tsdown.config.ts\`.`,
-    docs: '#moving-from-buildconfigts',
+    docs: '#buildconfigts-and-the-build-field',
   },
   NUXT_MB_D0102: {
     why: 'The `unbuild` field of `package.json` is deprecated. Its options are still applied.',
     fix: 'Rename the field to `build`.',
-    docs: '#build-configuration',
+    docs: '#buildconfigts-and-the-build-field',
   },
   NUXT_MB_D0103: {
     why: (p: { hook: string }): string => `Ignoring ${p.hook}: runtime files are no longer built with mkdist.`,
@@ -249,12 +249,12 @@ export const warningCodes = {
   NUXT_MB_D0104: {
     why: (p: { paths: string[] }): string => `\`@nuxt/module-builder\` no longer generates \`.d.ts\` declarations for the module entry, which these \`package.json\` paths point at: ${list(p.paths)}.`,
     fix: 'Replace `.d.ts` with `.d.mts` in each of them.',
-    docs: '#declaration-paths',
+    docs: '#step-3-update-the-paths-in-packagejson',
   },
   NUXT_MB_D0105: {
     why: '`@nuxt/module-builder` no longer generates `module.cjs`, which Nuxt 3 and later do not need.',
     fix: 'Replace it with `./dist/module.mjs` in `package.json`.',
-    docs: '#modulecjs',
+    docs: '#step-3-update-the-paths-in-packagejson',
   },
 } as const
 

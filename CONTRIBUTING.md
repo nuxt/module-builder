@@ -19,7 +19,7 @@ pnpm dev:prepare
 | `pnpm lint` | ESLint |
 | `pnpm nuxt-module-build` | the CLI from source, for example `pnpm nuxt-module-build build ./example` |
 
-Pages in [`docs/`](./docs) are published on [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths. Build messages link to headings of [`docs/upgrade-v2.md`](./docs/upgrade-v2.md) (see [Diagnostics](#diagnostics)). A unit test checks that every linked heading exists.
+Pages in [`docs/`](./docs) are published on [nuxt.com](https://nuxt.com), so links between them use nuxt.com paths. Build messages link to headings of [`docs/upgrade-v2.md`](./docs/upgrade-v2.md) on GitHub (see [Diagnostics](#diagnostics)), so that page is plain GitHub-flavoured Markdown, and links to the other pages by relative path, such as `./5.typescript.md#module-code`. A unit test checks that every linked heading exists.
 
 ## Architecture
 

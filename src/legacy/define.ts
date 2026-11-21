@@ -53,7 +53,7 @@ export interface BuildConfig {
  * @deprecated `build.config.ts` will stop being read in a future major. Move `entries`, `externals`
  * and `replace` into `builder()` from `@nuxt/module-builder/tsdown`, in `tsdown.config.ts`, and
  * the hooks into tsdown's own `hooks`. See
- * https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#moving-from-buildconfigts
+ * https://github.com/nuxt/module-builder/blob/main/docs/upgrade-v2.md#step-2-move-the-build-options-into-tsdownconfigts
  */
 export function defineBuildConfig<T extends BuildConfig | BuildConfig[]>(config: T): T {
   return config
