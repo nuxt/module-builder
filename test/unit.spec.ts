@@ -1737,6 +1737,14 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports('export declare const icon: Icon;\n', 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nexport declare const icon: Icon;\n`)
   })
 
+  it('should restore an import that a type parameter of the same name shadows only elsewhere', async () => {
+    const source = `import type { Icon } from '#build/icons'\n`
+    const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\n`
+    expect(await restoreImports(shadowed, 'icon.ts', source)).toBe(shadowed)
+    const unrelated = `${shadowed}export interface Props { icon: Icon; }\n`
+    expect(await restoreImports(unrelated, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${unrelated}`)
+  })
+
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {
     const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
     onTestFinished(() => rm(cwd, { recursive: true, force: true }))

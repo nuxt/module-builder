@@ -196,7 +196,8 @@ export async function restoreImports(declaration: string, source: string, code: 
   const script = source.endsWith('.vue') ? [...code.matchAll(SFC_SCRIPT_RE)].map(([, content]) => content).join('\n') : code
   const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const known = new Set<string>()
-  const referenced = new Set<string>()
+  const referenced: Array<[name: string, node: ts.Node]> = []
+  const typeParameters: Array<[name: string, scope: ts.Node]> = []
   const visit = (node: ts.Node) => {
     if ((ts.isTypeReferenceNode(node) || ts.isTypeQueryNode(node) || ts.isExpressionWithTypeArguments(node)) && !ts.isImportTypeNode(node)) {
       let name: ts.Node = ts.isTypeReferenceNode(node) ? node.typeName : ts.isTypeQueryNode(node) ? node.exprName : node.expression
@@ -204,22 +205,26 @@ export async function restoreImports(declaration: string, source: string, code: 
         name = ts.isQualifiedName(name) ? name.left : name.expression
       }
       if (ts.isIdentifier(name)) {
-        referenced.add(name.text)
+        referenced.push([name.text, node])
       }
     }
     if (ts.isExportSpecifier(node) && !node.parent.parent.moduleSpecifier) {
-      referenced.add((node.propertyName ?? node.name).text)
+      referenced.push([(node.propertyName ?? node.name).text, node])
     }
     if (ts.isExportAssignment(node) && ts.isIdentifier(node.expression)) {
-      referenced.add(node.expression.text)
+      referenced.push([node.expression.text, node])
     }
-    if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isTypeParameterDeclaration(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
+    if (ts.isTypeParameterDeclaration(node)) {
+      typeParameters.push([node.name.text, ts.isInferTypeNode(node.parent) ? ts.findAncestor(node.parent, ts.isConditionalTypeNode) ?? node.parent : node.parent])
+    }
+    if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
       known.add(node.name.text)
     }
     ts.forEachChild(node, visit)
   }
   visit(emitted)
-  const missing = [...referenced].filter(name => !known.has(name))
+  const within = (node: ts.Node, scope: ts.Node) => !!ts.findAncestor(node, ancestor => ancestor === scope)
+  const missing = [...new Set(referenced.filter(([name, node]) => !known.has(name) && !typeParameters.some(([parameter, scope]) => parameter === name && within(node, scope))).map(([name]) => name))]
   if (!missing.length) {
     return declaration
   }
