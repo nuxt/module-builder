@@ -242,7 +242,7 @@ If you publish with pnpm or Yarn 4, point `exports`, `imports`, and `main` at yo
 - `publishConfig.exports` and `publishConfig.imports` replace the top-level fields as a whole, so repeat every subpath and condition.
 - The root export's `types` condition points at `.nuxt/module-builder/types.d.mts`, which `prepare` writes. A subpath points at its source.
 - If you kept `types` in step 3, move it into `publishConfig`. Keep `typesVersions` at the top level, pointing at `dist`.
-- If code outside Nuxt loads a subpath with Node, keep that subpath pointing at `dist`. A Vite plugin for a plain Vite app is one example. Step 4 doesn't check its source, and step 7 builds it.
+- If code outside Nuxt loads a subpath with Node, keep that subpath pointing at `dist`. A Vite plugin for a plain Vite app is one example. Step 4 doesn't check its source. Run `tsdown` before anything loads that subpath, as in step 7.
 - Point [code that reaches into `dist`](./3.develop-and-publish.md#code-that-reaches-into-dist) by path, such as a test that imports `../dist/runtime/...`, at `src`.
 
 If you publish with npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. Step 7 builds `dist` in `dev:prepare`, and `tsdown --watch` rebuilds it while you develop. [Develop and Publish](./3.develop-and-publish.md#preparing-a-checkout) describes both setups.
