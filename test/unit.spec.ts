@@ -1749,12 +1749,16 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports(emitted, 'icon.ts', source)).toBe(`import type { "icon-props" as IconProps, Size as IconSize } from '#build/icons';\n${emitted}`)
   })
 
-  it('should restore an import that a type parameter of the same name shadows only elsewhere', async () => {
+  it('should restore an import that a type parameter or namespace member of the same name shadows only elsewhere', async () => {
     const source = `import type { Icon } from '#build/icons'\n`
     const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\n`
     expect(await restoreImports(shadowed, 'icon.ts', source)).toBe(shadowed)
     const unrelated = `${shadowed}export interface Props { icon: Icon; }\n`
     expect(await restoreImports(unrelated, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${unrelated}`)
+    const namespaced = `export declare namespace Internal { interface Icon {} type Own = Icon; }\n`
+    expect(await restoreImports(namespaced, 'icon.ts', source)).toBe(namespaced)
+    const outsideNamespace = `${namespaced}export interface Props { icon: Icon; }\n`
+    expect(await restoreImports(outsideNamespace, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${outsideNamespace}`)
     const falseBranch = `export type PickIcon<T> = T extends { icon: infer Icon } ? Icon : Icon;\n`
     expect(await restoreImports(falseBranch, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${falseBranch}`)
   })

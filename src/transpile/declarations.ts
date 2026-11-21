@@ -195,9 +195,8 @@ export async function restoreImports(declaration: string, source: string, code: 
   const { default: ts } = await import('typescript')
   const script = source.endsWith('.vue') ? [...code.matchAll(SFC_SCRIPT_RE)].map(([, content]) => content).join('\n') : code
   const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  const known = new Set<string>()
   const referenced: Array<[name: string, node: ts.Node]> = []
-  const typeParameters: Array<[name: string, scope: ts.Node, outside?: ts.Node]> = []
+  const declared: Array<[name: string, scope: ts.Node, outside?: ts.Node]> = []
   const visit = (node: ts.Node) => {
     if ((ts.isTypeReferenceNode(node) || ts.isTypeQueryNode(node) || ts.isExpressionWithTypeArguments(node)) && !ts.isImportTypeNode(node)) {
       let name: ts.Node = ts.isTypeReferenceNode(node) ? node.typeName : ts.isTypeQueryNode(node) ? node.exprName : node.expression
@@ -216,16 +215,16 @@ export async function restoreImports(declaration: string, source: string, code: 
     }
     if (ts.isTypeParameterDeclaration(node)) {
       const conditional = ts.isInferTypeNode(node.parent) ? ts.findAncestor(node.parent, ts.isConditionalTypeNode) : undefined
-      typeParameters.push(conditional ? [node.name.text, conditional, conditional.falseType] : [node.name.text, node.parent])
+      declared.push(conditional ? [node.name.text, conditional, conditional.falseType] : [node.name.text, node.parent])
     }
     if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
-      known.add(node.name.text)
+      declared.push([node.name.text, ts.findAncestor(node.parent, ancestor => ts.isModuleBlock(ancestor) || ts.isSourceFile(ancestor))!])
     }
     ts.forEachChild(node, visit)
   }
   visit(emitted)
   const within = (node: ts.Node, scope: ts.Node) => !!ts.findAncestor(node, ancestor => ancestor === scope)
-  const missing = [...new Set(referenced.filter(([name, node]) => !known.has(name) && !typeParameters.some(([parameter, scope, outside]) => parameter === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
+  const missing = [...new Set(referenced.filter(([name, node]) => !declared.some(([local, scope, outside]) => local === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
   if (!missing.length) {
     return declaration
   }
