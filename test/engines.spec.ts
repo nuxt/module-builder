@@ -10,7 +10,6 @@ import { bin, cli, exists, fixture, listFiles, read, repoRoot, run, tsdown, tsdo
 const NATIVE: NativeEngineName[] = ['typescript7', 'tsrs']
 const store = (name: string) => `node_modules/.pnpm/${name}@1.0.0/node_modules/${name}`
 
-/** Why `engine` cannot run here, if it cannot. */
 async function unavailable(engine: NativeEngineName) {
   try {
     await (await createNativeEngine(repoRoot, engine)).close()
@@ -76,7 +75,7 @@ beforeAll(async () => {
   dirs.isolated = await fixture('.temp-engines/isolated', {
     config: config('typescript', ', isolated: true'),
     module: ISOLATED_MODULE,
-    files: { ...EXTRA, 'src/utils.ts': `export const myModuleUtils = (): void => {}\n` },
+    files: { ...EXTRA, 'src/utils.ts': `export const myModuleUtils = (): void => {}\nexport const kind: 'utils' = 'utils'\n` },
   })
   dirs.isolatedMissing = await fixture('.temp-engines/isolated-missing', {
     config: config('typescript', ', isolated: true'),
@@ -122,6 +121,7 @@ describe.each(NATIVE)('the %s declaration engine', (engine) => {
     expectBuilt(`${engine}:prepare`)
     expect(await declarationsOf(dirs[engine]!, 'dist')).toEqual(await declarationsOf(dirs.typescript!, 'dist'))
     expect(await declarationsOf(dirs[engine]!, 'dist')).toHaveProperty(['extra/math.d.mts'], expect.stringContaining('twice(value: number): number'))
+    expect(await read(dirs[engine]!, '.nuxt/module-builder/declarations/src/runtime/plugins/plugin.d.ts')).toContain('injection: \'injected\'')
     const withDoubleQuotes = (tree: Record<string, string>) => Object.fromEntries(Object.entries(tree).map(([file, text]) => [file, text.replaceAll('\'', '"')]))
     expect(withDoubleQuotes(await declarationsOf(dirs[engine]!, '.nuxt/module-builder/declarations'))).toEqual(withDoubleQuotes(await declarationsOf(dirs.typescript!, '.nuxt/module-builder/declarations')))
   })
@@ -138,8 +138,8 @@ describe.each(NATIVE)('the %s declaration engine', (engine) => {
     const watcher = watch(dir, [tsdownBin, '--watch'])
     try {
       await waitFor(() => /Rebuilt in/.test(watcher.output()), 120_000)
-      await writeFile(join(dir, 'src/extra/math.ts'), `export function twice(value: number) {\n  return value * 2\n}\n\nexport const half = (value: number) => value / 2\n`)
-      await waitFor(async () => exists(dir, 'dist/extra/math.d.mts') && (await read(dir, 'dist/extra/math.d.mts')).includes('half'), 60_000)
+      await writeFile(join(dir, 'src/extra/math.ts'), `export function twice(value: number) {\n  return value * 2\n}\n\nexport const half = () => 'half' as const\n`)
+      await waitFor(async () => exists(dir, 'dist/extra/math.d.mts') && (await read(dir, 'dist/extra/math.d.mts')).includes('half: () => \'half\''), 60_000)
       await writeFile(join(dir, 'src/utils.ts'), `export const myModuleUtils = () => {}\nexport const watched = 1 as const\n`)
       await waitFor(async () => (await read(dir, 'dist/utils.d.mts')).includes('watched: 1'), 60_000)
     }
@@ -152,7 +152,7 @@ describe.each(NATIVE)('the %s declaration engine', (engine) => {
 it.skipIf(reasons.tsrs?.includes('not installed'))('should generate declarations with the module\'s own TypeScript and warn once when the engine cannot run', async () => {
   const output = expectBuilt('fallback')
   expect(output.match(/NUXT_MB_C0404/g)).toHaveLength(1)
-  expect(output).toContain('missing-tsrs')
+  expect(output).toContain(reasons.tsrs ?? 'missing-tsrs')
   expect(await declarationsOf(dirs.fallback!, 'dist')).toEqual(await declarationsOf(dirs.typescript!, 'dist'))
 })
 
@@ -161,10 +161,11 @@ it('should report an inferred type that cannot be named with TypeScript 6', () =
 })
 
 describe('`declarations.isolated`', () => {
-  it('should build and prepare a module with annotated exports without the tsconfig setting, so the type check is unaffected', () => {
+  it('should generate the declarations of module code with oxc without the tsconfig setting, so the type check is unaffected', async () => {
     expectBuilt('isolated')
     expectBuilt('isolated:prepare')
-    expect(exists(dirs.isolated!, '.nuxt/module-builder/declarations/src/module.d.ts')).toBe(true)
+    expect(await read(dirs.isolated!, 'dist/utils.d.mts')).toContain('kind: "utils"')
+    expect(await read(dirs.isolated!, '.nuxt/module-builder/declarations/src/utils.d.ts')).toContain('kind: "utils"')
     expectBuilt('isolated:typecheck')
   })
 

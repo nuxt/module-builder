@@ -209,7 +209,8 @@ const statOf = (file: string) => stat(file).then(({ size, mtimeMs }) => `${size}
  * A native compiler with the TypeScript 7.1 API: `typescript` 7.1 or later, the module's own or
  * `@typescript/typescript7`, or `tsrs`. One process serves every program until `close`. A
  * program opened again with the same roots and options is kept, and updated with the files
- * outside `node_modules` that changed since. Throws a {@link NativeEngineError} when the engine cannot be used.
+ * outside `node_modules` that changed since. Throws a {@link NativeEngineError} when the engine
+ * cannot be used.
  */
 export async function createNativeEngine(cwd: string, engine: NativeEngineName): Promise<DeclarationEngine> {
   const { version, api, exe } = await findPackage(cwd, engine)
