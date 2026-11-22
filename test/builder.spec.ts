@@ -202,11 +202,12 @@ export default {
     remove: ['.nuxt'],
     module: source => source
       .replace('import { defineNuxtModule, addPlugin, createResolver } from \'@nuxt/kit\'', 'import { defineNuxtModule, addPlugin, addServerHandler, addServerImportsDir, createResolver } from \'@nuxt/kit\'')
-      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    addServerImportsDir(resolver.resolve(\'./runtime/server/utils\'))\n    addServerHandler({ route: \'/api/count\', handler: resolver.resolve(\'./runtime/server/api/count.get\') })'),
+      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    addServerImportsDir(resolver.resolve(\'./runtime/server/utils\'))\n    addServerHandler({ route: \'/api/count\', handler: resolver.resolve(\'./runtime/server/api/count.get\') })\n    _nuxt.hook(\'prepare:types\', ({ declarations }) => { declarations.push(\'import "../src/runtime/augment"\') })'),
     files: {
       'src/runtime/server/utils/counter.ts': `export class Counter {\n  constructor(public count: number) {}\n}\n\nexport const useCounter = (): Counter => new Counter(0)\n`,
       'src/runtime/server/api/count.get.ts': `import { defineEventHandler } from 'h3'\n\nexport default defineEventHandler(() => ({ count: 1 }))\n`,
       'src/runtime/composables/useCount.ts': `export const useCount = () => $fetch('/api/count')\n`,
+      'src/runtime/augment.ts': `declare global {\n  const fromAugment: string\n}\n\nexport {}\n`,
       'src/standalone.ts': `export enum Mode { On = 'on' }\n`,
       ...files,
     },
@@ -480,6 +481,7 @@ describe('with a root tsconfig that only lists references', () => {
     expect(files).not.toContain('.nuxt/types/nitro-imports.d.ts')
     expect(files).toContain('src/runtime/server/api/count.get.ts')
     expect(files).toContain('.nuxt/types/nitro-routes.d.ts')
+    expect(files).toContain('src/runtime/augment.ts')
   })
 
   it('should type check and generate the module entry\'s declarations with oxc with the documented `isolatedDeclarations` tsconfig', async () => {

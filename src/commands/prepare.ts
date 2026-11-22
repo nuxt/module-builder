@@ -100,7 +100,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
   const ambient = await ambientDeclarations(cwd, runtimeDirs, [...rootConfig.exclude ?? [], outDir])
   const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
   const sourceTypesDir = resolve(cwd, '.nuxt/module-builder')
-  const nodeAppEntry = join(sourceTypesDir, 'app.d.ts')
+  const nodeAppEntry = resolve(cwd, '.nuxt/nuxt.module.d.ts')
   const declarationsDir = join(sourceTypesDir, 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
   const own = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : { paths: {}, sources: [] }
@@ -261,9 +261,10 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
 const REFERENCE_PATH_RE = /^\/\/\/ <reference path="([^"]+)" \/>$/
 
 /**
- * Writes to `file` the references of the app's `nuxt.d.ts` in `buildDir`, for the module code
- * project, without Nitro's `types/nitro-imports.d.ts`. That file only re-exports the server's
- * auto-imports for `#imports` in the server part, and refers to the module's server sources.
+ * Writes to `file`, next to the app's `nuxt.d.ts` in `buildDir` so that its relative imports
+ * resolve the same, a copy of it for the module code project without Nitro's
+ * `types/nitro-imports.d.ts`. That file only re-exports the server's auto-imports for `#imports`
+ * in the server part, and refers to the module's server sources.
  */
 async function writeNodeAppDeclarations(buildDir: string, file: string) {
   const serverImports = join(buildDir, 'types/nitro-imports.d.ts')
