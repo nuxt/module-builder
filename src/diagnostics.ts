@@ -74,7 +74,7 @@ export const errorCodes = {
   },
   NUXT_MB_B0005: {
     why: (p: { version: string }): string => `\`@nuxt/module-builder\` uses the JavaScript API of the module's \`typescript\`, which needs \`${pkg.peerDependencies.typescript}\`, and the module has \`typescript@${p.version}\`, which has no JavaScript API.`,
-    fix: (p: { engine: string }): string => `Install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`. To generate declarations with TypeScript 7, install it next to TypeScript 6 and set \`declarations.engine\` to \`${p.engine}\` in \`builder()\`.`,
+    fix: (p: { install: string }): string => `Install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`. To generate declarations with TypeScript 7, install it next to TypeScript 6 with \`${p.install}\`.`,
     docs: false,
   },
 
@@ -267,8 +267,8 @@ export const warningCodes = {
     docs: '#tests-and-config-files',
   },
   NUXT_MB_C0404: {
-    why: (p: { engine: string, reason: string }): string => `The \`${p.engine}\` declaration engine cannot run here: ${p.reason}. Declarations are generated with the JavaScript API of the module's own TypeScript instead.`,
-    fix: (p: { engine: string }): string => `Nothing to change for this build. To generate declarations with \`${p.engine}\`, build on a platform that it supports.`,
+    why: (p: { engine: string, reason: string }): string => `The \`${p.engine}\` declaration engine cannot be used: ${p.reason}. Declarations are generated with the JavaScript API of the module's own TypeScript instead.`,
+    fix: (p: { engine: string }): string => `Nothing to change for this build. To generate declarations with \`${p.engine}\`, install a version of it that runs here, or set \`declarations.engine\` to \`typescript\` to skip it.`,
     docs: false,
   },
 

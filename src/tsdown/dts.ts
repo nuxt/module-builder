@@ -238,16 +238,22 @@ function workerBackend(modules: WorkerModules, dtsOptions: Record<string, unknow
   }
 }
 
-/** A program of `engine` over every file of the tsconfig, opened again for each build so the engine updates it. */
-function engineBackend(options: EntryDeclarationOptions & { tsconfig: string, engine: DeclarationEngine }): Backend {
+/**
+ * A program of `engine` over every file of the tsconfig, and the requested files it doesn't include,
+ * opened again for each build so the engine updates it. JSON modules, for which TypeScript 7 emits
+ * an empty declaration, go to `json`.
+ */
+function engineBackend(options: EntryDeclarationOptions & { tsconfig: string, engine: DeclarationEngine }, json: () => Backend): Backend {
   let program: Promise<DeclarationProgram> | undefined
+  let jsonBackend: Backend | undefined
+  const roots = new Set<string>()
   const open = () => program ??= createDeclarationProgram({
     cwd: options.cwd,
     tsconfig: { path: options.tsconfig, config: parseTsconfig(options.tsconfig) },
     paths: options.compilerOptions.paths as Record<string, string[]>,
     engine: options.engine,
     include: () => true,
-  }, [])
+  }, [...roots])
   return {
     start() {},
     async emit(code, fileName) {
@@ -255,24 +261,34 @@ function engineBackend(options: EntryDeclarationOptions & { tsconfig: string, en
       if (DECLARATION_RE.test(file)) {
         return { code }
       }
-      const { declarations, errors } = await (await open()).emit([file])
-      const declaration = declarations.get(file)
-      if (errors.length || declaration === undefined) {
-        return { error: declarationError(errors).message }
+      if (file.endsWith('.json')) {
+        return (jsonBackend ??= json()).emit(code, fileName)
       }
-      return { code: file.endsWith('.json') ? patchJsonDts((await import('typescript')).default, declaration) : declaration }
+      let result = await (await open()).emit([file])
+      if (!result.declarations.has(file) && !roots.has(file)) {
+        roots.add(file)
+        program = undefined
+        result = await (await open()).emit([file])
+      }
+      const { declarations, errors } = result
+      const declaration = declarations.get(file)
+      return errors.length || declaration === undefined ? { error: declarationError(errors).message } : { code: declaration }
     },
     async inputs() {
-      return program && (await program).inputs()
+      const [own, fromJson] = await Promise.all([program && (await program).inputs(), jsonBackend?.inputs()])
+      return own && (jsonBackend ? fromJson && new Map([...own, ...fromJson]) : own)
     },
-    invalidate() {
+    invalidate(fileName) {
       program = undefined
+      jsonBackend?.invalidate(fileName)
     },
     async release() {
       program = undefined
+      await jsonBackend?.release()
     },
     async close() {
       program = undefined
+      await jsonBackend?.close()
     },
   }
 }
@@ -296,7 +312,8 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
       if (!cache) {
         const modules = workerModules()
         const { engine, tsconfig } = options
-        backend = engine && tsconfig ? engineBackend({ ...options, tsconfig, engine }) : workerBackend(modules, dtsOptions, options.watch)
+        const worker = () => workerBackend(modules, dtsOptions, options.watch)
+        backend = engine && tsconfig ? engineBackend({ ...options, tsconfig, engine }, worker) : worker()
         const key = await cacheKey(modules, dtsOptions, options.cacheVersion)
         cache = contentCache(options.cwd, 'entry-declarations', engine ? { ...key, engine: engine.name, version: engine.version } : key)
         const stored = await cache.read()

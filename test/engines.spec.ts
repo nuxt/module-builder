@@ -21,14 +21,18 @@ async function unavailable(engine: NativeEngineName) {
 
 const reasons = Object.fromEntries(await Promise.all(NATIVE.map(async engine => [engine, await unavailable(engine)] as const)))
 
-const config = (engine: string, declarations = '') => `export default {\n  plugins: [builder({ entries: ['./src/utils', { input: './src/extra/', outDir: 'dist/extra' }], declarations: { engine: '${engine}'${declarations} } })],\n}\n`
+const config = (engine: string, declarations = '', json = !declarations) => `export default {\n  plugins: [builder({ entries: ['./src/utils', ${json ? `'./src/data.json', './src/kit/index.ts', ` : ''}{ input: './src/extra/', outDir: 'dist/extra' }], declarations: { engine: '${engine}'${declarations} } })],\n}\n`
 const EXTRA = {
   'src/extra/index.ts': `import { twice } from './math.ts'\n\nexport const extra = { count: 1 as const, twice }\n`,
   'src/extra/math.ts': `export function twice(value: number) {\n  return value * 2\n}\n`,
+  'src/data.json': `{ "answer": 42 }\n`,
+  'src/kit/index.ts': `export const increment = (value: number) => value + 1\n`,
 }
 const ISOLATED_MODULE = (source: string) => `import type { NuxtModule } from '@nuxt/schema'\n${source.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({')}\nexport default module\n`
 const UNANNOTATED = `const words = ['a', 'b']\n\nexport const myModuleUtils = (): void => {}\nexport const longest = words.reduce((a, b) => a.length > b.length ? a : b)\n`
 const PORTABILITY = {
+  'src/data.json': `{ "answer": 42 }\n`,
+  'src/kit/index.ts': `export const increment = (value: number) => value + 1\n`,
   [`${store('fake-logger')}/package.json`]: JSON.stringify({ name: 'fake-logger', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
   [`${store('fake-logger')}/index.d.ts`]: `export interface LoggerInstance { log: (message: string) => void }\nexport declare function createLogger(): LoggerInstance\n`,
   [`${store('fake-shared')}/package.json`]: JSON.stringify({ name: 'fake-shared', type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } }),
@@ -62,6 +66,7 @@ const expectFailed = (name: string) => {
 }
 
 beforeAll(async () => {
+  process.env.NUXT_MODULE_BUILDER_DECLARATION_ENGINE = ''
   for (const engine of ['typescript', ...NATIVE.filter(engine => !reasons[engine])]) {
     dirs[engine] = await fixture(`.temp-engines/${engine}`, { config: config(engine), files: EXTRA })
     dirs[`${engine}-portability`] = await fixture(`.temp-engines/${engine}-portability`, {
@@ -72,6 +77,7 @@ beforeAll(async () => {
     })
   }
   dirs.fallback = await fixture('.temp-engines/fallback', { config: config('tsrs'), files: EXTRA })
+  dirs.installed = await fixture('.temp-engines/installed', { files: EXTRA })
   dirs.isolated = await fixture('.temp-engines/isolated', {
     config: config('typescript', ', isolated: true'),
     module: ISOLATED_MODULE,
@@ -99,6 +105,7 @@ beforeAll(async () => {
     ...native.map(engine => step(engine, tsdown(dirs[engine]!)).then(() => step(`${engine}:prepare`, cli(['prepare', dirs[engine]!])))),
     ...['typescript', ...native].map(engine => step(`${engine}-portability`, tsdown(dirs[`${engine}-portability`]!)).then(() => step(`${engine}-portability:prepare`, cli(['prepare', dirs[`${engine}-portability`]!])))),
     step('fallback', tsdown(dirs.fallback!, [], { TSRS_BINARY: join(dirs.fallback!, 'missing-tsrs') })),
+    step('installed', cli(['prepare', dirs.installed!])),
     step('isolated', tsdown(dirs.isolated!)).then(() => step('isolated:prepare', cli(['prepare', dirs.isolated!]))).then(() => step('isolated:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolated }))),
     step('isolatedMissing', tsdown(dirs.isolatedMissing!)).then(() => step('isolatedMissing:prepare', cli(['prepare', dirs.isolatedMissing!]))),
     step('notIsolated', tsdown(dirs.notIsolated!)).then(async () => {
@@ -121,6 +128,8 @@ describe.each(NATIVE)('the %s declaration engine', (engine) => {
     expectBuilt(`${engine}:prepare`)
     expect(await declarationsOf(dirs[engine]!, 'dist')).toEqual(await declarationsOf(dirs.typescript!, 'dist'))
     expect(await declarationsOf(dirs[engine]!, 'dist')).toHaveProperty(['extra/math.d.mts'], expect.stringContaining('twice(value: number): number'))
+    expect(await declarationsOf(dirs[engine]!, 'dist')).toHaveProperty(['data.d.mts'], expect.stringContaining('export declare let answer: number;'))
+    expect(await declarationsOf(dirs[engine]!, 'dist')).toHaveProperty(['kit/index.d.mts'], expect.stringContaining('increment: (value: number) => number'))
     expect(await read(dirs[engine]!, '.nuxt/module-builder/declarations/src/runtime/plugins/plugin.d.ts')).toContain('injection: \'injected\'')
     const withDoubleQuotes = (tree: Record<string, string>) => Object.fromEntries(Object.entries(tree).map(([file, text]) => [file, text.replaceAll('\'', '"')]))
     expect(withDoubleQuotes(await declarationsOf(dirs[engine]!, '.nuxt/module-builder/declarations'))).toEqual(withDoubleQuotes(await declarationsOf(dirs.typescript!, '.nuxt/module-builder/declarations')))
@@ -154,6 +163,11 @@ it.skipIf(reasons.tsrs?.includes('not installed'))('should generate declarations
   expect(output.match(/NUXT_MB_C0404/g)).toHaveLength(1)
   expect(output).toContain(reasons.tsrs ?? 'missing-tsrs')
   expect(await declarationsOf(dirs.fallback!, 'dist')).toEqual(await declarationsOf(dirs.typescript!, 'dist'))
+})
+
+it.skipIf(reasons.typescript7)('should generate declarations with the engine the module has installed when none is selected', async () => {
+  expectBuilt('installed')
+  expect(await read(dirs.installed!, '.nuxt/module-builder/declarations/src/runtime/plugins/plugin.d.ts')).toContain('injection: \'injected\'')
 })
 
 it('should report an inferred type that cannot be named with TypeScript 6', () => {

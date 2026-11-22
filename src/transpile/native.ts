@@ -111,6 +111,17 @@ export function hasNativeTypescript(cwd: string): boolean {
 }
 
 /**
+ * The native engine the module in `cwd` has installed, if any: its own `typescript` at 7.1 or
+ * later, then `@typescript/typescript7`, then `tsrs`.
+ */
+export function installedNativeEngine(cwd: string): NativeEngineName | undefined {
+  if (hasNativeTypescript(cwd)) {
+    return ENGINES.typescript
+  }
+  return ([ENGINES.typescript7, ENGINES.tsrs] as const).find(engine => installedManifest(cwd, NATIVE_PACKAGES[engine].name))
+}
+
+/**
  * The `package.json` of the package installed as `name` in `node_modules` of `cwd` or a directory
  * above it, leaving out `NODE_PATH` and global folders, which hold packages the module didn't install.
  */

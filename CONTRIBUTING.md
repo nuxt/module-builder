@@ -149,6 +149,8 @@ Errors that only the builder handles, such as `DeclarationError`, and those of `
 | `test/legacy.spec.ts` | `build.config.*`, the `build` field, `defineBuildConfig` |
 | `test/unit.spec.ts` | pure helpers |
 
+This repository installs the native declaration engines, which a build picks up by default, so `vitest.config.mts` sets `NUXT_MODULE_BUILDER_DECLARATION_ENGINE=typescript` for every spec but `test/engines.spec.ts`.
+
 Each e2e spec builds its fixtures in one `beforeAll`, in parallel, and its `it` blocks only read the results:
 
 - `fixture()` in `test/utils.ts` copies `example/` (or another fixture) into a gitignored `.temp-*` directory, with files, `package.json` fields and tsconfig `paths` changed.

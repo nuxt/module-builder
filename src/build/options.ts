@@ -65,17 +65,17 @@ export interface DeclarationOptions {
   /**
    * The compiler that generates the declarations of TypeScript sources: the module code that
    * `prepare` writes, the bundled entries, and runtime directories without `.vue` files.
-   * Experimental, apart from `'typescript'`.
    *
-   * - `'typescript'`: the module's own `typescript` (the default), through its JavaScript API up
-   *   to 6 and its native API from 7.1.
+   * - `'typescript'`: the module's own `typescript`, through its JavaScript API up to 6 and its
+   *   native API from 7.1.
    * - `'typescript7'`: TypeScript 7.1 or later, installed next to the module's own under the alias
    *   `@typescript/typescript7`.
    * - `'tsrs'`: tsrs, a Rust port of TypeScript 7.1.
    *
-   * Where a native compiler cannot run, declarations are generated with the JavaScript API of the
-   * module's own TypeScript, and a warning. The `NUXT_MODULE_BUILDER_DECLARATION_ENGINE`
-   * environment variable takes precedence.
+   * By default, the first of these the module has installed: its own `typescript` 7.1 or later,
+   * `@typescript/typescript7`, `tsrs`, or else its own `typescript`. Where a native compiler cannot
+   * run, declarations are generated with the JavaScript API of the module's own TypeScript, and a
+   * warning. The `NUXT_MODULE_BUILDER_DECLARATION_ENGINE` environment variable takes precedence.
    */
   engine?: DeclarationEngineName
   /**

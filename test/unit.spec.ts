@@ -27,7 +27,7 @@ import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
 import { createDeclarationProgram, declarationDiagnosticClass, declarationError, REMAPPED_CODES, restoreImports } from '../src/transpile/declarations.ts'
 import type { DeclarationEngine } from '../src/transpile/engine.ts'
-import { createNativeEngine, platformProblem } from '../src/transpile/native.ts'
+import { createNativeEngine, installedNativeEngine, platformProblem } from '../src/transpile/native.ts'
 import { assertSupportedTypescript, loadDeclarationEngine } from '../src/build/engine.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
@@ -2085,10 +2085,29 @@ describe('declaration engines', () => {
       return () => vi.unstubAllEnvs()
     })
 
-    it('should use the JavaScript API of the module\'s own TypeScript 5.9 or 6 unless an engine is selected', async () => {
+    it('should use the JavaScript API of the module\'s own TypeScript 5.9 or 6 when no native engine is installed or `typescript` is selected', async () => {
       expect(await loadDeclarationEngine(await fakePackage({}), {})).toBeUndefined()
-      const six = await fakePackage({ 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '6.0.3' }) })
+      const six = await fakePackage({ 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '6.0.3' }), ...typescript7(`export default () => { throw new Error('unused') }\n`) })
+      expect(installedNativeEngine(six)).toBe('typescript7')
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
       expect(await loadDeclarationEngine(six, { declarationEngine: 'typescript' })).toBeUndefined()
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('should pick the native engine the module has installed when none is selected', async () => {
+      const tsrs = {
+        'node_modules/tsrs/package.json': JSON.stringify({ name: 'tsrs', version: '7.1.0-beta.tsrs3', type: 'module', exports: { './package.json': './package.json', './async': './api.js' } }),
+        'node_modules/tsrs/api.js': api,
+        'node_modules/tsrs/lib/getExePath.js': `export default () => { throw new Error('no tsrs binary') }\n`,
+      }
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      const onlyTsrs = await fakePackage(tsrs)
+      expect(installedNativeEngine(onlyTsrs)).toBe('tsrs')
+      expect(await loadDeclarationEngine(onlyTsrs, {})).toBeUndefined()
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', 'no tsrs binary'))
+      expect(installedNativeEngine(await fakePackage({ ...tsrs, ...typescript7('') }))).toBe('typescript7')
+      const own = await fakePackage({ ...tsrs, 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '7.1.0' }) })
+      expect(installedNativeEngine(own)).toBe('typescript')
     })
 
     it('should use the native API of the module\'s own TypeScript 7.1 or later by default', async () => {
@@ -2155,6 +2174,19 @@ describe('declaration engines', () => {
       })
       const { assertSupportedTypescript: assertWithTypescript7 } = await import('../src/build/engine.ts')
       await expect(assertWithTypescript7()).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_B0005', message: expect.stringContaining('`typescript@7.0.2`'), fix: expect.stringContaining('typescript@^6.0.0') }))
+    })
+
+    it('should warn rather than fail when the engine the module has installed is too old', async () => {
+      const old = await fakePackage({ 'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: 'typescript', version: '7.0.2' }) })
+      vi.resetModules()
+      onTestFinished(() => vi.resetModules())
+      const { useBuildLogger: useFreshLogger } = await import('../src/diagnostics.ts')
+      const { loadDeclarationEngine: loadFresh } = await import('../src/build/engine.ts')
+      useFreshLogger(logger)
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      await expect(loadFresh(old, {})).resolves.toBeUndefined()
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', '`@typescript/typescript7` resolves to `typescript@7.0.2`'))
+      await expect(loadFresh(old, { declarationEngine: 'typescript7' })).rejects.toEqual(diagnostic('NUXT_MB_C0402'))
     })
 
     it('should explain where the Linux binaries of tsrs need a newer glibc', () => {
