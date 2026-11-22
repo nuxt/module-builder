@@ -12,7 +12,7 @@ import { createDeclarationProgram, declarationError, restoreImports } from '../t
 import type { DeclarationProgram } from '../transpile/declarations.ts'
 import type { DeclarationEngine } from '../transpile/engine.ts'
 import { loadTypescript } from '../transpile/typescript.ts'
-import { DECLARATION_RE } from '../utils.ts'
+import { DECLARATION_RE, resolveFrom } from '../utils.ts'
 
 /** The `Generator` interface of rolldown-plugin-dts. */
 export type DeclarationGenerator = Required<Omit<Extract<NonNullable<Extract<UserConfig['dts'], object>['generator']>, object>, 'addFile'>>
@@ -186,10 +186,11 @@ async function cacheKey(modules: WorkerModules, dtsOptions: Record<string, unkno
   // The `tsc` generator needs the JavaScript API of the `typescript` rolldown-plugin-dts resolves, and the options read here do not depend on the generator.
   const resolved = resolveOptions({ ...dtsOptions, generator: 'oxc' })
   const require = createRequire(new URL(modules.dts))
+  const emitter = resolveFrom(new URL(modules.dts), 'typescript/package.json')
   return {
     builder: builderPkg.version,
     dts: (require('rolldown-plugin-dts/package.json') as { version: string }).version,
-    typescript: loadTypescript().version,
+    typescript: emitter ? (require(emitter) as { version: string }).version : loadTypescript().version,
     tsconfig: resolved.tsconfig,
     tsconfigRaw: resolved.tsconfigRaw,
     sourcemap: resolved.sourcemap,
