@@ -20,7 +20,9 @@
 Create a module from the [module starter](https://github.com/nuxt/starter/tree/module):
 
 ```bash
-npm create nuxt -- -t module my-module
+pnpm create nuxt -t module my-module
+cd my-module
+pnpm dev
 ```
 
 Building a module requires Node `^22.18.0 || ^24.11.0 || >=26.0.0`, with `tsdown` and `typescript` installed alongside `@nuxt/module-builder`. Apps that install a built module need Nuxt 3 or later.

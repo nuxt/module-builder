@@ -36,6 +36,7 @@ pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 ts
 - `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect elsewhere. Yarn 1 takes `-W` instead. Other package managers need no flag.
 - If your module is a package of a monorepo, such as `packages/my-module`, run the command in the module's directory. Or add both packages to the catalog that the module's `package.json` uses.
 - If pnpm's `minimumReleaseAge` fails the install with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`, add the `<package>@<version>` that the error names to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. Then install again. Without an error, the same setting can install an older v2 release than the latest one.
+- If Yarn's `npmMinimalAgeGate` fails the install with `YN0016`, add the package that the error names to `npmPreapprovedPackages` in `.yarnrc.yml`. Then install again.
 
 Then change the other dependencies:
 
@@ -236,6 +237,8 @@ If you publish with pnpm or Yarn 4, point `exports`, `imports`, and `main` at yo
 
 If you publish with npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. Step 7 builds `dist` in `dev:prepare`, and `tsdown --watch` rebuilds it while you develop. [Develop and Publish](./3.develop-and-publish.md#preparing-a-checkout) describes both setups.
 
+If the playground lists the module by name, install the module in `playground/package.json` as [Installing the module in the playground](./3.develop-and-publish.md#installing-the-module-in-the-playground) shows.
+
 ### Step 7: Update the scripts
 
 In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack`, `dev:prepare`, and any other script or CI workflow that runs the builder under one of its names:
@@ -246,6 +249,7 @@ In each script that runs the builder, change only the builder's commands, and ke
 - `nuxt-module-build prepare --stub` becomes `nuxt-module-build prepare`.
 - A script that only ran the stub build, such as `"stub": "nuxt-module-build build --stub ."`, has nothing left to run. Delete it, and remove it from the scripts that run it, such as `pnpm stub &&`.
 - In `dev:prepare`, run `nuxt-module-build prepare` first, before the build and every `nuxt prepare`. Add it if it isn't there.
+- In `dev`, run `nuxt-module-build prepare` before `nuxt dev playground`. Without `.nuxt`, the playground responds to every request with a 500 error.
 - If `package.json` points at `dist`, run `tsdown` in `dev:prepare` before the first `nuxt prepare`. Do the same if a subpath stays at `dist` and the playground or tests load it.
 - The build empties `dist` first, so a command that writes into `dist` has to run after `tsdown`.
 - If `package.json` points at your sources, run `tsdown` as a command of `prepack` itself, so that the [pack checks](#publishing-source-exports) run. A `prepack` that runs another script, such as `pnpm run build`, isn't checked: move that script's commands into `prepack`.

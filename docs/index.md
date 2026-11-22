@@ -27,35 +27,20 @@ Nuxt 3 has reached end of life, so these docs describe Nuxt 4 and later. They do
 
 Create a module from the starter:
 
-::code-group{sync="pm"}
-
-```bash [npm]
-npm create nuxt -- -t module my-module
-```
-
-```bash [yarn]
-yarn create nuxt -t module my-module
-```
-
-```bash [pnpm]
+```bash [Terminal]
 pnpm create nuxt -t module my-module
 ```
 
-```bash [bun]
-bun create nuxt --template=module my-module
-```
+The starter uses [source exports](/docs/api/module-builder/develop-and-publish#source-exports) with pnpm, so `create nuxt` installs its dependencies with pnpm, whichever package manager runs it. pnpm has to be installed.
 
-::
+Then start the playground:
 
-Then install its dependencies and prepare it for development:
-
-```bash
+```bash [Terminal]
 cd my-module
-npm install
-npm run dev:prepare
+pnpm dev
 ```
 
-`dev:prepare` generates the `.nuxt` directories that type your module and its playground. To find out what each step does, read [Develop and Publish](/docs/api/module-builder/develop-and-publish).
+`dev` runs `nuxt-module-build prepare`, which generates the `.nuxt` that types your module, and then `nuxt dev playground`. To generate the types of the module and the playground without starting the playground, such as before a type check, run `pnpm dev:prepare`. To find out what each script does, or to develop with another package manager, read [Develop and Publish](/docs/api/module-builder/develop-and-publish).
 
 ## Manual installation
 
@@ -67,7 +52,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 tsdown@^0.23.7 typescript nuxt
    ```
 
-   `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect in a single package.
+   `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect in a single package. If pnpm's `minimumReleaseAge` or Yarn's `npmMinimalAgeGate` rejects a recent release, see [Install v2 and tsdown](/docs/api/module-builder/upgrade-v2#step-1-install-v2-and-tsdown).
 
 2. Create a `tsdown.config.ts` in the module root that uses the `builder()` plugin:
 
@@ -85,7 +70,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    ```json [package.json]
    {
      "scripts": {
-       "dev": "nuxt dev playground",
+       "dev": "nuxt-module-build prepare && nuxt dev playground",
        "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
        "prepack": "tsdown"
      }
