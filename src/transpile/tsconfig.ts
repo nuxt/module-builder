@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createFilesMatcher, createPathsMatcher, getTsconfig, parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
@@ -354,6 +354,37 @@ function generatedBase(file: string, seen: Set<string>): string | undefined {
 /** The tsconfig's `paths` made absolute, with the generated entries that they replace (see {@link replacedGeneratedPaths}) under them. */
 export function restoredTsconfigPaths(tsconfig: TsConfigResult | undefined): Record<string, string[]> {
   return { ...replacedGeneratedPaths(tsconfig)?.paths, ...tsconfigPaths(tsconfig) }
+}
+
+const PACKAGE_DIR_RE = /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^.\\/][^\\/]*)/
+
+/**
+ * The aliases that the `paths` of the tsconfigs in `dir/.nuxt` map into a package directory that
+ * does not exist, as after an update of the dependencies since `.nuxt` was generated, with the
+ * tsconfigs that map them.
+ */
+export function missingPathPackages(dir: string): { aliases: string[], tsconfigs: string[] } {
+  const buildDir = join(dir, '.nuxt')
+  const aliases = new Set<string>()
+  const tsconfigs = new Set<string>()
+  for (const name of ['tsconfig.json', ...['app', 'node', 'server', 'shared'].map(part => `tsconfig.${part}.json`)]) {
+    const file = join(buildDir, name)
+    let paths: Record<string, string[]> | undefined
+    try {
+      paths = JSON.parse(readFileSync(file, 'utf8')).compilerOptions?.paths
+    }
+    catch {
+      continue
+    }
+    for (const [alias, targets] of Object.entries(paths ?? {})) {
+      const packageDir = targets.map(target => resolve(buildDir, target).match(PACKAGE_DIR_RE)?.[1]).find(Boolean)
+      if (packageDir && !existsSync(packageDir)) {
+        aliases.add(alias)
+        tsconfigs.add(file)
+      }
+    }
+  }
+  return { aliases: [...aliases], tsconfigs: [...tsconfigs] }
 }
 
 const BUILD_ALIAS_RE = /^#(?:build|internal)(?:\/|$)/

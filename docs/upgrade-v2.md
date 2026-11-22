@@ -368,7 +368,7 @@ The build empties the output directory before it writes to it, and `tsdown --wat
 
 ### Preparing `.nuxt`
 
-The build generates declarations with the tsconfigs in `.nuxt`, so it runs `nuxt-module-build prepare` first when `.nuxt` is missing. Run `nuxt-module-build prepare` first in your `dev:prepare` script instead, as in [step 7](#step-7-update-the-scripts).
+The build generates declarations with the tsconfigs in `.nuxt`, so it runs `nuxt-module-build prepare` first when `.nuxt` is missing. It does the same when the tsconfigs in `.nuxt` map a package into a directory that no longer exists, as after a dependency update. Run `nuxt-module-build prepare` first in your `dev:prepare` script instead, as in [step 7](#step-7-update-the-scripts), and again after you update dependencies.
 
 The `.nuxt` that the build prepares can leave out the declarations that the module's own type check reads. Run `nuxt-module-build prepare` yourself before `vue-tsc -b --noEmit`.
 

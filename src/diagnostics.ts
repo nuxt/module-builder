@@ -226,6 +226,11 @@ export const warningCodes = {
     fix: 'Add `nuxt-module-build prepare` to the module\'s `dev:prepare` script to skip this step.',
     docs: '#preparing-nuxt',
   },
+  NUXT_MB_B0102: {
+    why: (p: { aliases: string[] }): string => `\`.nuxt\` is out of date: its tsconfigs map ${someOf(p.aliases)} into packages that are not installed. Running \`nuxt-module-build prepare\` first.`,
+    fix: 'Run `nuxt-module-build prepare` again after you update dependencies, to skip this step and to type check the module with the installed packages.',
+    docs: '#preparing-nuxt',
+  },
   NUXT_MB_B0202: {
     why: (p: { setting: string }): string => `The declarations of the bundled entries are generated with oxc, as ${p.setting} selects, which requires an explicit type annotation on every exported value, and some have none.`,
     fix: 'Give each export that an error names an explicit type. Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',

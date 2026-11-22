@@ -16,6 +16,7 @@ import { prepareModule } from '../commands/prepare.ts'
 import { errors, unwrapBuildError, useBuildLogger, warnings } from '../diagnostics.ts'
 import { loadOxc } from '../transpile/oxc.ts'
 import { transpileDir } from '../transpile/transpile-dir.ts'
+import { missingPathPackages } from '../transpile/tsconfig.ts'
 import { findUp, readPackageJson, realpath } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { bundledPackages, externalDependencyDeclarations, runtimeExternals } from './externals.ts'
@@ -90,8 +91,14 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const outDir = resolveOutDir(cwd, outDirOption, inline.outDir === undefined && config.outDir !== undefined ? `outDir: '${outDirOption}'` : `--outDir ${outDirOption}`)
   const buildConfig = loadConfig ? await loadConfig(cwd, pkg, outDir) : resolveModuleOptions(cwd, pkg, outDir, options)
 
-  if (!existsSync(resolve(cwd, '.nuxt/tsconfig.json'))) {
+  const stale = existsSync(resolve(cwd, '.nuxt/tsconfig.json')) ? missingPathPackages(cwd) : undefined
+  if (!stale) {
     warnings.NUXT_MB_B0101(undefined, { method: 'info' })
+  }
+  else if (stale.aliases.length) {
+    warnings.NUXT_MB_B0102({ aliases: stale.aliases, sources: stale.tsconfigs }, { method: 'info' })
+  }
+  if (!stale || stale.aliases.length) {
     await prepareModule(cwd, { config: buildConfig, outDir, pkg }, { declarations: false })
   }
 
