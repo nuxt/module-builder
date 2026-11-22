@@ -1,13 +1,14 @@
 import { readFile } from 'node:fs/promises'
 import type { TsConfigResult } from 'get-tsconfig'
 import { relative } from 'pathe'
-import type ts from 'typescript'
+import type { ImportDeclaration, ImportSpecifier, ModuleExportName, TSQualifiedName } from '@oxc-project/types'
 
 import { contentCache } from './cache.ts'
 import { createTscEngine } from './engine.ts'
 import type { DeclarationEngine, DeclarationProject, EngineDiagnostic, ProjectOptions, SourceFileCache } from './engine.ts'
+import { parseModule, walk } from './oxc.ts'
+import type { Node } from './oxc.ts'
 import { isModuleFile, writeDeclarationPaths } from './tsconfig.ts'
-import { loadTypescript } from './typescript.ts'
 
 export type { SourceFileCache } from './engine.ts'
 
@@ -165,7 +166,122 @@ function formatDiagnostic(diagnostic: EngineDiagnostic, cwd: string): string {
   return diagnostic.file && diagnostic.line !== undefined ? `${relative(cwd, diagnostic.file)}(${diagnostic.line},${diagnostic.column}): ${prefix}` : prefix
 }
 
-const SFC_SCRIPT_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script\b[^>]*>/gi
+const SFC_SCRIPT_RE = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)<\/script\b[^>]*>/gi
+const SFC_LANG_RE = /\blang\s*=\s*["']?(\w+)/
+
+/** The leftmost identifier of a qualified name or a property access, if it starts with one. */
+function leftmostIdentifier(node: Node | null | undefined): string | undefined {
+  while (node?.type === 'TSQualifiedName' || (node?.type === 'MemberExpression' && !node.computed)) {
+    node = node.type === 'TSQualifiedName' ? node.left : node.object
+  }
+  return node?.type === 'Identifier' ? node.name : undefined
+}
+
+const moduleExportName = (name: ModuleExportName) => name.type === 'Literal' ? name.value : name.name
+
+const DECLARED_TYPES = new Set(['TSInterfaceDeclaration', 'TSTypeAliasDeclaration', 'ClassDeclaration', 'TSEnumDeclaration', 'FunctionDeclaration', 'TSDeclareFunction', 'VariableDeclarator'])
+
+/** The names that `declaration` refers to without declaring or importing them where it refers to them. */
+function unboundNames(declaration: string): string[] {
+  const parents = new Map<Node, Node>()
+  const referenced: Array<[name: string, node: Node]> = []
+  const declared: Array<[name: string, scope: Node, outside?: Node]> = []
+  const reference = (name: string | undefined, node: Node) => {
+    if (name !== undefined) {
+      referenced.push([name, node])
+    }
+  }
+  const ancestor = (node: Node, matches: (node: Node) => boolean) => {
+    for (let current = parents.get(node); current; current = parents.get(current)) {
+      if (matches(current)) {
+        return current
+      }
+    }
+  }
+  const block = (node: Node) => ancestor(node, ({ type }) => type === 'TSModuleBlock' || type === 'Program')!
+  walk(parseModule(declaration, 'declaration.d.ts').program, (node, parent) => {
+    if (parent) {
+      parents.set(node, parent)
+    }
+    switch (node.type) {
+      case 'TSTypeReference':
+        reference(leftmostIdentifier(node.typeName), node)
+        break
+      case 'TSTypeQuery':
+        reference(leftmostIdentifier(node.exprName), node)
+        break
+      case 'TSClassImplements':
+      case 'TSInterfaceHeritage':
+      case 'TSInstantiationExpression':
+        reference(leftmostIdentifier(node.expression), node)
+        break
+      case 'ClassDeclaration':
+      case 'ClassExpression':
+        if (node.superClass) {
+          reference(leftmostIdentifier(node.superClass), node.superClass)
+        }
+        break
+      case 'ExportNamedDeclaration':
+        if (!node.source) {
+          for (const specifier of node.specifiers) {
+            reference(moduleExportName(specifier.local), specifier)
+          }
+        }
+        break
+      case 'ExportDefaultDeclaration':
+        if (node.declaration.type === 'Identifier') {
+          reference(node.declaration.name, node)
+        }
+        break
+      case 'TSExportAssignment':
+        if (node.expression.type === 'Identifier') {
+          reference(node.expression.name, node)
+        }
+        break
+      case 'TSTypeParameter':
+        if (parent?.type === 'TSInferType') {
+          const conditional = ancestor(parent, ({ type }) => type === 'TSConditionalType')
+          declared.push(conditional?.type === 'TSConditionalType' ? [node.name.name, conditional, conditional.falseType] : [node.name.name, parent])
+        }
+        else {
+          declared.push([node.name.name, parents.get(parent!)!])
+        }
+        break
+      case 'TSMappedType':
+        declared.push([node.key.name, node])
+        break
+      case 'ImportSpecifier':
+      case 'ImportDefaultSpecifier':
+      case 'ImportNamespaceSpecifier':
+        declared.push([node.local.name, block(node)])
+        break
+      case 'TSModuleDeclaration':
+        for (let id: Node = node.id; ; id = (id as TSQualifiedName).left) {
+          const name = id.type === 'TSQualifiedName' ? id.right : id
+          if (name.type === 'Identifier') {
+            declared.push([name.name, block(node)])
+          }
+          if (id.type !== 'TSQualifiedName') {
+            break
+          }
+        }
+        break
+    }
+    if (DECLARED_TYPES.has(node.type) && 'id' in node && node.id?.type === 'Identifier') {
+      declared.push([node.id.name, block(node)])
+    }
+  })
+  const within = (node: Node, scope: Node) => node === scope || ancestor(node, current => current === scope) !== undefined
+  return [...new Set(referenced.filter(([name, node]) => !declared.some(([local, scope, outside]) => local === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
+}
+
+/** The import declarations of `code`, the contents of `source`, or of the scripts of a single-file component. */
+function importDeclarations(source: string, code: string): ImportDeclaration[] {
+  const scripts = source.endsWith('.vue')
+    ? [...code.matchAll(SFC_SCRIPT_RE)].map(({ 1: tag, 2: content }) => ({ filename: `${source}.${tag!.match(SFC_LANG_RE)?.[1] ?? 'ts'}`, content: content! }))
+    : [{ filename: source, content: code }]
+  return scripts.flatMap(({ filename, content }) => parseModule(content, filename).program.body.filter(statement => statement.type === 'ImportDeclaration'))
+}
 
 /**
  * `declaration` with the imports of `source` (`code`, the file's contents) that it refers to by
@@ -174,60 +290,27 @@ const SFC_SCRIPT_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script\
  * the module resolves the alias.
  */
 export async function restoreImports(declaration: string, source: string, code: string): Promise<string> {
-  const { ts } = loadTypescript()
-  const script = source.endsWith('.vue') ? [...code.matchAll(SFC_SCRIPT_RE)].map(([, content]) => content).join('\n') : code
-  const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  const referenced: Array<[name: string, node: ts.Node]> = []
-  const declared: Array<[name: string, scope: ts.Node, outside?: ts.Node]> = []
-  const visit = (node: ts.Node) => {
-    if ((ts.isTypeReferenceNode(node) || ts.isTypeQueryNode(node) || ts.isExpressionWithTypeArguments(node)) && !ts.isImportTypeNode(node)) {
-      let name: ts.Node = ts.isTypeReferenceNode(node) ? node.typeName : ts.isTypeQueryNode(node) ? node.exprName : node.expression
-      while (ts.isQualifiedName(name) || ts.isPropertyAccessExpression(name)) {
-        name = ts.isQualifiedName(name) ? name.left : name.expression
-      }
-      if (ts.isIdentifier(name)) {
-        referenced.push([name.text, node])
-      }
-    }
-    if (ts.isExportSpecifier(node) && !node.parent.parent.moduleSpecifier) {
-      referenced.push([(node.propertyName ?? node.name).text, node])
-    }
-    if (ts.isExportAssignment(node) && ts.isIdentifier(node.expression)) {
-      referenced.push([node.expression.text, node])
-    }
-    if (ts.isTypeParameterDeclaration(node)) {
-      const conditional = ts.isInferTypeNode(node.parent) ? ts.findAncestor(node.parent, ts.isConditionalTypeNode) : undefined
-      declared.push(conditional ? [node.name.text, conditional, conditional.falseType] : [node.name.text, node.parent])
-    }
-    if ((ts.isImportSpecifier(node) || ts.isImportClause(node) || ts.isNamespaceImport(node) || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isClassDeclaration(node) || ts.isEnumDeclaration(node) || ts.isModuleDeclaration(node) || ts.isFunctionDeclaration(node) || ts.isVariableDeclaration(node)) && node.name && ts.isIdentifier(node.name)) {
-      declared.push([node.name.text, ts.findAncestor(node.parent, ancestor => ts.isModuleBlock(ancestor) || ts.isSourceFile(ancestor))!])
-    }
-    ts.forEachChild(node, visit)
-  }
-  visit(emitted)
-  const within = (node: ts.Node, scope: ts.Node) => !!ts.findAncestor(node, ancestor => ancestor === scope)
-  const missing = [...new Set(referenced.filter(([name, node]) => !declared.some(([local, scope, outside]) => local === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
+  const missing = unboundNames(declaration)
   if (!missing.length) {
     return declaration
   }
   const pending = new Set(missing)
   const imports: string[] = []
-  for (const statement of ts.createSourceFile(source, script, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS).statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.importClause) {
+  for (const statement of importDeclarations(source, code)) {
+    if (!statement.specifiers.length) {
       continue
     }
-    const clause = statement.importClause
-    const specifier = `'${statement.moduleSpecifier.text.replaceAll('\'', '\\\'')}'`
-    const bindings = clause.namedBindings
-    if (clause.name && pending.delete(clause.name.text)) {
-      imports.push(`import type ${clause.name.text} from ${specifier};`)
+    const specifier = `'${statement.source.value.replaceAll('\'', '\\\'')}'`
+    const bound = (type: string) => statement.specifiers.flatMap(element => element.type === type && pending.delete(element.local.name) ? [element] : [])
+    for (const element of bound('ImportDefaultSpecifier')) {
+      imports.push(`import type ${element.local.name} from ${specifier};`)
     }
-    if (bindings && ts.isNamespaceImport(bindings) && pending.delete(bindings.name.text)) {
-      imports.push(`import type * as ${bindings.name.text} from ${specifier};`)
+    for (const element of bound('ImportNamespaceSpecifier')) {
+      imports.push(`import type * as ${element.local.name} from ${specifier};`)
     }
-    const named = bindings && ts.isNamedImports(bindings) ? bindings.elements.filter(element => pending.delete(element.name.text)) : []
+    const named = bound('ImportSpecifier') as ImportSpecifier[]
     if (named.length) {
-      imports.push(`import type { ${named.map(element => element.propertyName ? `${ts.isStringLiteral(element.propertyName) ? JSON.stringify(element.propertyName.text) : element.propertyName.text} as ${element.name.text}` : element.name.text).join(', ')} } from ${specifier};`)
+      imports.push(`import type { ${named.map(element => element.imported.start === element.local.start ? element.local.name : `${element.imported.type === 'Literal' ? JSON.stringify(element.imported.value) : element.imported.name} as ${element.local.name}`).join(', ')} } from ${specifier};`)
     }
   }
   return imports.length ? `${imports.join('\n')}\n${declaration}` : declaration

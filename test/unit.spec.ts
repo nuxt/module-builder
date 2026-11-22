@@ -27,6 +27,7 @@ import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
 import { createDeclarationProgram, declarationDiagnosticClass, declarationError, REMAPPED_CODES, restoreImports } from '../src/transpile/declarations.ts'
 import type { DeclarationEngine } from '../src/transpile/engine.ts'
+import { loadOxc } from '../src/transpile/oxc.ts'
 import { createNativeEngine, installedNativeEngine, platformProblem } from '../src/transpile/native.ts'
 import { findTypescript, loadTypescript } from '../src/transpile/typescript.ts'
 import { assertSupportedTypescript, loadDeclarationEngine } from '../src/build/engine.ts'
@@ -37,7 +38,7 @@ import { augmentsNuxtTypes, writeSourceTypes, writeTypes } from '../src/build/ty
 import ts from 'typescript'
 import { errorCodes, errors, GUIDE_URL, unwrapBuildError, useBuildLogger, warningCodes, warnings } from '../src/diagnostics.ts'
 import { withoutDirectiveComments } from '../src/build/directives.ts'
-import { findModuleCodeIssues, hasLoadIssues, loadOxc, moduleCodeError } from '../src/build/loader.ts'
+import { findModuleCodeIssues, hasLoadIssues, moduleCodeError } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
 import buildCommand from '../src/commands/build.ts'
 import prepareCommand from '../src/commands/prepare.ts'
@@ -1727,10 +1728,10 @@ describe('build plan', () => {
       `import('./c', { with: { type: 'json' } })`,
       'import(`./${name}`)',
       `import(/* a */ /** b **/ './d')`,
-      `import(/*${'*//*'.repeat(40)}x)`,
+      `import(/*${'*//*'.repeat(40)}*/ './e')`,
     ].join('\n')
-    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d'])
-    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d'])
+    expect(moduleSpecifiers(code).map(({ specifier }) => specifier)).toEqual(['./a', './b', './c', './d', './e'])
+    expect([...valueSpecifiers(code)]).toEqual(['./a', './b', './c', './d', './e'])
     expect(rewriteSpecifiers(`const load = () => import/* lazy */('./d')`, specifier => `${specifier}.js`)).toBe(`const load = () => import/* lazy */('./d.js')`)
   })
 
@@ -1882,7 +1883,7 @@ describe('createDeclarationProgram', () => {
 
   it('should restore an import that a type parameter or namespace member of the same name shadows only elsewhere', async () => {
     const source = `import type { Icon } from '#build/icons'\n`
-    const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\n`
+    const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\nexport type Keys<T> = { [Icon in keyof T]: Icon };\n`
     expect(await restoreImports(shadowed, 'icon.ts', source)).toBe(shadowed)
     const unrelated = `${shadowed}export interface Props { icon: Icon; }\n`
     expect(await restoreImports(unrelated, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${unrelated}`)

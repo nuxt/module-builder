@@ -221,6 +221,9 @@ importers:
       '@nuxt/schema':
         specifier: ~4.6.4
         version: 4.6.4
+      '@oxc-project/types':
+        specifier: ^0.157.0
+        version: 0.157.0
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

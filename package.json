@@ -92,6 +92,7 @@
     "@nuxt/cli": "^4.0.3",
     "@nuxt/eslint-config": "^1.17.0",
     "@nuxt/schema": "~4.6.4",
+    "@oxc-project/types": "^0.157.0",
     "@types/node": "^26.6.6",
     "@typescript/typescript6": "6.0.2",
     "@typescript/typescript7": "npm:typescript@7.1.0-beta",

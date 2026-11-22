@@ -1,7 +1,7 @@
-import type ts from 'typescript'
+import type { Expression, Statement } from '@oxc-project/types'
 
 import { RELATIVE_RE } from '../utils.ts'
-import { loadTypescript } from './typescript.ts'
+import { literalText, parseModule, walk } from './oxc.ts'
 
 const JSX_RE = /\.[jt]sx$/
 const DYNAMIC_IMPORT_RE = /\bimport\s*(?:\(|\/[*/])/
@@ -26,13 +26,6 @@ interface Reference extends Specifier {
   typeOnly: boolean
 }
 
-/** `code` parsed by TypeScript, as the language that the extension of `filename` implies. */
-export function parseModule(code: string, filename: string): { ts: typeof import('typescript'), sourceFile: ts.SourceFile } {
-  const { ts } = loadTypescript()
-  const sourceFile = ts.createSourceFile(filename, code, { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone })
-  return { ts, sourceFile }
-}
-
 function references(code: string, filename: string): Reference[] {
   if (!filename.endsWith('.vue')) {
     return scriptReferences(code, filename, 0)
@@ -44,39 +37,41 @@ function references(code: string, filename: string): Reference[] {
 }
 
 function scriptReferences(code: string, filename: string, offset: number): Reference[] {
-  const { ts, sourceFile } = parseModule(code, filename)
+  const { program } = parseModule(code, filename)
   const found: Reference[] = []
-  const add = (node: ts.StringLiteralLike, typeOnly: boolean) => {
-    found.push({ specifier: node.text, start: offset + node.getStart(sourceFile), end: offset + node.end, typeOnly })
+  const add = (node: Expression, typeOnly: boolean) => {
+    const specifier = literalText(node)
+    if (specifier !== undefined) {
+      found.push({ specifier, start: offset + node.start, end: offset + node.end, typeOnly })
+    }
   }
-  const visitStatements = (statements: ts.NodeArray<ts.Statement>) => {
-    for (const statement of statements) {
-      if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
-        add(statement.moduleSpecifier, !!statement.importClause?.isTypeOnly)
+  const visitStatements = (statements: Statement[]) => {
+    for (const node of statements) {
+      const statement = node.type === 'ExportNamedDeclaration' && node.declaration ? node.declaration : node
+      if (statement.type === 'ImportDeclaration') {
+        add(statement.source, statement.importKind === 'type')
       }
-      else if (ts.isExportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
-        add(statement.moduleSpecifier, statement.isTypeOnly)
+      else if ((statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportAllDeclaration') && statement.source) {
+        add(statement.source, statement.exportKind === 'type')
       }
-      else if (ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference) && ts.isStringLiteral(statement.moduleReference.expression)) {
-        add(statement.moduleReference.expression, statement.isTypeOnly)
+      else if (statement.type === 'TSImportEqualsDeclaration' && statement.moduleReference.type === 'TSExternalModuleReference') {
+        add(statement.moduleReference.expression, statement.importKind === 'type')
       }
-      else if (ts.isModuleDeclaration(statement) && statement.body && ts.isModuleBlock(statement.body)) {
-        visitStatements(statement.body.statements)
+      else if (statement.type === 'TSModuleDeclaration' && statement.id.type !== 'TSQualifiedName' && statement.body) {
+        visitStatements(statement.body.body)
       }
     }
   }
-  visitStatements(sourceFile.statements)
+  visitStatements(program.body)
   if (DYNAMIC_IMPORT_RE.test(code)) {
-    const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-        add(node.arguments[0], false)
+    walk(program, (node) => {
+      if (node.type === 'ImportExpression') {
+        add(node.source, false)
       }
-      else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument) && ts.isStringLiteral(node.argument.literal)) {
-        add(node.argument.literal, true)
+      else if (node.type === 'TSImportType') {
+        add(node.source, true)
       }
-      ts.forEachChild(node, visit)
-    }
-    visit(sourceFile)
+    })
   }
   return found.sort((a, b) => a.start - b.start)
 }

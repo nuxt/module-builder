@@ -5,7 +5,7 @@ import { join } from 'pathe'
 import { build } from 'tsdown'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { loadOxc } from '../src/build/loader.ts'
+import { loadOxc } from '../src/transpile/oxc.ts'
 import { transpileDir } from '../src/transpile/transpile-dir.ts'
 import type { ExternalImport, TranspileDirOptions } from '../src/transpile/transpile-dir.ts'
 

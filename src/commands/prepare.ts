@@ -17,7 +17,8 @@ import { augmentsNuxtTypes, writeSourceTypes } from '../build/types.ts'
 import { noteUncheckedFiles } from '../build/unchecked.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { hasIsolatedDeclarations, isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
-import { loadTypescript } from '../transpile/typescript.ts'
+import { parseModule, walk } from '../transpile/oxc.ts'
+import type { Program } from '../transpile/oxc.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -55,8 +56,19 @@ async function declaresModules(cwd: string, runtimeDirs: string[], entries: stri
   return sources.some(source => DECLARE_RE.test(source))
 }
 
+const MODULE_STATEMENTS = new Set(['ImportDeclaration', 'ExportNamedDeclaration', 'ExportDefaultDeclaration', 'ExportAllDeclaration', 'TSExportAssignment'])
+
+/** Whether TypeScript reads `program` as a module, rather than as a script that declares globals. */
+function isExternalModule(program: Program) {
+  let importMeta = false
+  walk(program, (node) => {
+    importMeta ||= node.type === 'MetaProperty' && node.meta.name === 'import'
+    return !importMeta
+  })
+  return importMeta || program.body.some(statement => MODULE_STATEMENTS.has(statement.type) || (statement.type === 'TSImportEqualsDeclaration' && statement.moduleReference.type === 'TSExternalModuleReference'))
+}
+
 async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: string[]) {
-  const { ts } = loadTypescript()
   const ignore = [...runtimeDirs, ...exclude].flatMap((pattern) => {
     const path = relative(cwd, pattern)
     return [path, `${path}/**`]
@@ -65,11 +77,11 @@ async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: 
   const globals: string[] = []
   const augmentations: string[] = []
   for (const file of files.filter(file => isModuleFile(file, cwd)).sort()) {
-    const source = ts.createSourceFile(file, await readFile(file, 'utf8'), ts.ScriptTarget.Latest)
-    if (!ts.isExternalModule(source)) {
+    const { program } = parseModule(await readFile(file, 'utf8'), file)
+    if (!isExternalModule(program)) {
       globals.push(file)
     }
-    else if (source.statements.some(statement => ts.isModuleDeclaration(statement))) {
+    else if (program.body.some(statement => (statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement)?.type === 'TSModuleDeclaration')) {
       augmentations.push(file)
     }
   }

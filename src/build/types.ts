@@ -1,8 +1,8 @@
 import { existsSync, promises as fsp, readFileSync } from 'node:fs'
 import { dirname, relative, resolve } from 'pathe'
-import type ts from 'typescript'
+import type { BindingPattern, Declaration, ModuleExportName, TSTypeName } from '@oxc-project/types'
 
-import { parseModule } from '../transpile/specifiers.ts'
+import { parseModule } from '../transpile/oxc.ts'
 import { probe, writeIfChanged } from '../utils.ts'
 
 interface ExportedName {
@@ -155,47 +155,50 @@ function probeWithDeclarations(path: string) {
 }
 
 function parseExports(code: string, filename: string): ModuleExport[] {
-  const { ts, sourceFile } = parseModule(code, filename)
   const exports: ModuleExport[] = []
-  const hasModifier = (node: ts.Node, kind: ts.SyntaxKind) => ts.canHaveModifiers(node) && !!ts.getModifiers(node)?.some(modifier => modifier.kind === kind)
-  for (const statement of sourceFile.statements) {
-    if (ts.isExportDeclaration(statement)) {
-      const specifier = statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : undefined
-      const clause = statement.exportClause
-      if (clause && ts.isNamedExports(clause)) {
-        exports.push({ specifier, names: clause.elements.map(element => ({ name: element.name.text, typeOnly: statement.isTypeOnly || element.isTypeOnly })) })
-      }
-      else if (specifier) {
-        exports.push({ specifier, star: { typeOnly: statement.isTypeOnly }, names: clause ? [{ name: clause.name.text, typeOnly: statement.isTypeOnly }] : [] })
-      }
+  for (const statement of parseModule(code, filename).program.body) {
+    if (statement.type === 'ExportNamedDeclaration' && statement.declaration) {
+      const { declaration } = statement
+      const typeOnly = declaration.type === 'TSInterfaceDeclaration' || declaration.type === 'TSTypeAliasDeclaration'
+      exports.push({ names: declaredNames(declaration).map(name => ({ name, typeOnly })) })
     }
-    else if (ts.isExportAssignment(statement)) {
-      if (!statement.isExportEquals) {
-        exports.push({ names: [{ name: 'default', typeOnly: false }] })
-      }
+    else if (statement.type === 'ExportNamedDeclaration') {
+      exports.push({ specifier: statement.source?.value, names: statement.specifiers.map(element => ({ name: moduleExportName(element.exported), typeOnly: statement.exportKind === 'type' || element.exportKind === 'type' })) })
     }
-    else if (hasModifier(statement, ts.SyntaxKind.ExportKeyword)) {
-      const typeOnly = ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)
-      const names = hasModifier(statement, ts.SyntaxKind.DefaultKeyword) ? ['default'] : declaredNames(ts, statement)
-      exports.push({ names: names.map(name => ({ name, typeOnly })) })
+    else if (statement.type === 'ExportAllDeclaration') {
+      const typeOnly = statement.exportKind === 'type'
+      exports.push({ specifier: statement.source.value, star: { typeOnly }, names: statement.exported ? [{ name: moduleExportName(statement.exported), typeOnly }] : [] })
+    }
+    else if (statement.type === 'ExportDefaultDeclaration') {
+      exports.push({ names: [{ name: 'default', typeOnly: statement.declaration.type === 'TSInterfaceDeclaration' }] })
     }
   }
   return exports
 }
 
-function declaredNames(ts: typeof import('typescript'), statement: ts.Statement): string[] {
-  if (ts.isVariableStatement(statement)) {
-    return statement.declarationList.declarations.flatMap(declaration => bindingNames(ts, declaration.name))
+const moduleExportName = (name: ModuleExportName) => name.type === 'Literal' ? name.value : name.name
+
+const leftmost = (name: TSTypeName): TSTypeName => name.type === 'TSQualifiedName' ? leftmost(name.left) : name
+
+function declaredNames(declaration: Declaration): string[] {
+  if (declaration.type === 'VariableDeclaration') {
+    return declaration.declarations.flatMap(declarator => bindingNames(declarator.id))
   }
-  const name = (statement as ts.DeclarationStatement).name
-  return name && ts.isIdentifier(name) ? [name.text] : []
+  const id = 'id' in declaration && declaration.id ? declaration.id.type === 'TSQualifiedName' ? leftmost(declaration.id) : declaration.id : undefined
+  return id?.type === 'Identifier' ? [id.name] : []
 }
 
-function bindingNames(ts: typeof import('typescript'), name: ts.BindingName): string[] {
-  if (ts.isIdentifier(name)) {
-    return [name.text]
+function bindingNames(pattern: BindingPattern): string[] {
+  switch (pattern.type) {
+    case 'Identifier':
+      return [pattern.name]
+    case 'AssignmentPattern':
+      return bindingNames(pattern.left)
+    case 'ObjectPattern':
+      return pattern.properties.flatMap(property => bindingNames(property.type === 'RestElement' ? property.argument : property.value))
+    case 'ArrayPattern':
+      return pattern.elements.flatMap(element => !element ? [] : bindingNames(element.type === 'RestElement' ? element.argument : element))
   }
-  return name.elements.flatMap(element => ts.isBindingElement(element) ? bindingNames(ts, element.name) : [])
 }
 
 /** The names that `exports` declare or re-export by name, sorted with `default` last. */
