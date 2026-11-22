@@ -269,11 +269,11 @@ function resolveSource(specifier: string, parentDir: string, cwd: string, paths:
       return { file, via: 'paths' }
     }
   }
+  if (paths.isAlias?.(specifier)) {
+    return 'is a tsconfig `paths` alias that resolves to no file'
+  }
   if (name || specifier.includes(':')) {
     return EXTERNAL
-  }
-  if (candidates.length) {
-    return 'is a tsconfig `paths` alias that resolves to no file'
   }
   return paths.readable ? 'matches no tsconfig `paths` alias' : 'is an alias, and the tsconfig that can map it in `paths` cannot be read'
 }
@@ -406,12 +406,25 @@ function analyseSource(filename: string, source: string): SourceAnalysis {
   return found
 }
 
-function pathsMatcher(cwd: string): { match?: (specifier: string) => string[], readable: boolean } {
+interface PathsMatcher {
+  /** The files that `specifier` maps to, through `paths` or else `baseUrl`. */
+  match?: (specifier: string) => string[]
+  /** Whether a `paths` pattern other than the catch-all `*` matches `specifier`. */
+  isAlias?: (specifier: string) => boolean
+  readable: boolean
+}
+
+function pathsMatcher(cwd: string): PathsMatcher {
   // `prepare` checks module code before `nuxt prepare` has generated the `.nuxt/tsconfig.json`
   // that module tsconfigs extend, so the aliases of a tsconfig that cannot be resolved yet are unknown.
   try {
     const tsconfig = getTsconfig(cwd)
-    return { match: tsconfig ? createPathsMatcher(tsconfig) ?? undefined : undefined, readable: true }
+    const patterns = Object.keys(tsconfig?.config.compilerOptions?.paths ?? {}).filter(pattern => pattern !== '*')
+    const isAlias = (specifier: string) => patterns.some((pattern) => {
+      const star = pattern.indexOf('*')
+      return star === -1 ? pattern === specifier : specifier.length >= pattern.length - 1 && specifier.startsWith(pattern.slice(0, star)) && specifier.endsWith(pattern.slice(star + 1))
+    })
+    return { match: tsconfig ? createPathsMatcher(tsconfig) ?? undefined : undefined, isAlias, readable: true }
   }
   catch {
     return { readable: false }

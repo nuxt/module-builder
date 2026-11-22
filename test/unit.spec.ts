@@ -620,7 +620,7 @@ describe('findModuleCodeIssues', () => {
     try {
       await mkdir(join(dir, 'src'))
       await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'fixture', type: 'module', imports: { '#internal/*': './src/internal/*.ts', '#external': 'external-pkg' } }))
-      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/lib/*': ['./lib/*'] } } }))
+      await writeFile(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { paths: { '~/lib/*': ['./lib/*'], 'utils/*': ['./src/utils/*'], '*': ['./src/*'] } } }))
       await writeFile(join(dir, 'src/module.ts'), [
         `import { generated } from './generated.ts'`,
         `import { helper } from '#internal/helper'`,
@@ -629,7 +629,8 @@ describe('findModuleCodeIssues', () => {
         `import { external } from '#external'`,
         `import type { Types } from './types.ts'`,
         `import { optional } from 'uninstalled-pkg'`,
-        `export default [generated, helper, lib, other, external, optional]`,
+        `import { util } from 'utils/missing'`,
+        `export default [generated, helper, lib, other, external, optional, util]`,
         `export type { Types }`,
         ``,
       ].join('\n'))
@@ -639,6 +640,7 @@ describe('findModuleCodeIssues', () => {
         'src/module.ts:2:24: `#internal/helper` maps to no file in the `imports` of `package.json`',
         'src/module.ts:3:21: `~/lib/missing` is a tsconfig `paths` alias that resolves to no file',
         'src/module.ts:4:23: `@/other` matches no tsconfig `paths` alias',
+        'src/module.ts:8:22: `utils/missing` is a tsconfig `paths` alias that resolves to no file',
       ])
       expect(hasLoadIssues(found)).toBe(false)
 
