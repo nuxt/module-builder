@@ -283,7 +283,7 @@ export default {
   })
   dirs.rootPaths = await withoutVue('root-paths', { files: { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { paths: MY_PATHS } }) } })
   const staleVue = (source: string) => source.replace(/\.pnpm\/vue@[^/]+\//g, '.pnpm/vue@0.0.0/')
-  dirs.stale = await withoutVue('stale', { files: Object.fromEntries(['', '.app', '.node', '.server', '.shared'].map(part => [`.nuxt/tsconfig${part}.json`, staleVue])) })
+  dirs.stale = await fixture('.temp-builder/stale', { config: PLUGIN, files: Object.fromEntries(['', '.app', '.node', '.server', '.shared'].map(part => [`.nuxt/tsconfig${part}.json`, staleVue])) })
   dirs.standalone = await withoutVue('standalone', { files: { 'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', allowImportingTsExtensions: true, noEmit: true }, include: ['src'] }) } })
 
   await Promise.all([
@@ -533,6 +533,13 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await read(dirs.singleTsconfig!, 'dist/module.d.mts')).toBe(await read(dirs.moduleProject!, 'dist/module.d.mts'))
   })
 
+  it('should prepare `.nuxt` again when its tsconfigs map a package into a directory that no longer exists', async () => {
+    expect(expectBuilt('stale')).toMatch(/\[NUXT_MB_B0102\] `\.nuxt` is out of date: its tsconfigs map `vue` into packages that are not installed/)
+    const [target] = JSON.parse(await read(dirs.stale!, '.nuxt/tsconfig.app.json')).compilerOptions.paths.vue
+    expect(target).not.toContain('vue@0.0.0')
+    expect(exists(dirs.stale!, '.nuxt', target)).toBe(true)
+  })
+
   it('should prepare a missing `.nuxt` without the declarations of module code when the module augments none of Nuxt\'s types', () => {
     expect(expectBuilt('appProject')).toContain('[NUXT_MB_B0101]')
     expect(exists(dirs.appProject!, '.nuxt/tsconfig.app.json')).toBe(true)
@@ -593,13 +600,6 @@ describe('a module that does not install `vue`', () => {
     expect(await read(dirs.ownVue!, 'dist/runtime/components/ErrorState.d.vue.ts')).toContain('declare const __VLS_export: "from the module";')
     expect(output).toMatch(/- `tsconfig\.json` leaves out `@nuxt\/devtools`/)
     expect(output).not.toMatch(/leaves out `vue`/)
-  })
-
-  it('should prepare `.nuxt` again when its tsconfigs map a package into a directory that no longer exists', async () => {
-    const output = expectBuilt('stale')
-    expect(output).toMatch(/\[NUXT_MB_B0102\] `\.nuxt` is out of date: its tsconfigs map `vue` into packages that are not installed/)
-    await expectTyped(dirs.stale!)
-    expect(await read(dirs.stale!, '.nuxt/tsconfig.app.json')).not.toContain('vue@0.0.0')
   })
 
   it('should fail when `vue` does not resolve from the components whose declarations it types', () => {
