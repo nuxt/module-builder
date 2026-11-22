@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { version } from '../package.json'
@@ -25,13 +25,16 @@ import { bundledPackages, runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
-import { createDeclarationProgram, restoreImports } from '../src/transpile/declarations.ts'
+import { createDeclarationProgram, declarationDiagnosticClass, declarationError, REMAPPED_CODES, restoreImports } from '../src/transpile/declarations.ts'
+import type { DeclarationEngine } from '../src/transpile/engine.ts'
+import { createNativeEngine, installedNativeEngine, platformProblem } from '../src/transpile/native.ts'
+import { assertSupportedTypescript, loadDeclarationEngine } from '../src/build/engine.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
 import { augmentsNuxtTypes, writeSourceTypes, writeTypes } from '../src/build/types.ts'
 import ts from 'typescript'
-import { errorCodes, errors, GUIDE_URL, unwrapBuildError, warningCodes, warnings } from '../src/diagnostics.ts'
+import { errorCodes, errors, GUIDE_URL, unwrapBuildError, useBuildLogger, warningCodes, warnings } from '../src/diagnostics.ts'
 import { withoutDirectiveComments } from '../src/build/directives.ts'
 import { findModuleCodeIssues, hasLoadIssues, loadOxc, moduleCodeError } from '../src/build/loader.ts'
 import type { ModuleCodeIssue } from '../src/build/loader.ts'
@@ -1966,5 +1969,249 @@ describe('contentCache', () => {
     const cache = contentCache<string>(cwd, 'test', {})
     await cache.write('value', new Map([[join(cwd, 'a.ts'), 'export const a = 1\n']]))
     expect(await cache.read()).toBeUndefined()
+  })
+})
+
+describe('declaration engines', () => {
+  const fakeEngine = (name: 'typescript7' | 'tsrs', text: string): DeclarationEngine => ({
+    name,
+    version: '7.1.0-test',
+    open: async () => ({
+      emit: async files => ({ declarations: new Map(files.map(file => [file, text])), diagnostics: [] }),
+      inputs: async () => new Map(),
+    }),
+    close: async () => {},
+  })
+
+  it('should keep the cached declarations of each engine apart', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-engine-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const tsconfig = join(cwd, 'tsconfig.json')
+    await writeFile(tsconfig, JSON.stringify({ compilerOptions: { module: 'esnext', moduleResolution: 'bundler', target: 'es2022' }, files: ['a.ts'] }))
+    await writeFile(join(cwd, 'a.ts'), `export const a = 1 as const\n`)
+    const emit = async (engine?: DeclarationEngine) => {
+      const program = await createDeclarationProgram({ cwd, tsconfig: { path: tsconfig, config: parseTsconfig(tsconfig) }, paths: {}, cache: 'test', engine }, [join(cwd, 'a.ts')])
+      return (await program.emit([join(cwd, 'a.ts')])).declarations.get(join(cwd, 'a.ts'))
+    }
+    expect(await emit()).toContain('export declare const a: 1;')
+    expect(await emit(fakeEngine('typescript7', 'typescript7'))).toBe('typescript7')
+    expect(await emit(fakeEngine('tsrs', 'tsrs'))).toBe('tsrs')
+    expect(await emit(fakeEngine('typescript7', 'other'))).toBe('typescript7')
+    expect(await emit()).toContain('export declare const a: 1;')
+  })
+
+  it.each([
+    [2883, 2742, 'portability'],
+    [9013, 9007, 'isolated'],
+  ] as const)('should give TS%i, which TypeScript 7 reports, the class of TS%i', (code, original, kind) => {
+    expect(REMAPPED_CODES[code]).toBe(original)
+    expect(declarationDiagnosticClass(code)).toBe(kind)
+    expect(declarationDiagnosticClass(original)).toBe(kind)
+  })
+
+  it.each([18069, 18070, 18065, 18099, 18123])('should count TS%i, a content mapper failure, as a missing declaration', (code) => {
+    expect(declarationDiagnosticClass(code)).toBe('missing')
+  })
+
+  it('should leave type errors out of the declaration classes', () => {
+    expect([2322, 2339, 2345, 5101].map(declarationDiagnosticClass)).toEqual([undefined, undefined, undefined, undefined])
+    expect([4023, 4118, 2527].map(declarationDiagnosticClass)).toEqual(['emit', 'emit', 'emit'])
+  })
+
+  it('should fail the build on a declaration error of another engine under its TypeScript 7 code, and on syntax errors only otherwise', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-engine-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const a = join(cwd, 'a.ts')
+    await writeFile(a, `export const a = 1\n`)
+    const engine: DeclarationEngine = {
+      ...fakeEngine('typescript7', ''),
+      open: async () => ({
+        emit: async () => ({
+          declarations: new Map(),
+          diagnostics: [
+            { code: 2883, kind: 'emit', category: 'error', file: a, line: 1, column: 14, message: 'The inferred type of \'a\' cannot be named without a reference to \'x\' from \'y\'. This is likely not portable. A type annotation is necessary.' },
+            { code: 2322, kind: 'emit', category: 'error', file: a, line: 1, column: 1, message: 'Type \'string\' is not assignable to type \'number\'.' },
+            { code: 1005, kind: 'syntactic', category: 'error', file: a, line: 2, column: 1, message: '\';\' expected.' },
+          ],
+        }),
+        inputs: async () => new Map(),
+      }),
+    }
+    const program = await createDeclarationProgram({ cwd, tsconfig: undefined, paths: {}, engine }, [a])
+    const { errors } = await program.emit([a])
+    expect(errors).toEqual([
+      'a.ts(1,14): error TS2883: The inferred type of \'a\' cannot be named without a reference to \'x\' from \'y\'. This is likely not portable. A type annotation is necessary.',
+      'a.ts(2,1): error TS1005: \';\' expected.',
+    ])
+    expect(declarationError(errors).message).toContain('- `a` in a.ts:1')
+  })
+
+  it('should report a file without a declaration whose diagnostics are not reported', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-engine-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    const a = join(cwd, 'a.ts')
+    const engine: DeclarationEngine = {
+      ...fakeEngine('tsrs', ''),
+      open: async () => ({
+        emit: async () => ({ declarations: new Map(), diagnostics: [{ code: 2322, kind: 'emit', category: 'error', file: a, message: 'Type error.' }] }),
+        inputs: async () => new Map(),
+      }),
+    }
+    const program = await createDeclarationProgram({ cwd, tsconfig: undefined, paths: {}, engine }, [a])
+    expect((await program.emit([a])).errors).toEqual(['a.ts: no declaration was emitted'])
+  })
+
+  describe('loading', () => {
+    const fakePackage = async (files: Record<string, string>) => {
+      const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-engine-')))
+      onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+      await writeFile(join(cwd, 'package.json'), JSON.stringify({ name: 'fixture', private: true }))
+      for (const [file, contents] of Object.entries(files)) {
+        await mkdir(dirname(join(cwd, file)), { recursive: true })
+        await writeFile(join(cwd, file), contents)
+      }
+      return cwd
+    }
+    const api = `export class API {}\nexport class Program { getDeclarationEmit() {} }\n`
+    const typescript7 = (exePath: string) => ({
+      'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: 'typescript', version: '7.1.0', type: 'module', exports: { './package.json': './package.json', './async': './dist/api/async/api.js' } }),
+      'node_modules/@typescript/typescript7/dist/api/async/api.js': api,
+      'node_modules/@typescript/typescript7/lib/getExePath.js': exePath,
+    })
+
+    beforeEach(() => {
+      useBuildLogger(logger)
+      vi.stubEnv('NUXT_MODULE_BUILDER_DECLARATION_ENGINE', '')
+      return () => vi.unstubAllEnvs()
+    })
+
+    it('should use the JavaScript API of the module\'s own TypeScript 5.9 or 6 when no native engine is installed or `typescript` is selected', async () => {
+      expect(await loadDeclarationEngine(await fakePackage({}), {})).toBeUndefined()
+      const six = await fakePackage({ 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '6.0.3' }), ...typescript7(`export default () => { throw new Error('unused') }\n`) })
+      expect(installedNativeEngine(six)).toBe('typescript7')
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      expect(await loadDeclarationEngine(six, { declarationEngine: 'typescript' })).toBeUndefined()
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('should pick the native engine the module has installed when none is selected', async () => {
+      const tsrs = {
+        'node_modules/tsrs/package.json': JSON.stringify({ name: 'tsrs', version: '7.1.0-beta.tsrs3', type: 'module', exports: { './package.json': './package.json', './async': './api.js' } }),
+        'node_modules/tsrs/api.js': api,
+        'node_modules/tsrs/lib/getExePath.js': `export default () => { throw new Error('no tsrs binary') }\n`,
+      }
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      const onlyTsrs = await fakePackage(tsrs)
+      expect(installedNativeEngine(onlyTsrs)).toBe('tsrs')
+      expect(await loadDeclarationEngine(onlyTsrs, {})).toBeUndefined()
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', 'no tsrs binary'))
+      expect(installedNativeEngine(await fakePackage({ ...tsrs, ...typescript7('') }))).toBe('typescript7')
+      const own = await fakePackage({ ...tsrs, 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '7.1.0' }) })
+      expect(installedNativeEngine(own)).toBe('typescript')
+    })
+
+    it('should use the native API of the module\'s own TypeScript 7.1 or later by default', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      const own = await fakePackage({
+        'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '7.2.0', type: 'module', exports: { './package.json': './package.json', './async': './api.js' } }),
+        'node_modules/typescript/api.js': api,
+        'node_modules/typescript/lib/getExePath.js': `export default () => { throw new Error('no binary') }\n`,
+      })
+      expect(await loadDeclarationEngine(own, {})).toBeUndefined()
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', '`typescript@7.2.0` has no binary'))
+    })
+
+    it('should fail when the selected engine is not installed, and say what to install', async () => {
+      const cwd = await fakePackage({})
+      await expect(loadDeclarationEngine(cwd, { declarationEngine: 'typescript7' })).rejects.toEqual(diagnostic('NUXT_MB_C0401'))
+      await expect(loadDeclarationEngine(cwd, { declarationEngine: 'tsrs' })).rejects.toThrow(expect.objectContaining({ fix: expect.stringContaining('pnpm add -D tsrs') }))
+      await expect(loadDeclarationEngine(cwd, { declarationEngine: 'typescript7' })).rejects.toThrow(expect.objectContaining({ fix: expect.stringContaining('@typescript/typescript7@npm:typescript@beta') }))
+    })
+
+    it('should fail when the installed engine is older than the TypeScript 7.1 API', async () => {
+      const old = await fakePackage({ 'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: 'typescript', version: '7.0.2' }) })
+      await expect(loadDeclarationEngine(old, { declarationEngine: 'typescript7' })).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_C0402', message: expect.stringContaining('`typescript@7.0.2`') }))
+      const other = await fakePackage({ 'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: '@typescript/typescript7', version: '7.2.0' }) })
+      await expect(loadDeclarationEngine(other, { declarationEngine: 'typescript7' })).rejects.toEqual(diagnostic('NUXT_MB_C0402'))
+      const ownOld = await fakePackage({ 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '7.0.2' }) })
+      await expect(loadDeclarationEngine(ownOld, { declarationEngine: 'typescript7' })).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_C0402', message: expect.stringContaining('`typescript` resolves to `typescript@7.0.2`') }))
+      const ownSix = await fakePackage({ 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '6.0.3' }) })
+      await expect(loadDeclarationEngine(ownSix, { declarationEngine: 'typescript7' })).rejects.toEqual(diagnostic('NUXT_MB_C0401'))
+    })
+
+    it('should not use a TypeScript 7.1 or later that lacks the declaration emit API', async () => {
+      const withoutApi = await fakePackage({ 'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: 'typescript', version: '7.1.0-dev.20260801.1' }) })
+      await expect(createNativeEngine(withoutApi, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'api', found: 'typescript@7.1.0-dev.20260801.1' }))
+    })
+
+    it('should use the module\'s own `typescript` when it is 7.1 or later, and the alias otherwise', async () => {
+      const noBinary = `export default () => { throw new Error('no binary') }\n`
+      const own = { 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '7.2.0', type: 'module', exports: { './package.json': './package.json', './async': './api.js' } }), 'node_modules/typescript/api.js': api, 'node_modules/typescript/lib/getExePath.js': noBinary }
+      await expect(createNativeEngine(await fakePackage({ ...typescript7(noBinary), ...own }), 'typescript7')).rejects.toThrow(expect.objectContaining({ message: expect.stringContaining('`typescript@7.2.0` has no binary') }))
+      const six = { 'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version: '6.0.3' }) }
+      await expect(createNativeEngine(await fakePackage({ ...typescript7(noBinary), ...six }), 'typescript7')).rejects.toThrow(expect.objectContaining({ message: expect.stringContaining('`typescript@7.1.0` has no binary') }))
+    })
+
+    it('should generate declarations with the module\'s own TypeScript, and warn once, where the engine has no binary or its binary does not start', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      const noBinary = await fakePackage(typescript7(`export default () => { throw new Error('Unable to resolve @typescript/typescript-${process.platform}-${process.arch}.') }\n`))
+      expect(await loadDeclarationEngine(noBinary, { declarationEngine: 'typescript7' })).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', `has no binary for ${process.platform}-${process.arch}`))
+      const broken = await fakePackage({ ...typescript7(`import { fileURLToPath } from 'node:url'\nexport default () => fileURLToPath(new URL('./not-a-binary.txt', import.meta.url))\n`), 'node_modules/@typescript/typescript7/lib/not-a-binary.txt': 'text' })
+      expect(await loadDeclarationEngine(broken, { declarationEngine: 'typescript7' })).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      await expect(createNativeEngine(broken, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'platform', message: expect.stringContaining('its binary does not start') }))
+      const unspawnable = await fakePackage(typescript7(`export default () => 'tsc\\0'\n`))
+      await expect(createNativeEngine(unspawnable, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'platform', message: expect.stringContaining('its binary does not start') }))
+    })
+
+    it('should refuse a module whose own `typescript` has no JavaScript API, and say which versions work', async () => {
+      await expect(assertSupportedTypescript()).resolves.toBeUndefined()
+      vi.resetModules()
+      vi.doMock('typescript', () => ({ default: { version: '7.0.2', versionMajorMinor: '7.0' } }))
+      onTestFinished(() => {
+        vi.doUnmock('typescript')
+        vi.resetModules()
+      })
+      const { assertSupportedTypescript: assertWithTypescript7 } = await import('../src/build/engine.ts')
+      await expect(assertWithTypescript7()).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_B0005', message: expect.stringContaining('`typescript@7.0.2`'), fix: expect.stringContaining('typescript@^6.0.0') }))
+    })
+
+    it('should warn rather than fail when the engine the module has installed is too old', async () => {
+      const old = await fakePackage({ 'node_modules/@typescript/typescript7/package.json': JSON.stringify({ name: 'typescript', version: '7.0.2' }) })
+      vi.resetModules()
+      onTestFinished(() => vi.resetModules())
+      const { useBuildLogger: useFreshLogger } = await import('../src/diagnostics.ts')
+      const { loadDeclarationEngine: loadFresh } = await import('../src/build/engine.ts')
+      useFreshLogger(logger)
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      await expect(loadFresh(old, {})).resolves.toBeUndefined()
+      expect(warn.mock.calls[0]![0]).toEqual(reported('NUXT_MB_C0404', '`@typescript/typescript7` resolves to `typescript@7.0.2`'))
+      await expect(loadFresh(old, { declarationEngine: 'typescript7' })).rejects.toEqual(diagnostic('NUXT_MB_C0402'))
+    })
+
+    it('should explain where the Linux binaries of tsrs need a newer glibc', () => {
+      expect(platformProblem('tsrs', { glibcVersionRuntime: '2.31' }, 'linux')).toBe('its Linux binaries need glibc 2.34, and this system has glibc 2.31')
+      expect(platformProblem('tsrs', { glibcVersionRuntime: '2.34' }, 'linux')).toBeUndefined()
+      expect(platformProblem('tsrs', {}, 'linux')).toBeUndefined()
+      expect(platformProblem('typescript7', { glibcVersionRuntime: '2.31' }, 'linux')).toBeUndefined()
+    })
+
+    it('should take the engine from `NUXT_MODULE_BUILDER_DECLARATION_ENGINE` before `declarations.engine`, and refuse another value', async () => {
+      const cwd = await fakePackage({})
+      vi.stubEnv('NUXT_MODULE_BUILDER_DECLARATION_ENGINE', 'typescript')
+      expect(await loadDeclarationEngine(cwd, { declarationEngine: 'typescript7' })).toBeUndefined()
+      vi.stubEnv('NUXT_MODULE_BUILDER_DECLARATION_ENGINE', 'tsrs')
+      await expect(loadDeclarationEngine(cwd, {})).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_C0401', message: expect.stringContaining('`NUXT_MODULE_BUILDER_DECLARATION_ENGINE` selects') }))
+      vi.stubEnv('NUXT_MODULE_BUILDER_DECLARATION_ENGINE', 'swc')
+      await expect(loadDeclarationEngine(cwd, {})).rejects.toEqual(diagnostic('NUXT_MB_C0403'))
+    })
+
+    it('should refuse a `declarations` option it does not know', () => {
+      const cwd = fileURLToPath(new URL('../example', import.meta.url))
+      expect(resolveModuleOptions(cwd, {}, join(cwd, 'dist'), { declarations: { engine: 'typescript7', isolated: false } })).toMatchObject({ declarationEngine: 'typescript7', isolatedDeclarations: false })
+      expect(() => resolveModuleOptions(cwd, {}, join(cwd, 'dist'), { declarations: { engine: 'swc' as 'typescript', isolated: 'yes' } as never })).toThrow(expect.objectContaining({ code: 'NUXT_MB_C0009', message: expect.stringMatching(/declarations\.engine: "swc"[\s\S]*declarations\.isolated: "yes"/) }))
+    })
   })
 })

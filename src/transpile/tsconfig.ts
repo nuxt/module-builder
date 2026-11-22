@@ -254,7 +254,7 @@ const FOREIGN_DIR_RE = /^(?:playgrounds?(?:-.*)?|docs|tests?|fixtures|examples?|
  * its playground, docs, test, fixture and example directories, and not generated for
  * another app.
  */
-export function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: string): string[] {
+function projectFiles(parsed: ts.ParsedCommandLine | undefined, dir: string): string[] {
   return (parsed?.fileNames ?? []).filter(file => isModuleFile(file, dir))
 }
 

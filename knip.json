@@ -4,7 +4,9 @@
     "test/__snapshots__/**"
   ],
   "ignoreDependencies": [
-    "rolldown-plugin-dts"
+    "@typescript/typescript7",
+    "rolldown-plugin-dts",
+    "tsrs"
   ],
   "workspaces": {
     "example": {

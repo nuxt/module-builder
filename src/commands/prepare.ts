@@ -7,6 +7,7 @@ import { parseTsconfig } from 'get-tsconfig'
 import { dirname, join, relative, resolve } from 'pathe'
 import { glob } from 'tinyglobby'
 import { moduleTsconfigs } from '../build/build.ts'
+import { assertSupportedTypescript, loadDeclarationEngine } from '../build/engine.ts'
 import { assertLoadableModuleCode, importModule } from '../build/loader.ts'
 import { moduleDeclarationPaths, writeModuleDeclarations } from '../build/module-declarations.ts'
 import { bundledEntries, resolveModuleOptions } from '../build/options.ts'
@@ -15,7 +16,7 @@ import { selfReferencePaths } from '../build/package.ts'
 import { augmentsNuxtTypes, writeSourceTypes } from '../build/types.ts'
 import { noteUncheckedFiles } from '../build/unchecked.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
-import { isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
+import { hasIsolatedDeclarations, isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -85,6 +86,7 @@ export interface PrepareModuleOptions {
 }
 
 export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, { declarations = true }: PrepareModuleOptions = {}): Promise<{ result: unknown }> {
+  await assertSupportedTypescript()
   const { runCommand } = await import('@nuxt/cli')
 
   const { config, outDir, pkg } = prepareConfig ?? await loadPrepareConfig(cwd)
@@ -253,7 +255,14 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
     const nodeTsconfig = resolve(cwd, '.nuxt/tsconfig.node.json')
     const tsconfig = project && project !== tsconfigs.root ? project : { path: nodeTsconfig, config: parseTsconfig(nodeTsconfig) }
     const imports = await writeDependencyImports(cwd, tsconfigs.root)
-    await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths, imports })
+    const isolated = config.isolatedDeclarations ?? hasIsolatedDeclarations(tsconfig)
+    const engine = isolated ? undefined : await loadDeclarationEngine(cwd, config)
+    try {
+      await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths, imports, engine, isolated })
+    }
+    finally {
+      await engine?.close()
+    }
   }
   return result
 }

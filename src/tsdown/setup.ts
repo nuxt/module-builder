@@ -8,6 +8,7 @@ import type { InlineConfig, ResolvedConfig, Rolldown, UserConfig } from 'tsdown'
 
 import { analyseSources, directoryPluginName, finishBuild, onBuildError, prepareBuild, preservesJsx, resolveBuild, resolveDirectoryExternal } from '../build/build.ts'
 import { withoutDirectiveComments } from '../build/directives.ts'
+import { assertSupportedTypescript, loadDeclarationEngine } from '../build/engine.ts'
 import { loadOxc } from '../build/loader.ts'
 import { resolveModuleOptions, resolveOutDir } from '../build/options.ts'
 import type { BuilderOptions, ModuleConfig, ReplaceOptions } from '../build/options.ts'
@@ -43,6 +44,8 @@ export interface BuilderSession {
    */
   onGenerateBundle: (bundle: Rolldown.OutputBundle) => Promise<void>
   onWriteBundle: () => Promise<void>
+  /** Releases the declaration engine after a one-off build. */
+  onCloseBundle: () => Promise<void>
   /** Releases what a watcher keeps between builds. */
   onCloseWatcher: () => Promise<void>
 }
@@ -76,6 +79,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     throw errors.NUXT_MB_C0001({ options: forbidden.map(([option, , reason]) => ({ option, reason })) })
   }
 
+  await assertSupportedTypescript()
   const cwd = realpath(config.cwd ?? process.cwd())
   const pkg = await readPackageJson(cwd)
   const packageError = sourcePathsPackError(cwd, pkg) ?? unpublishablePathsError(cwd, pkg)
@@ -92,6 +96,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   }
 
   const plan = await resolveBuild({ cwd, pkg, outDir, sourcemap: !!config.sourcemap, config: buildConfig })
+  const engine = await loadDeclarationEngine(cwd, buildConfig)
   const directoryPlugins = plan.directories.map(directory => transpileDir({
     name: directoryPluginName(plan, directory),
     cwd,
@@ -105,6 +110,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     jsx: file => preservesJsx(plan, file) ? 'preserve' : { runtime: 'automatic', importSource: 'vue' },
     resolveExternal: resolveDirectoryExternal(plan),
     reserved: [...Object.keys(plan.entries), 'types'],
+    engine,
   }))
 
   let watch = false
@@ -139,7 +145,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
   const userInputOptions = config.inputOptions
   const userHooks = config.hooks
   const compilerOptions = { paths: plan.declarationPaths, noCheck: true }
-  const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, cacheVersion: plan.generatedTypesHash, watch: () => watch })
+  const entryDeclarations = plan.isolatedDeclarations ? undefined : entryDeclarationGenerator({ cwd, tsconfig: plan.declarationTsconfig, compilerOptions, cacheVersion: plan.generatedTypesHash, watch: () => watch, engine })
   const dts = {
     tsconfig: plan.declarationTsconfig,
     generator: entryDeclarations ?? 'oxc' as const,
@@ -234,6 +240,7 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
     },
     async onCloseWatcher() {
       await entryDeclarations?.close()
+      await engine?.close()
     },
     async onGenerateBundle(bundle) {
       const missing = Object.keys(plan.entries).map(name => `${name}.mjs`).filter((fileName) => {
@@ -266,6 +273,11 @@ export async function setupBuilder(config: UserConfig, inline: InlineConfig, opt
         builder: { tsdown: (createRequire(import.meta.url)('tsdown/package.json') as PackageJson).version || 'unknown' },
         keepOutput: watch,
       })
+    },
+    async onCloseBundle() {
+      if (!watch) {
+        await engine?.close()
+      }
     },
   }
   return session
