@@ -67,7 +67,7 @@ If your module has a `build.config.ts`, or a `build` or `unbuild` field in `pack
 | `hooks['build:before']` | tsdown's `hooks['build:prepare']`, where `ctx.options.cwd` is the module root |
 | `hooks['build:done']` | tsdown's `hooks['build:done']` |
 | `hooks['rollup:done']` | a plugin that [emits the extra files](./4.configuration.md#extra-files-in-the-output), or `package.json` paths that point at the files the build emits |
-| `rollup.inlineDependencies` | tsdown's `deps.onlyBundle`, or `false` in place of `true` |
+| `rollup.inlineDependencies` | a list: tsdown's `deps.onlyBundle`. `true`: `deps.onlyBundle: false`. `false`: nothing, drop it |
 | `hooks['mkdist:*']`, `declaration`, `failOnWarn`, `name`, and `parallel` | nothing: drop them |
 | any other option | see [Unsupported build options](#unsupported-build-options) |
 
