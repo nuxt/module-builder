@@ -1893,6 +1893,10 @@ describe('createDeclarationProgram', () => {
     expect(await restoreImports(outsideNamespace, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${outsideNamespace}`)
     const falseBranch = `export type PickIcon<T> = T extends { icon: infer Icon } ? Icon : Icon;\n`
     expect(await restoreImports(falseBranch, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${falseBranch}`)
+    const checked = `export type Copy = Icon extends infer Icon ? Icon : never;\n`
+    expect(await restoreImports(checked, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${checked}`)
+    const inferred = `export type Items<T> = T extends [infer Icon, ...Icon[]] ? Icon : never;\n`
+    expect(await restoreImports(inferred, 'icon.ts', source)).toBe(inferred)
   })
 
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {

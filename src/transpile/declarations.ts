@@ -185,7 +185,7 @@ const DECLARED_TYPES = new Set(['TSInterfaceDeclaration', 'TSTypeAliasDeclaratio
 function unboundNames(declaration: string): string[] {
   const parents = new Map<Node, Node>()
   const referenced: Array<[name: string, node: Node]> = []
-  const declared: Array<[name: string, scope: Node, outside?: Node]> = []
+  const declared: Array<[name: string, scope: Node]> = []
   const reference = (name: string | undefined, node: Node) => {
     if (name !== undefined) {
       referenced.push([name, node])
@@ -241,7 +241,9 @@ function unboundNames(declaration: string): string[] {
       case 'TSTypeParameter':
         if (parent?.type === 'TSInferType') {
           const conditional = ancestor(parent, ({ type }) => type === 'TSConditionalType')
-          declared.push(conditional?.type === 'TSConditionalType' ? [node.name.name, conditional, conditional.falseType] : [node.name.name, parent])
+          for (const scope of conditional?.type === 'TSConditionalType' ? [conditional.extendsType, conditional.trueType] : [parent]) {
+            declared.push([node.name.name, scope])
+          }
         }
         else {
           declared.push([node.name.name, parents.get(parent!)!])
@@ -272,7 +274,7 @@ function unboundNames(declaration: string): string[] {
     }
   })
   const within = (node: Node, scope: Node) => node === scope || ancestor(node, current => current === scope) !== undefined
-  return [...new Set(referenced.filter(([name, node]) => !declared.some(([local, scope, outside]) => local === name && within(node, scope) && !(outside && within(node, outside)))).map(([name]) => name))]
+  return [...new Set(referenced.filter(([name, node]) => !declared.some(([local, scope]) => local === name && within(node, scope))).map(([name]) => name))]
 }
 
 /** The import declarations of `code`, the contents of `source`, or of the scripts of a single-file component. */
