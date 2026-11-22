@@ -138,7 +138,7 @@ describe('bundledPackages', () => {
   it('should fail on the installed packages that `allowed` leaves out, naming the files and packages that import them', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'module-builder-bundled-'))
     onTestFinished(() => rm(cwd, { recursive: true, force: true }))
-    for (const name of ['@scope/allowed', '@scope/bundled', 'transitive', 'listed']) {
+    for (const name of ['@scope/allowed', '@scope/bundled', 'transitive', 'listed', 'tsdown']) {
       await mkdir(join(cwd, 'node_modules', name), { recursive: true })
       await writeFile(join(cwd, 'node_modules', name, 'package.json'), JSON.stringify({ name }))
     }
@@ -157,6 +157,7 @@ describe('bundledPackages', () => {
 
     await generateBundle.call(context, {}, bundle([id('node_modules/@scope/allowed/index.js'), id('node_modules/listed/index.js')]))
     await generateBundle.call(context, {}, bundle([id('node_modules/@scope/allowed/index.js')]))
+    await generateBundle.call(context, {}, bundle([id('node_modules/tsdown/esm-shims.js')]))
     expect(onError).not.toHaveBeenCalled()
 
     const failure = generateBundle.call(context, {}, bundle(Object.keys(importers)))

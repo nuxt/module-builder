@@ -72,7 +72,7 @@ export function bundledPackages({ cwd, allowed, legacy, onError }: BundledPackag
         }
         for (const id of chunk.moduleIds) {
           const name = installedPackage(id)
-          if (!name || isAllowed(name)) {
+          if (!name || isAllowed(name) || TSDOWN_SHIMS_RE.test(normalize(id))) {
             continue
           }
           const importers = found.get(name) ?? new Set()
@@ -96,6 +96,8 @@ export function bundledPackages({ cwd, allowed, legacy, onError }: BundledPackag
 }
 
 const NODE_MODULES = '/node_modules/'
+/** The file tsdown injects for `__dirname` and `__filename` with its `shims` option. */
+const TSDOWN_SHIMS_RE = /\/node_modules\/tsdown\/esm-shims\.js$/
 
 /** The name of the package in `node_modules` that `id` belongs to, read from its path as tsdown does. */
 function installedPackage(id: string) {
