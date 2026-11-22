@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { debuglog } from 'node:util'
-import { dirname, join } from 'pathe'
+import { dirname, join, normalize } from 'pathe'
 
 import { findUp } from '../utils.ts'
 
@@ -55,7 +55,7 @@ function installedPackage(name: string, from: string): InstalledPackage | undefi
 
 function withApi({ base, installedAs, version }: InstalledPackage): TypescriptApi | undefined {
   const require = createRequire(join(base, 'index.js'))
-  const file = require.resolve(installedAs)
+  const file = normalize(require.resolve(installedAs))
   const ts = require(file) as Partial<typeof import('typescript')>
   return typeof ts.createProgram === 'function' ? { ts: ts as typeof import('typescript'), version, file } : undefined
 }
