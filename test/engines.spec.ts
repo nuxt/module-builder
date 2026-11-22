@@ -78,6 +78,12 @@ beforeAll(async () => {
   }
   dirs.fallback = await fixture('.temp-engines/fallback', { config: config('tsrs'), files: EXTRA })
   dirs.installed = await fixture('.temp-engines/installed', { files: EXTRA })
+  dirs.declarationMap = await fixture('.temp-engines/declaration-map', {
+    files: {
+      'tsconfig.module.json': JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { declarationMap: true } }),
+      'tsconfig.json': source => JSON.stringify({ ...JSON.parse(source), references: [{ path: './tsconfig.module.json' }, ...JSON.parse(source).references.slice(1)] }),
+    },
+  })
   dirs.isolated = await fixture('.temp-engines/isolated', {
     config: config('typescript', ', isolated: true'),
     module: ISOLATED_MODULE,
@@ -106,6 +112,7 @@ beforeAll(async () => {
     ...['typescript', ...native].map(engine => step(`${engine}-portability`, tsdown(dirs[`${engine}-portability`]!)).then(() => step(`${engine}-portability:prepare`, cli(['prepare', dirs[`${engine}-portability`]!])))),
     step('fallback', tsdown(dirs.fallback!, [], { TSRS_BINARY: join(dirs.fallback!, 'missing-tsrs') })),
     step('installed', cli(['prepare', dirs.installed!])),
+    step('declarationMap', tsdown(dirs.declarationMap!)),
     step('isolated', tsdown(dirs.isolated!)).then(() => step('isolated:prepare', cli(['prepare', dirs.isolated!]))).then(() => step('isolated:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolated }))),
     step('isolatedMissing', tsdown(dirs.isolatedMissing!)).then(() => step('isolatedMissing:prepare', cli(['prepare', dirs.isolatedMissing!]))),
     step('notIsolated', tsdown(dirs.notIsolated!)).then(async () => {
@@ -188,6 +195,11 @@ it.skipIf(reasons.tsrs?.includes('not installed'))('should generate declarations
   expect(output.match(/NUXT_MB_C0404/g)).toHaveLength(1)
   expect(output).toContain(reasons.tsrs ?? 'missing-tsrs')
   expect(await declarationsOf(dirs.fallback!, 'dist')).toEqual(await declarationsOf(dirs.typescript!, 'dist'))
+})
+
+it.skipIf(reasons.typescript7)('should map the declarations of the bundled entries to their sources when the tsconfig asks for declaration maps', async () => {
+  expectBuilt('declarationMap')
+  expect(JSON.parse(await read(dirs.declarationMap!, 'dist/module.d.mts.map')).sources).toEqual(['../src/module.ts'])
 })
 
 it.skipIf(reasons.typescript7)('should generate declarations with the engine the module has installed when none is selected', async () => {

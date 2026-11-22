@@ -295,7 +295,8 @@ function engineBackend(options: EntryDeclarationOptions & { tsconfig: string, en
 
 /**
  * The declaration generator of the bundled entries: rolldown-plugin-dts's `tsc` emit in a worker
- * thread, or a program of `engine`. The declarations of a build are kept in the module's cache
+ * thread, or a program of `engine` unless the tsconfig asks for declaration maps, which only the
+ * worker emits. The declarations of a build are kept in the module's cache
  * and reused, without a program, while none of the files that build's program read have changed.
  */
 export function entryDeclarationGenerator(options: EntryDeclarationOptions): DeclarationGenerator & { close: () => Promise<void> } {
@@ -311,10 +312,10 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
     async init() {
       if (!cache) {
         const modules = workerModules()
-        const { engine, tsconfig } = options
-        const worker = () => workerBackend(modules, dtsOptions, options.watch)
-        backend = engine && tsconfig ? engineBackend({ ...options, tsconfig, engine }, worker) : worker()
         const key = await cacheKey(modules, dtsOptions, options.cacheVersion)
+        const engine = key.sourcemap ? undefined : options.engine
+        const worker = () => workerBackend(modules, dtsOptions, options.watch)
+        backend = engine && options.tsconfig ? engineBackend({ ...options, tsconfig: options.tsconfig, engine }, worker) : worker()
         cache = contentCache(options.cwd, 'entry-declarations', engine ? { ...key, engine: engine.name, version: engine.version } : key)
         const stored = await cache.read()
         cached = stored && new Map(Object.entries(stored))
