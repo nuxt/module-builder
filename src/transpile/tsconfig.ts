@@ -8,6 +8,7 @@ import type ts from 'typescript'
 
 import { findPackageDir, findUp, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
 import { moduleSpecifiers } from './specifiers.ts'
+import { loadTypescript } from './typescript.ts'
 
 export interface TsconfigResolver {
   /** The nearest tsconfig, which may delegate files to `references`. */
@@ -64,7 +65,7 @@ const presented = new Map<string, string>()
  * that one are hidden.
  */
 export async function typeResolutionFs(files: string[], project: (file: string) => TsConfigResult | undefined): Promise<Map<string, TypeResolutionFs>> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const configs = new Map<string, Promise<string>>()
   const owners = new Map<string, string>()
   const result = new Map<string, TypeResolutionFs>()
@@ -142,7 +143,7 @@ const PATH_LIST_OPTIONS = ['rootDirs', 'typeRoots'] as const
  * `references` into another `.nuxt` are dropped.
  */
 async function rebaseOnOwnBuildDir(tsconfig: string, own: string, dir: string): Promise<TsConfigResult> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const ownConfig = parseTsconfig(own)
   const ownPaths = tsconfigPaths({ path: own, config: ownConfig })
   const { paths, types, ...options } = (await inheritedTsconfig(tsconfig, target => isForeignBuildFile(target, dir))).compilerOptions
@@ -179,7 +180,7 @@ interface InheritedTsconfig {
 
 /** The `compilerOptions` and `exclude` of `dir/tsconfig.json`, see {@link inheritedTsconfig}, apart from those of tsconfigs in a `.nuxt`, and whether it has `references`. */
 export async function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const file = join(dir, 'tsconfig.json')
   const raw = ts.readConfigFile(file, ts.sys.readFile).config as RawTsconfig | undefined
   return { ...await inheritedTsconfig(file, target => NUXT_BUILD_DIR_RE.test(target)), references: !!raw?.references?.length }
@@ -191,7 +192,7 @@ export async function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
  * resolve against the merged `baseUrl`, or else the directory of the tsconfig that sets them.
  */
 async function inheritedTsconfig(file: string, skip: (file: string) => boolean): Promise<InheritedTsconfig> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const configDir = dirname(file)
   const layer = (path: string, ancestors: string[]): InheritedTsconfig & { pathsBase?: string } => {
     const raw = ts.readConfigFile(path, ts.sys.readFile).config as RawTsconfig | undefined
@@ -452,7 +453,7 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
   if (!projects.length) {
     return
   }
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const files = new Set(projects.flatMap(project => projectFiles(parseProject(ts, project.path, true), cwd)))
   const sources = await Promise.all([...files].sort().map(async file => ({ file, source: await readFile(file, 'utf8').catch(() => '') })))
   const specifiers = new Map<string, string>()
@@ -478,7 +479,7 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
  * is listed in each derived tsconfig that lists files of its own.
  */
 export async function writeDerivedTsconfig(cwd: string, tsconfig: TsConfigResult, paths: Record<string, string[]>, { file, vue = false, imports }: { file?: string, vue?: boolean, imports?: string } = {}): Promise<string> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const declaration = await writeDeclarationPaths(cwd, tsconfig, paths)
   const compilerOptions: Record<string, unknown> = { paths: declaration.paths, isolatedDeclarations: false }
   if (declaration.ambient) {

@@ -11,6 +11,7 @@ import type { ContentCache } from '../transpile/cache.ts'
 import { createDeclarationProgram, declarationError, restoreImports } from '../transpile/declarations.ts'
 import type { DeclarationProgram } from '../transpile/declarations.ts'
 import type { DeclarationEngine } from '../transpile/engine.ts'
+import { loadTypescript } from '../transpile/typescript.ts'
 import { DECLARATION_RE } from '../utils.ts'
 
 /** The `Generator` interface of rolldown-plugin-dts. */
@@ -175,19 +176,20 @@ function workerModules(): WorkerModules {
     dts: pathToFileURL(dts).href,
     tsc: pathToFileURL(require.resolve('rolldown-plugin-dts/tsc')).href,
     context: pathToFileURL(require.resolve('rolldown-plugin-dts/tsc-context')).href,
-    typescript: pathToFileURL(createRequire(dts).resolve('typescript')).href,
+    typescript: pathToFileURL(loadTypescript().file).href,
   }
 }
 
 /** What the declarations depend on besides the files the program reads. */
 async function cacheKey(modules: WorkerModules, dtsOptions: Record<string, unknown>, cacheVersion: string) {
   const { resolveOptions } = await import(modules.dts) as { resolveOptions: (options: object) => { tsconfig?: string, tsconfigRaw: unknown, sourcemap: boolean } }
-  const resolved = resolveOptions(dtsOptions)
+  // The `tsc` generator needs the JavaScript API of the `typescript` rolldown-plugin-dts resolves, and the options read here do not depend on the generator.
+  const resolved = resolveOptions({ ...dtsOptions, generator: 'oxc' })
   const require = createRequire(new URL(modules.dts))
   return {
     builder: builderPkg.version,
     dts: (require('rolldown-plugin-dts/package.json') as { version: string }).version,
-    typescript: (require('typescript/package.json') as { version: string }).version,
+    typescript: loadTypescript().version,
     tsconfig: resolved.tsconfig,
     tsconfigRaw: resolved.tsconfigRaw,
     sourcemap: resolved.sourcemap,

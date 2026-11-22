@@ -28,6 +28,7 @@ import { contentCache } from '../src/transpile/cache.ts'
 import { createDeclarationProgram, declarationDiagnosticClass, declarationError, REMAPPED_CODES, restoreImports } from '../src/transpile/declarations.ts'
 import type { DeclarationEngine } from '../src/transpile/engine.ts'
 import { createNativeEngine, installedNativeEngine, platformProblem } from '../src/transpile/native.ts'
+import { findTypescript, loadTypescript } from '../src/transpile/typescript.ts'
 import { assertSupportedTypescript, loadDeclarationEngine } from '../src/build/engine.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
@@ -2166,16 +2167,57 @@ describe('declaration engines', () => {
       await expect(createNativeEngine(unspawnable, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'platform', message: expect.stringContaining('its binary does not start') }))
     })
 
-    it('should refuse a module whose own `typescript` has no JavaScript API, and say which versions work', async () => {
+    const ownTypescript = (version: string) => version.startsWith('7.')
+      ? {
+          'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version, type: 'module', exports: { '.': './lib/version.cjs', './package.json': './package.json' } }),
+          'node_modules/typescript/lib/version.cjs': `module.exports = { version: '${version}', versionMajorMinor: '${version.slice(0, 3)}' }\n`,
+        }
+      : {
+          'node_modules/typescript/package.json': JSON.stringify({ name: 'typescript', version, main: './lib/typescript.js' }),
+          'node_modules/typescript/lib/typescript.js': `module.exports = { version: '${version}', createProgram() {} }\n`,
+        }
+    const typescript6 = (manifest: Record<string, unknown>, main = `module.exports = { version: '${manifest.version}', createProgram() {} }\n`) => ({
+      'node_modules/@typescript/typescript6/package.json': JSON.stringify({ main: './lib/typescript.js', ...manifest }),
+      'node_modules/@typescript/typescript6/lib/typescript.js': main,
+    })
+
+    it('should load the JavaScript API of the module\'s own `typescript` when it has one', async () => {
+      expect(loadTypescript().ts).toBe(ts)
+      expect(loadTypescript().version).toBe(ts.version)
+      const own = await fakePackage({ ...ownTypescript('5.9.3'), ...typescript6({ name: '@typescript/typescript6', version: '6.0.2' }) })
+      expect(findTypescript(own)).toMatchObject({ version: '5.9.3', file: join(own, 'node_modules/typescript/lib/typescript.js') })
+    })
+
+    it('should load `@typescript/typescript6` when the module\'s own `typescript` has no JavaScript API', async () => {
+      const cwd = await fakePackage({ ...ownTypescript('7.1.0'), ...typescript6({ name: '@typescript/typescript6', version: '6.0.2' }) })
+      expect(findTypescript(cwd)).toMatchObject({ version: '6.0.2', file: join(cwd, 'node_modules/@typescript/typescript6/lib/typescript.js') })
+      expect(findTypescript(await fakePackage(typescript6({ name: '@typescript/typescript6', version: '6.0.2' })))).toMatchObject({ version: '6.0.2' })
+    })
+
+    it('should not import a `@typescript/typescript6` that is another package or version', async () => {
+      const unused = `throw new Error('imported')\n`
+      const aliased = await fakePackage({ ...ownTypescript('7.1.0'), ...typescript6({ name: 'typescript', version: '6.0.3' }, unused) })
+      expect(() => findTypescript(aliased)).toThrow(expect.objectContaining({ found: 'typescript@7.1.0', fallback: 'typescript@6.0.3' }))
+      const seven = await fakePackage({ ...ownTypescript('7.1.0'), ...typescript6({ name: '@typescript/typescript6', version: '7.0.0' }, unused) })
+      expect(() => findTypescript(seven)).toThrow(expect.objectContaining({ fallback: '@typescript/typescript6@7.0.0' }))
+      const none = await fakePackage({})
+      expect(() => findTypescript(none)).toThrow(expect.objectContaining({ found: undefined, fallback: undefined }))
+    })
+
+    it('should refuse a module with no JavaScript API of TypeScript 6, and say to install `@typescript/typescript6`', async () => {
       await expect(assertSupportedTypescript()).resolves.toBeUndefined()
+      const cwd = await fakePackage(ownTypescript('7.0.2'))
       vi.resetModules()
-      vi.doMock('typescript', () => ({ default: { version: '7.0.2', versionMajorMinor: '7.0' } }))
+      vi.doMock('../src/transpile/typescript.ts', async (importOriginal) => {
+        const original = await importOriginal<typeof import('../src/transpile/typescript.ts')>()
+        return { ...original, loadTypescript: () => original.findTypescript(cwd) }
+      })
       onTestFinished(() => {
-        vi.doUnmock('typescript')
+        vi.doUnmock('../src/transpile/typescript.ts')
         vi.resetModules()
       })
       const { assertSupportedTypescript: assertWithTypescript7 } = await import('../src/build/engine.ts')
-      await expect(assertWithTypescript7()).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_B0005', message: expect.stringContaining('`typescript@7.0.2`'), fix: expect.stringContaining('typescript@^6.0.0') }))
+      await expect(assertWithTypescript7()).rejects.toThrow(expect.objectContaining({ code: 'NUXT_MB_B0005', message: expect.stringContaining('`typescript@7.0.2`'), fix: expect.stringContaining('pnpm add -D @typescript/typescript6') }))
     })
 
     it('should warn rather than fail when the engine the module has installed is too old', async () => {

@@ -1,6 +1,7 @@
 import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
+import { loadTypescript } from '../transpile/typescript.ts'
 
 const DIRECTIVE_RE = /@ts-(?:expect-error|ignore|nocheck|check)\b/g
 const LINE_DIRECTIVE_RE = /^\/\/\/?[\t ]*@ts-(?:expect-error|ignore|nocheck|check)\b/
@@ -20,7 +21,7 @@ export function withoutDirectiveComments(transform: Transform): Transform {
 }
 
 async function blankDirectiveComments(source: string, lang: string) {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const sourceFile = ts.createSourceFile(`source.${lang}`, source, ts.ScriptTarget.Latest, false, ts.ScriptKind[SCRIPT_KINDS[lang] ?? 'TS'])
   const comments = new Map<number, number>()
   for (const { index } of source.matchAll(DIRECTIVE_RE)) {

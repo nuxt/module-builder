@@ -1,7 +1,7 @@
-import { createRequire } from 'node:module'
 import type ts from 'typescript'
 
 import { RELATIVE_RE } from '../utils.ts'
+import { loadTypescript } from './typescript.ts'
 
 const JSX_RE = /\.[jt]sx$/
 const DYNAMIC_IMPORT_RE = /\bimport\s*(?:\(|\/[*/])/
@@ -26,11 +26,9 @@ interface Reference extends Specifier {
   typeOnly: boolean
 }
 
-let typescript: typeof import('typescript') | undefined
-
 /** `code` parsed by TypeScript, as the language that the extension of `filename` implies. */
 export function parseModule(code: string, filename: string): { ts: typeof import('typescript'), sourceFile: ts.SourceFile } {
-  const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
+  const { ts } = loadTypescript()
   const sourceFile = ts.createSourceFile(filename, code, { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseNone })
   return { ts, sourceFile }
 }

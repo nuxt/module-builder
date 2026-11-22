@@ -17,6 +17,7 @@ import { augmentsNuxtTypes, writeSourceTypes } from '../build/types.ts'
 import { noteUncheckedFiles } from '../build/unchecked.ts'
 import { loadBuildConfig } from '../legacy/build-config.ts'
 import { hasIsolatedDeclarations, isModuleFile, rootTsconfig, writeDependencyImports } from '../transpile/tsconfig.ts'
+import { loadTypescript } from '../transpile/typescript.ts'
 import { isInside, probe, readPackageJson, resolveFrom } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { assertNoStubArg, resolveCwdArg, sharedArgs } from './_shared.ts'
@@ -55,7 +56,7 @@ async function declaresModules(cwd: string, runtimeDirs: string[], entries: stri
 }
 
 async function ambientDeclarations(cwd: string, runtimeDirs: string[], exclude: string[]) {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const ignore = [...runtimeDirs, ...exclude].flatMap((pattern) => {
     const path = relative(cwd, pattern)
     return [path, `${path}/**`]

@@ -8,6 +8,7 @@ import type ts from 'typescript'
 
 import type { Transform } from '../transpile/transpile-dir.ts'
 import { packageName } from '../transpile/tsconfig.ts'
+import { loadTypescript } from '../transpile/typescript.ts'
 import { findPackageDir, findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { errors } from '../diagnostics.ts'
@@ -319,8 +320,6 @@ function importTarget(target: unknown, match: string | undefined): string | unde
   }
 }
 
-let typescript: typeof ts | undefined
-
 function scriptKind(ts: typeof import('typescript'), filename: string) {
   if (TYPESCRIPT_RE.test(filename)) {
     return filename.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
@@ -344,7 +343,7 @@ function hasRuntimeCode(ts: typeof import('typescript'), node: ts.ModuleDeclarat
 }
 
 function analyseSource(filename: string, source: string): SourceAnalysis {
-  const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
+  const { ts } = loadTypescript()
   const { SyntaxKind } = ts
   const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, scriptKind(ts, filename))
   const found: SourceAnalysis = { nonErasable: [], imports: [] }

@@ -3,6 +3,7 @@ import { ENGINES } from '../transpile/engine.ts'
 import type { DeclarationEngine, DeclarationEngineName } from '../transpile/engine.ts'
 import { createNativeEngine, hasNativeTypescript, installedNativeEngine, NativeEngineError } from '../transpile/native.ts'
 import type { NativeEngineName } from '../transpile/native.ts'
+import { loadTypescript, TYPESCRIPT6, TypescriptApiError } from '../transpile/typescript.ts'
 import { isDeclarationEngine } from './options.ts'
 import type { ModuleConfig } from './options.ts'
 
@@ -26,11 +27,16 @@ function selectedEngine(config: Pick<ModuleConfig, 'declarationEngine'>): { engi
   return config.declarationEngine && { engine: config.declarationEngine, setting: '`declarations.engine`' }
 }
 
-/** Fails when the module's own `typescript` has no JavaScript API, as TypeScript 7 has none. */
+/** Fails when neither the module's own `typescript` nor `@typescript/typescript6` has the JavaScript API of TypeScript 6, see `loadTypescript`. */
 export async function assertSupportedTypescript(): Promise<void> {
-  const ts = (await import('typescript')).default as Partial<typeof import('typescript')> & { version: string }
-  if (typeof ts.createProgram !== 'function') {
-    throw errors.NUXT_MB_B0005({ version: ts.version, install: INSTALL[ENGINES.typescript7] })
+  try {
+    loadTypescript()
+  }
+  catch (error) {
+    if (error instanceof TypescriptApiError) {
+      throw errors.NUXT_MB_B0005({ found: error.found, fallback: error.fallback, install: `pnpm add -D ${TYPESCRIPT6}` })
+    }
+    throw error
   }
 }
 

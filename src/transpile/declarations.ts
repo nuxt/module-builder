@@ -7,6 +7,7 @@ import { contentCache } from './cache.ts'
 import { createTscEngine } from './engine.ts'
 import type { DeclarationEngine, DeclarationProject, EngineDiagnostic, ProjectOptions, SourceFileCache } from './engine.ts'
 import { isModuleFile, writeDeclarationPaths } from './tsconfig.ts'
+import { loadTypescript } from './typescript.ts'
 
 export type { SourceFileCache } from './engine.ts'
 
@@ -173,7 +174,7 @@ const SFC_SCRIPT_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/script\
  * the module resolves the alias.
  */
 export async function restoreImports(declaration: string, source: string, code: string): Promise<string> {
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const script = source.endsWith('.vue') ? [...code.matchAll(SFC_SCRIPT_RE)].map(([, content]) => content).join('\n') : code
   const emitted = ts.createSourceFile('declaration.d.ts', declaration, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
   const referenced: Array<[name: string, node: ts.Node]> = []

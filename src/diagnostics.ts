@@ -73,8 +73,8 @@ export const errorCodes = {
     docs: '#bundled-packages',
   },
   NUXT_MB_B0005: {
-    why: (p: { version: string }): string => `\`@nuxt/module-builder\` uses the JavaScript API of the module's \`typescript\`, which needs \`${pkg.peerDependencies.typescript}\`, and the module has \`typescript@${p.version}\`, which has no JavaScript API.`,
-    fix: (p: { install: string }): string => `Install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`. To generate declarations with TypeScript 7, install it next to TypeScript 6 with \`${p.install}\`.`,
+    why: (p: { found?: string, fallback?: string }): string => `\`@nuxt/module-builder\` uses the JavaScript API of TypeScript, from the module's \`typescript\` (\`${pkg.peerDependencies.typescript}\`) or else from \`@typescript/typescript6\`. ${p.found ? `The module has \`${p.found}\`, which has no JavaScript API` : 'The module has no `typescript`'}, and ${p.fallback ? `\`@typescript/typescript6\` resolves to \`${p.fallback}\`, which is not \`@typescript/typescript6@^6.0.0\`` : '`@typescript/typescript6` is not installed'}.`,
+    fix: (p: { install: string }): string => `Install the JavaScript API of TypeScript 6 next to TypeScript 7 with \`${p.install}\`, or install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`.`,
     docs: false,
   },
 
