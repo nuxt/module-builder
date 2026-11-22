@@ -236,6 +236,8 @@ If you publish with pnpm or Yarn 4, point `exports`, `imports`, and `main` at yo
 
 If you publish with npm, Yarn 3 or earlier, or bun, keep `package.json` pointing at `dist`. Step 7 builds `dist` in `dev:prepare`, and `tsdown --watch` rebuilds it while you develop. [Develop and Publish](./3.develop-and-publish.md#preparing-a-checkout) describes both setups.
 
+If the playground lists the module by name, install the module in `playground/package.json` as [Installing the module in the playground](./3.develop-and-publish.md#installing-the-module-in-the-playground) shows.
+
 ### Step 7: Update the scripts
 
 In each script that runs the builder, change only the builder's commands, and keep every other command where it is. That covers `prepack`, `dev:prepare`, and any other script or CI workflow that runs the builder under one of its names:
