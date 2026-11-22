@@ -111,11 +111,11 @@ export interface FixtureOptions {
 const DEFAULT_CONFIG = `export default {\n  plugins: [builder({ entries: ['./src/utils'] })],\n}\n`
 
 /**
- * Copies `example` to `dir` under the repository, without `dist`, with `package.json` as it is
+ * Copies `example` to `dir`, relative to the repository unless absolute, without `dist`, with `package.json` as it is
  * published and a tsdown config that builds it with `builder()`.
  */
 export async function fixture(dir: string, { from = exampleDir, config = DEFAULT_CONFIG, module, files = {}, remove = [], pkg, paths, links = {} }: FixtureOptions = {}): Promise<string> {
-  const root = join(repoRoot, dir)
+  const root = resolve(repoRoot, dir)
   await rm(root, { recursive: true, force: true })
   await mkdir(dirname(root), { recursive: true })
   await cp(from, root, { recursive: true })

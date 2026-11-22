@@ -12,7 +12,7 @@ import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { loadOxc } from '../transpile/oxc.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, TsconfigError, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, packageName, replacedGeneratedPaths, restoredTsconfigPaths, TsconfigError, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
 import type { TsconfigResolver } from '../transpile/tsconfig.ts'
 import { errors, warnings } from '../diagnostics.ts'
 import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
@@ -81,6 +81,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
     warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })
   }
+  reportReplacedPaths(cwd, tsconfigs)
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const entries = bundledEntries(cwd, config)
@@ -105,9 +106,30 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     isolatedDeclarations: config.isolatedDeclarations ?? hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
     declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
-    declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
+    declarationPaths: declarationPaths({ ...selfPaths, ...restoredTsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
+  }
+}
+
+/**
+ * Warns about the module's own tsconfigs whose `paths` replace generated entries that the
+ * module cannot resolve without them: aliases, and packages it does not install itself.
+ */
+function reportReplacedPaths(cwd: string, tsconfigs: TsconfigResolver) {
+  const replaced = [tsconfigs.root, ...tsconfigs.projects].flatMap((tsconfig) => {
+    const found = replacedGeneratedPaths(tsconfig)
+    const aliases = Object.keys(found?.paths ?? {}).filter((alias) => {
+      const name = packageName(alias)
+      return !name || !findPackageDir(name, cwd)
+    })
+    return found && aliases.length ? [{ path: tsconfig!.path, generated: found.generated, aliases: aliases.sort((a, b) => Number(b === 'vue') - Number(a === 'vue')) }] : []
+  })
+  if (replaced.length) {
+    warnings.NUXT_MB_C0305({
+      tsconfigs: replaced.map(({ path, generated, aliases }) => ({ path: relative(cwd, path), generated: relative(cwd, generated), aliases })),
+      sources: replaced.flatMap(({ path, generated }) => [path, generated]),
+    })
   }
 }
 

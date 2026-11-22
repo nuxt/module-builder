@@ -13,6 +13,10 @@ function list(values: string[]) {
   return [...new Set(values)].map(value => `\`${value}\``).join(', ')
 }
 
+function someOf(values: string[], shown = 4) {
+  return values.length > shown + 1 ? `${list(values.slice(0, shown))} and ${values.length - shown} more` : list(values)
+}
+
 const UNPUBLISHABLE = 'TypeScript sources or paths that `files` leaves out'
 
 /** The upgrade guide as released with this version, which the `docs` anchors of diagnostics point into. */
@@ -265,6 +269,14 @@ export const warningCodes = {
     why: (p: { groups: Array<[path: string, files: number]> }): string => `No project that \`tsconfig.json\` references includes these TypeScript files, so \`vue-tsc -b\` does not type check them: ${p.groups.map(([path, files]) => path.endsWith('/') ? `\`${path}\` (${files} ${files === 1 ? 'file' : 'files'})` : `\`${path}\``).join(', ')}.`,
     fix: 'Reference a tsconfig that includes them, such as a `tsconfig.test.json` for tests and config files, or add them to the `exclude` of `tsconfig.json`.',
     docs: '#tests-and-config-files',
+  },
+  NUXT_MB_C0305: {
+    why: (p: { tsconfigs: Array<{ path: string, generated: string, aliases: string[] }> }): string => [
+      `These tsconfigs set \`paths\`, which replace the \`paths\` of the generated tsconfig that they extend, so the module's own type check does not resolve the entries they leave out${p.tsconfigs.some(({ aliases }) => aliases.includes('vue')) ? ', and types components as `any`, as `vue` is one of them' : ''}. The declarations are generated with these entries.`,
+      ...p.tsconfigs.map(({ path, generated, aliases }) => `  - \`${path}\` leaves out ${someOf(aliases)} of \`${generated}\``),
+    ].join('\n'),
+    fix: (p: { tsconfigs: Array<{ path: string }> }): string => `Remove \`paths\` from ${list(p.tsconfigs.map(({ path }) => path))}. Replace each of its aliases with a relative import, or with an entry in the \`imports\` field of \`package.json\`, with its \`dist\` path in \`publishConfig.imports\`.`,
+    docs: '#tsconfig-paths',
   },
   NUXT_MB_C0404: {
     why: (p: { engine: string, reason: string }): string => `The \`${p.engine}\` declaration engine cannot be used: ${p.reason}. Declarations are generated with the JavaScript API of the module's own TypeScript instead.`,

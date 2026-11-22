@@ -15,6 +15,8 @@ export interface TsconfigResolver {
   root: TsConfigResult | undefined
   /** The tsconfig a source file is compiled with. */
   resolve: (file: string) => TsConfigResult | undefined
+  /** The projects that `root` references, directly or through other projects. */
+  projects: TsConfigResult[]
   /** The tsconfig found above `dir` when it took its generated types from another app's `.nuxt`, which `.nuxt/tsconfig.json` replaces in `root`. */
   replaced?: string
 }
@@ -44,6 +46,7 @@ export async function createTsconfigResolver(dir: string): Promise<TsconfigResol
   return {
     root,
     resolve: file => projects.find(({ matches }) => matches(file.endsWith('.vue') ? `${file}.ts` : file))?.project ?? root,
+    projects: projects.map(({ project }) => project),
     ...replaced && { replaced },
   }
 }
@@ -312,6 +315,47 @@ export function tsconfigPaths(tsconfig: TsConfigResult | undefined): Record<stri
   return matchPath ? Object.fromEntries(Object.keys(paths).map(alias => [alias, matchPath(alias)])) : {}
 }
 
+/** The generated tsconfig in a `.nuxt` that `tsconfig` extends, directly or through other tsconfigs, and the entries of its `paths` that the `paths` of `tsconfig` replace, made absolute. */
+export interface ReplacedPaths {
+  generated: string
+  paths: Record<string, string[]>
+}
+
+/** See {@link ReplacedPaths}. `undefined` when `tsconfig` is generated itself, extends none, or keeps every entry. */
+export function replacedGeneratedPaths(tsconfig: TsConfigResult | undefined): ReplacedPaths | undefined {
+  if (!tsconfig || NUXT_BUILD_DIR_RE.test(tsconfig.path)) {
+    return
+  }
+  const generated = generatedBase(tsconfig.path, new Set([tsconfig.path]))
+  if (!generated) {
+    return
+  }
+  const own = tsconfigPaths(tsconfig)
+  const paths = Object.fromEntries(Object.entries(tsconfigPaths({ path: generated, config: parseTsconfig(generated) })).filter(([alias]) => !(alias in own)))
+  return Object.keys(paths).length ? { generated, paths } : undefined
+}
+
+function generatedBase(file: string, seen: Set<string>): string | undefined {
+  const { ts } = loadTypescript()
+  const raw = ts.readConfigFile(file, ts.sys.readFile).config as RawTsconfig | undefined
+  for (const target of [raw?.extends ?? []].flat().reverse()) {
+    const resolved = resolveExtends(ts, target, dirname(file))
+    if (!resolved || seen.has(resolved)) {
+      continue
+    }
+    seen.add(resolved)
+    const found = NUXT_BUILD_DIR_RE.test(resolved) ? resolved : generatedBase(resolved, seen)
+    if (found) {
+      return found
+    }
+  }
+}
+
+/** The tsconfig's `paths` made absolute, with the generated entries that they replace (see {@link replacedGeneratedPaths}) under them. */
+export function restoredTsconfigPaths(tsconfig: TsConfigResult | undefined): Record<string, string[]> {
+  return { ...replacedGeneratedPaths(tsconfig)?.paths, ...tsconfigPaths(tsconfig) }
+}
+
 const BUILD_ALIAS_RE = /^#(?:build|internal)(?:\/|$)/
 const SERVER_ROUTES_ALIAS = '#build/server-routes'
 const NUXT_BUILD_DIR_RE = /[\\/]\.nuxt(?:[\\/]|$)/
@@ -390,12 +434,12 @@ async function writeAtomic(file: string, contents: string) {
 }
 
 /**
- * The {@link declarationPaths} of the `paths` of `tsconfig` plus `paths`, once the files they
+ * The {@link declarationPaths} of the {@link restoredTsconfigPaths} of `tsconfig` plus `paths`, once the files they
  * rely on are written: the server routes stub, and the `ambient` file that declares each alias
  * left out as a module.
  */
 export async function writeDeclarationPaths(cwd: string, tsconfig: TsConfigResult | undefined, paths: Record<string, string[]>): Promise<{ paths: Record<string, string[]>, ambient?: string }> {
-  const declaration = declarationPaths({ ...tsconfigPaths(tsconfig), ...paths }, cwd)
+  const declaration = declarationPaths({ ...restoredTsconfigPaths(tsconfig), ...paths }, cwd)
   await writeServerRoutesStub(cwd)
   return {
     paths: declaration.paths,
@@ -470,7 +514,7 @@ export async function writeDependencyImports(cwd: string, tsconfig: TsConfigResu
 
 /**
  * Writes a tsconfig extending `tsconfig`, for tools that take a tsconfig file. Its `paths`
- * are the tsconfig's plus `paths`, less what {@link declarationPaths} drops; the aliases
+ * are the tsconfig's {@link restoredTsconfigPaths} plus `paths`, less what {@link declarationPaths} drops; the aliases
  * that are not followed get an ambient `declare module` through `types`. Declarations are
  * inferred, so `isolatedDeclarations` is off. The files are listed rather than inherited,
  * less those of a playground (see {@link projectFiles}). Each project in `references` is

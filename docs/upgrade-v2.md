@@ -439,6 +439,12 @@ See [Checks on published paths](./3.develop-and-publish.md#checks-on-published-p
 
 These messages appear when the module doesn't have the tsconfigs of step 5. Either its tsconfig extends another app's `.nuxt/tsconfig.json`, such as a monorepo root's, or the build reads the nearest tsconfig above the module. Give the module a `tsconfig.json` in its own directory, as in [step 5](#step-5-switch-to-the-modules-own-tsconfigs). If one of the module's own tsconfigs can't be read, fix it, or generate the file it names before you run `prepare`. See [Monorepos](./5.typescript.md#monorepos).
 
+### tsconfig `paths`
+
+The `paths` of a tsconfig replace those of the tsconfig that it extends. A tsconfig of your own that extends one in `.nuxt` and sets `paths` leaves out the entries that Nuxt generates, such as `#app`, `#imports`, and `vue` when it isn't in `devDependencies`. Your type check then doesn't resolve them, and types components as `any` without `vue`. The build generates declarations with the generated entries, and warns.
+
+Remove `paths` from that tsconfig, whether it is `tsconfig.json` extending `./.nuxt/tsconfig.json` or a tsconfig that `tsconfig.json` references in place of a generated one. Replace each of your aliases with a relative import, or with an entry in the `imports` field of `package.json`, as in [No tsconfig `paths` aliases](./5.typescript.md#no-tsconfig-paths-aliases). With source exports, add its `dist` path to `publishConfig.imports`.
+
 ### Tests and config files
 
 Outside CI, `nuxt-module-build prepare` lists the TypeScript files that no tsconfig in `references` includes, with the number of files in each directory. `vue-tsc -b` doesn't type check them. These are usually tests outside `test/nuxt`, fixtures, and config files in the module root.
