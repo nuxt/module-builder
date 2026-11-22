@@ -24,17 +24,6 @@ import { writeTypes } from './types.ts'
 
 const SERVER_DIR_RE = /(?:^|\/)server\//
 
-let nudged = false
-
-/** Whether to suggest `isolatedDeclarations`, which happens once per process and never in CI. */
-export function shouldNudge(isolatedDeclarations: boolean): boolean {
-  if (isolatedDeclarations || nudged || process.env.CI) {
-    return false
-  }
-  nudged = true
-  return true
-}
-
 /** Everything a build needs to know about the module, resolved before anything is written. */
 export interface BuildPlan {
   cwd: string
@@ -235,10 +224,6 @@ export async function finishBuild(plan: BuildPlan, { outputs, builder, keepOutpu
     await writeTypes(outDir)
     await plan.config.callHook?.('rollup:done', plan)
     await rewriteRuntimeDeclarations(outDir, outputs)
-
-    if (shouldNudge(plan.isolatedDeclarations)) {
-      warnings.NUXT_MB_B0205({ project: plan.moduleProject && relative(cwd, plan.moduleProject), sources: plan.moduleProject ? [plan.moduleProject] : [resolve(cwd, 'tsconfig.json')] }, { method: 'info' })
-    }
 
     await checkPublishedPaths(cwd)
     const importsError = unpublishableImportsError(cwd, pkg, importedFrom(outDir, Object.keys(publishedPackage(pkg).imports ?? {})))

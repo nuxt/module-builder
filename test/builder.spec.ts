@@ -181,6 +181,22 @@ export default {
     'tsconfig.json': REFERENCES('./tsconfig.module.json'),
   }
   dirs.moduleProject = await fixture('.temp-builder/module-project', { config: PLUGIN, module: source => source + FIELDS, files: moduleProject })
+  const typescriptDocs = (await read(repoRoot, 'docs/5.typescript.md')).replaceAll('\r\n', '\n')
+  const isolatedTsconfig = typescriptDocs.slice(typescriptDocs.indexOf('### `isolatedDeclarations`')).match(/```json \[tsconfig\.module\.json\]\n([\s\S]*?)```/)![1]!
+  dirs.isolatedAsDocumented = await fixture('.temp-builder/isolated-as-documented', {
+    config: PLUGIN,
+    module: source => [
+      `import type { NuxtModule } from '@nuxt/schema'`,
+      source.replace('export default defineNuxtModule<ModuleOptions>({', 'const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({'),
+      'export default module',
+    ].join('\n'),
+    files: {
+      'src/utils.ts': 'export const myModuleUtils = (): void => {}\n',
+      'src/runtime/plugins/plugin.ts': source => `import type { Plugin } from '#app'\n${source.replace('export default defineNuxtPlugin(', 'const plugin: Plugin = defineNuxtPlugin(')}\nexport default plugin\n`,
+      'tsconfig.module.json': isolatedTsconfig,
+      'tsconfig.json': REFERENCES('./tsconfig.module.json'),
+    },
+  })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -203,6 +219,18 @@ export default {
       'src/lib/two.ts': `import type { One } from './one.ts'\n\nexport interface Two extends One { size: number }\n\nexport const two: Two = { name: 'two', size: 2 }\n`,
     },
   })
+  const fakePackages = Object.fromEntries(['fake-dep', 'fake-peer', 'fake-dev', 'fake-undeclared'].flatMap(name => [
+    [`node_modules/${name}/package.json`, JSON.stringify({ name, type: 'module', exports: { '.': { types: './index.d.ts', default: './index.js' } } })],
+    [`node_modules/${name}/index.js`, `export const value = 'inlined-${name}'\n`],
+    [`node_modules/${name}/index.d.ts`, `export declare const value: string\n`],
+  ]))
+  const dependencies = {
+    pkg: (pkg: Record<string, unknown>) => ({ ...pkg, dependencies: { ...pkg.dependencies as object, 'fake-dep': '1.0.0' }, peerDependencies: { 'fake-peer': '1.0.0' }, devDependencies: { ...pkg.devDependencies as object, 'fake-dev': '1.0.0' } }),
+    module: (source: string) => `import { existsSync } from 'node:fs'\n${['dep', 'peer', 'dev', 'undeclared'].map(name => `import { value as ${name} } from 'fake-${name}'`).join('\n')}\n\n${source}\nexport const values: unknown[] = [existsSync, dep, peer, dev, undeclared]\n`,
+    files: fakePackages,
+  }
+  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: PLUGIN, ...dependencies })
+  dirs.onlyBundle = await fixture('.temp-builder/only-bundle', { config: `export default { deps: { onlyBundle: ['fake-dev'] }, plugins: [builder()] }\n`, ...dependencies })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
     module: source => source + FIELDS,
@@ -221,9 +249,14 @@ export default {
     ]),
     ...Object.keys(variants).map(name => step(name, tsdown(dirs[name]!))),
     step('contexts', tsdown(dirs.contexts)).then(() => step('contexts:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.contexts }))),
-    step('moduleProject', tsdown(dirs.moduleProject, [], { CI: '' })),
+    step('moduleProject', tsdown(dirs.moduleProject)),
+    step('isolatedAsDocumented:prepare', cli(['prepare', dirs.isolatedAsDocumented]))
+      .then(() => step('isolatedAsDocumented:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolatedAsDocumented })))
+      .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
+    step('dependencies', tsdown(dirs.dependencies)),
+    step('onlyBundle', tsdown(dirs.onlyBundle)),
     step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
       .then(async () => snapshots.declarations = await read(dirs.nested!, 'dist/module.d.mts'))
       .then(() => step('nested:unchanged', tsdown(dirs.nested!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' })))
@@ -253,6 +286,21 @@ describe('builder', () => {
     expect(module).not.toContain('bundled-fake-ext')
     expect(module).toContain('from "./runtime/utils/answer.js"')
     expect(JSON.parse(await read(dir, 'dist/module.json'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
+  })
+
+  it('should leave dependencies, peer dependencies and Node builtins external, and bundle every other package, unless `deps.onlyBundle` leaves it out', async () => {
+    const output = expectBuilt('dependencies')
+    const module = await read(dirs.dependencies!, 'dist/module.mjs')
+    for (const name of ['node:fs', 'fake-dep', 'fake-peer']) {
+      expect(module).toContain(`from "${name}"`)
+    }
+    for (const name of ['fake-dev', 'fake-undeclared']) {
+      expect(module).toContain(`inlined-${name}`)
+      expect(output).toContain(`- ${name}`)
+    }
+    const failure = expectFailed('onlyBundle')
+    expect(failure).toContain('fake-undeclared is located in node_modules but is not included in deps.onlyBundle')
+    expect(failure).not.toContain('fake-dev is located')
   })
 
   it('should write files a plugin emits before checking the paths of `package.json`', async () => {
@@ -367,12 +415,17 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await read(dirs.contexts!, 'dist/runtime/logger.d.ts')).toContain('import("fake-logger").LoggerInstance')
   })
 
+  it('should type check and generate the module entry\'s declarations with oxc with the documented `isolatedDeclarations` tsconfig', async () => {
+    expect(expectBuilt('isolatedAsDocumented:typecheck')).toBe('')
+    expect(expectBuilt('isolatedAsDocumented')).not.toContain('create program for module')
+    expect(await read(dirs.isolatedAsDocumented!, 'dist/module.d.mts')).toContain('NuxtModule<ModuleOptions>')
+  })
+
   it('should give tsdown the project that includes the module entry, unless the config sets `tsconfig`', async () => {
     const ownsField = async (dir: string) => (await read(dir, 'dist/module.mjs')).includes('\tvalue;')
     const output = expectBuilt('moduleProject')
     expect(output).toContain('tsconfig: tsconfig.module.json')
-    expect(output).toContain('ℹ [NUXT_MB_B0205]')
-    expect(output.match(/fix: Set `isolatedDeclarations: true` in (`[^`]+`)/)?.[1]).toBe('`tsconfig.module.json`')
+    expect(output).not.toContain('isolatedDeclarations')
     expect(await ownsField(dirs.moduleProject!)).toBe(false)
     expect(expectBuilt('tsconfigOption')).toContain('tsconfig: tsconfig.override.json')
     expect(await ownsField(dirs.tsconfigOption!)).toBe(true)

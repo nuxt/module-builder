@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { satisfies } from 'verkit'
 import { version as nuxtVersion } from 'nuxt/package.json'
 import { version } from '../package.json'
@@ -25,7 +25,7 @@ import { runtimeExternals } from '../src/tsdown/externals.ts'
 import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
-import { createDeclarationProgram } from '../src/transpile/declarations.ts'
+import { createDeclarationProgram, restoreImports } from '../src/transpile/declarations.ts'
 import { declarationTargets, rewriteRuntimeDeclarations } from '../src/build/aliases.ts'
 import { checkLegacyCJSPaths, checkLegacyDeclarationPaths } from '../src/legacy/package-paths.ts'
 import { checkMissingPaths, checkNode10DeclarationPaths, checkStaleTypesField, importsKeyFor, publishedPackage, selfReferencePaths, sourcePathsPackError, unpublishableImportsError, unpublishablePathsError } from '../src/build/package.ts'
@@ -140,6 +140,19 @@ describe('upgrade guide', () => {
     const links = Object.entries({ ...errorCodes, ...warningCodes }).flatMap(([code, { docs }]) => docs ? [[code, docs] as const] : [])
     expect(links.length).toBeGreaterThan(0)
     expect(links.filter(([, docs]) => !docs.startsWith('#') || !anchors.includes(docs.slice(1)))).toEqual([])
+  })
+
+  it('should list the keys of every tsconfig example in the order that `jsonc/sort-keys` in `@antfu/eslint-config` expects', async () => {
+    const order = ['extends', 'compilerOptions', 'references', 'files', 'include', 'exclude']
+    const compilerOrder = ['tsBuildInfoFile', 'types', 'allowJs', 'declaration', 'isolatedDeclarations', 'erasableSyntaxOnly']
+    const docs = join(fileURLToPath(new URL('..', import.meta.url)), 'docs')
+    const pages = [...(await readdir(docs)).filter(file => file.endsWith('.md')).map(file => join(docs, file)), join(docs, '../README.md')]
+    const examples = (await Promise.all(pages.map(async page => [...(await readFile(page, 'utf8')).matchAll(/^```json[^\n]*\n([\s\S]*?)^```/gm)]
+      .map(([, body]) => JSON.parse(body!.replace(/^\/\/.*$/gm, '')) as Record<string, unknown>)
+      .filter(json => Object.keys(json).every(key => order.includes(key)))))).flat()
+    const unsorted = (keys: string[], expected: string[]) => keys.some(key => !expected.includes(key)) || keys.join() !== [...keys].sort((a, b) => expected.indexOf(a) - expected.indexOf(b)).join()
+    expect(examples.length).toBeGreaterThan(10)
+    expect(examples.filter(json => unsorted(Object.keys(json), order) || unsorted(Object.keys(json.compilerOptions ?? {}), compilerOrder))).toEqual([])
   })
 
   it('should link diagnostics to the guide at the release tag of this version', () => {
@@ -953,34 +966,6 @@ describe('writeSourceTypes', () => {
   })
 })
 
-describe('isolatedDeclarations nudge', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    vi.unstubAllEnvs()
-  })
-
-  const loadShouldNudge = async () => (await import('../src/build/build.ts')).shouldNudge
-
-  it('should nudge at most once per process', async () => {
-    vi.stubEnv('CI', undefined)
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(false)).toBe(true)
-    expect(shouldNudge(false)).toBe(false)
-  })
-
-  it('should stay silent in CI', async () => {
-    vi.stubEnv('CI', 'true')
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(false)).toBe(false)
-  })
-
-  it('should stay silent when isolated declarations are already enabled', async () => {
-    vi.stubEnv('CI', undefined)
-    const shouldNudge = await loadShouldNudge()
-    expect(shouldNudge(true)).toBe(false)
-  })
-})
-
 describe('selfReferencePaths', () => {
   it('should map the package name and its export subpaths to source', () => {
     const exports = {
@@ -1719,6 +1704,63 @@ describe('createDeclarationProgram', () => {
     await writeFile(dep, `export interface Dep { value: number }\nexport declare function make(): Dep\n`)
     await emit('server', sourceFiles)
     expect(parsed()).not.toContain(depFile)
+  })
+
+  it('should keep the type imports from aliases into `.nuxt` that the declarations it emits refer to', async () => {
+    const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'module-builder-program-')))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, '.nuxt'))
+    const tsconfig = join(cwd, 'tsconfig.json')
+    await writeFile(tsconfig, JSON.stringify({ compilerOptions: { strict: true, module: 'esnext', moduleResolution: 'bundler', target: 'es2022', skipLibCheck: true, paths: { '#build/*': ['./.nuxt/*'] } }, files: ['a.ts'] }))
+    await writeFile(join(cwd, 'a.ts'), `import type { Icon } from '#build/icons'\n\nexport interface Props { icon: Icon }\n`)
+    const program = await createDeclarationProgram({ cwd, tsconfig: { path: tsconfig, config: parseTsconfig(tsconfig) }, paths: {} }, [join(cwd, 'a.ts')])
+    expect((await program.emit([join(cwd, 'a.ts')])).declarations.get(join(cwd, 'a.ts'))).toContain(`import type { Icon } from '#build/icons';`)
+  })
+
+  it('should restore each kind of import that a declaration refers to without importing it', async () => {
+    const source = [
+      `import DefaultCfg, { type Kept } from '#build/cfg'`,
+      `import type * as Icons from '#build/icons'`,
+      `import type { Base } from '#build/base'`,
+      `import type { Reexported } from '#build/reexported'`,
+      `import type { Unused } from '#build/unused'`,
+    ].join('\n')
+    const emitted = `export interface Kept {}\nexport interface Box extends Base { cfg: typeof DefaultCfg.value; icon: Icons.Sub.Props; kept: Kept; }\nexport type { Reexported };\n`
+    expect(await restoreImports(emitted, 'box.ts', source)).toBe([
+      `import type DefaultCfg from '#build/cfg';`,
+      `import type * as Icons from '#build/icons';`,
+      `import type { Base } from '#build/base';`,
+      `import type { Reexported } from '#build/reexported';`,
+      emitted,
+    ].join('\n'))
+    const sfc = `<script setup lang="ts" generic="T extends Array<'>'>">\nimport type { Icon } from '#build/icons'\n</script>\n`
+    expect(await restoreImports('export declare const icon: Icon;\n', 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nexport declare const icon: Icon;\n`)
+  })
+
+  it('should restore an import once when both script blocks of a component import it', async () => {
+    const sfc = `<script lang="ts">\nimport type { Icon } from '#build/icons'\n</script>\n\n<script setup lang="ts">\nimport type { Icon } from '#build/icons'\nimport type { Size } from '#build/sizes'\n</script>\n`
+    const emitted = `export declare const icon: Icon;\nexport declare const size: Size;\n`
+    expect(await restoreImports(emitted, 'Icon.vue', sfc)).toBe(`import type { Icon } from '#build/icons';\nimport type { Size } from '#build/sizes';\n${emitted}`)
+  })
+
+  it('should restore an imported name written as a string literal', async () => {
+    const source = `import type { 'icon-props' as IconProps, Size as IconSize } from '#build/icons'\n`
+    const emitted = `export interface Props { icon: IconProps; size: IconSize; }\n`
+    expect(await restoreImports(emitted, 'icon.ts', source)).toBe(`import type { "icon-props" as IconProps, Size as IconSize } from '#build/icons';\n${emitted}`)
+  })
+
+  it('should restore an import that a type parameter or namespace member of the same name shadows only elsewhere', async () => {
+    const source = `import type { Icon } from '#build/icons'\n`
+    const shadowed = `export declare function identity<Icon>(icon: Icon): Icon;\nexport type Pick<T> = T extends Array<infer Icon> ? Icon : never;\n`
+    expect(await restoreImports(shadowed, 'icon.ts', source)).toBe(shadowed)
+    const unrelated = `${shadowed}export interface Props { icon: Icon; }\n`
+    expect(await restoreImports(unrelated, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${unrelated}`)
+    const namespaced = `export declare namespace Internal { interface Icon {} type Own = Icon; }\n`
+    expect(await restoreImports(namespaced, 'icon.ts', source)).toBe(namespaced)
+    const outsideNamespace = `${namespaced}export interface Props { icon: Icon; }\n`
+    expect(await restoreImports(outsideNamespace, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${outsideNamespace}`)
+    const falseBranch = `export type PickIcon<T> = T extends { icon: infer Icon } ? Icon : Icon;\n`
+    expect(await restoreImports(falseBranch, 'icon.ts', source)).toBe(`import type { Icon } from '#build/icons';\n${falseBranch}`)
   })
 
   it('should reuse the declarations of a cached emit until a file its program read changes', async () => {

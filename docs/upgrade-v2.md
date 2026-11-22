@@ -105,7 +105,7 @@ export default defineConfig({
 
 - If both `build.config.ts` and a field of `package.json` hold options, move the options of both. List each external once.
 - The build never bundles the packages in `dependencies`, `peerDependencies`, and `optionalDependencies`, their subpaths, Node builtins, `@nuxt/kit`, `@nuxt/schema`, `nuxt`, `vue`, `#app`, `#build/*`, and `#imports`. Drop the externals that are among these, and those that no bundled entry imports. The build bundles every other import, `devDependencies` included, so keep the rest in `builder({ externals })`.
-- Optional: to fail the build when it bundles a package by mistake, set tsdown's `deps.onlyBundle`. List the packages that you mean to bundle, or set it to `[]`.
+- Optional: to fail the build when it bundles a package from `node_modules` by mistake, set tsdown's `deps.onlyBundle`. List the packages that you mean to bundle, or set it to `[]`.
 - `src/module` is always built, so you can leave it out of `entries`. Drop `addRelativeDeclarationExtensions` from directory entries.
 - Relative imports in `tsdown.config.ts` carry their extension, because `prepare` loads the file with Node.
 
@@ -420,7 +420,7 @@ const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* .
 export default module
 ```
 
-Without `isolatedDeclarations`, the build prints a reminder once per run outside CI. Both settings work. See [`isolatedDeclarations`](./5.typescript.md#isolateddeclarations).
+Leaving it off is fine: the build then generates these declarations with TypeScript, alongside the runtime files, and reuses them while their inputs are unchanged. See [`isolatedDeclarations`](./5.typescript.md#isolateddeclarations).
 
 ### Publishing source exports
 

@@ -119,7 +119,8 @@ beforeAll(async () => {
       `export type TestMeType = typeof TestMe`,
       `export type JsxComponentType = typeof JsxComponent`,
       `export type { NuxtApp } from '#app'`,
-      `export interface ExtraOptions { deep?: DeepPartial<{ a: string }>, cjs?: FakeCjs.Options }`,
+      `import type { IconProps } from '#build/my-icons/IconProps'`,
+      `export interface ExtraOptions { deep?: DeepPartial<{ a: string }>, cjs?: FakeCjs.Options, icon?: IconProps }`,
       `export const thing = defineThing({ name: 'portable' })`,
       '',
     ].join('\n'),
@@ -152,6 +153,8 @@ beforeAll(async () => {
       'src/runtime/server/routes/[...slug].ts': `export default (slug: string) => slug\n`,
       'src/runtime/utils/self.ts': `import type { ModuleOptions } from 'my-module'\n\nexport const getApiKey = (options: ModuleOptions) => options.apiKey\n`,
       'src/runtime/cache/lru.ts': `export const lru: string = 'lru'\n`,
+      'src/runtime/composables/useIcon.ts': `import type { IconProps } from '#build/my-icons/IconProps'\nimport type { Size as IconSize } from '#build/my-icons/Size'\n\nexport type IconImage = IconProps['image']\nexport const useIcon = (props: IconProps, size: IconSize): IconProps['image'] => props.image ?? size\n`,
+      'src/runtime/components/Icon.vue': `<script setup lang="ts">\nimport type { IconProps } from '#build/my-icons/IconProps'\n\ndefineProps<{ icon: IconProps['image'] }>()\n</script>\n\n<template>\n  <div />\n</template>\n`,
       'src/runtime/server/handler.ts': `// @ts-ignore build-time virtual
 import options from '#internal/nuxt.config.mjs'
 // @ts-ignore app alias
@@ -880,6 +883,15 @@ describe('a module that imports runtime code, built through a symlink, under a p
 
   it('should give every relative specifier in runtime declarations an extension that resolves', async () => {
     expect(await unresolvedSpecifiers(dist())).toEqual([])
+  })
+
+  it('should keep the type imports from `#build` aliases that runtime declarations refer to', async () => {
+    const composable = await read(dist(), 'runtime/composables/useIcon.d.ts')
+    expect(composable).toContain(`import type { IconProps } from '#build/my-icons/IconProps';`)
+    expect(composable).toContain(`import type { Size as IconSize } from '#build/my-icons/Size';`)
+    expect(composable).toContain('size: IconSize')
+    expect(await read(dist(), 'runtime/components/Icon.d.vue.ts')).toContain(`import type { IconProps } from '#build/my-icons/IconProps';`)
+    expect(await read(dist(), 'module.d.mts')).toContain(`import { IconProps } from "#build/my-icons/IconProps";`)
   })
 })
 

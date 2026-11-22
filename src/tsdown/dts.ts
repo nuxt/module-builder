@@ -6,6 +6,7 @@ import type { UserConfig } from 'tsdown'
 import builderPkg from '../../package.json' with { type: 'json' }
 import { contentCache } from '../transpile/cache.ts'
 import type { ContentCache } from '../transpile/cache.ts'
+import { restoreImports } from '../transpile/declarations.ts'
 
 /** The `Generator` interface of rolldown-plugin-dts. */
 export type DeclarationGenerator = Required<Omit<Extract<NonNullable<Extract<UserConfig['dts'], object>['generator']>, object>, 'addFile'>>
@@ -221,7 +222,7 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
         start()
       }
     },
-    async emit(_code, fileName) {
+    async emit(code, fileName) {
       const hit = cached?.get(fileName)
       if (hit) {
         mixed = true
@@ -232,6 +233,9 @@ export function entryDeclarationGenerator(options: EntryDeclarationOptions): Dec
         mixed = true
       }
       else {
+        if (result.code !== undefined && !fileName.endsWith('.json')) {
+          result.code = await restoreImports(result.code, fileName, code)
+        }
         emitted.set(fileName, result)
       }
       return result

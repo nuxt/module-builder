@@ -7,7 +7,7 @@ import type { Rolldown } from 'tsdown'
 import type { VueDeclarationSession, Transform as VueTransform } from 'vue-sfc-transformer/core'
 
 import { getOrCreate, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
-import { createDeclarationProgram, DeclarationError, declarationError } from './declarations.ts'
+import { createDeclarationProgram, DeclarationError, declarationError, restoreImports } from './declarations.ts'
 import type { DeclarationProgram, SourceFileCache } from './declarations.ts'
 import { moduleSpecifiers, rewriteSpecifiers, scriptExtension, valueSpecifiers } from './specifiers.ts'
 import { compileSass, SASS_RE, transformCss } from './stylesheets.ts'
@@ -372,14 +372,14 @@ class DirectoryBuild {
       throw declarationError([...new Set(errors)])
     }
     const selected = new Set(this.vue)
-    const declarations = [...result.declarations].flatMap(([path, source]) => {
+    const declarations = (await Promise.all([...result.declarations].map(async ([path, source]) => {
       const vueFile = path.replace(VUE_DECLARATION_RE, '.vue')
       if (!selected.has(vueFile)) {
         return []
       }
       const fileName = this.outputs.get(vueFile)!.replace(/\.vue$/, path.slice(vueFile.length - '.vue'.length))
-      return [{ fileName, source: this.rewriteSpecifiers(vueFile, fileName, source, true) }]
-    })
+      return [{ fileName, source: this.rewriteSpecifiers(vueFile, fileName, await restoreImports(source, vueFile, await readFile(vueFile, 'utf8')), true) }]
+    }))).flat()
     return [...[...runtime].map(([file, source]) => {
       const fileName = this.outputs.get(file)!
       return { fileName, source: this.rewriteSpecifiers(file, fileName, source) }
@@ -416,7 +416,14 @@ class DirectoryBuild {
       const program = this.program(this.resolver.resolve(file))
       groups.set(program, [...groups.get(program) ?? [], file])
     }
-    const results = shared.length ? [vueEmit(await this.vueProgram(), shared, this.options.cwd, false)] : []
+    const results = []
+    if (shared.length) {
+      const result = vueEmit(await this.vueProgram(), shared, this.options.cwd, false)
+      for (const [source, text] of result.declarations) {
+        result.declarations.set(source, await restoreImports(text, source, await readFile(source, 'utf8')))
+      }
+      results.push(result)
+    }
     for (const [program, groupFiles] of groups) {
       results.push(await (await program).emit(groupFiles))
     }

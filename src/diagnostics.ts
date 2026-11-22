@@ -199,11 +199,6 @@ export const warningCodes = {
     fix: 'Give each export that an error names an explicit type annotation, then run `nuxt-module-build prepare` again.',
     docs: '#portability-errors',
   },
-  NUXT_MB_B0205: {
-    why: 'The declarations of the module entry are generated with tsc, as its tsconfig does not set `isolatedDeclarations`.',
-    fix: (p: { project: string | undefined }): string => `Set \`isolatedDeclarations: true\` in ${!p.project ? 'your `tsconfig.json`' : p.project.startsWith('.nuxt') ? 'a `tsconfig.module.json` that extends `./.nuxt/tsconfig.node.json`' : `\`${p.project}\``} to generate them with oxc, which is faster.`,
-    docs: '#isolated-declarations',
-  },
 
   NUXT_MB_C0201: {
     why: (p: { path: string }): string => `\`types\` in \`package.json\` points at \`${p.path}\`, which the build does not produce.`,
