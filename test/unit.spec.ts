@@ -1438,12 +1438,13 @@ describe('missingPathPackages', () => {
       'vue': ['../node_modules/.pnpm/vue@3.0.0/node_modules/vue'],
       '@unhead/vue': ['../node_modules/.pnpm/@unhead+vue@2.0.0/node_modules/@unhead/vue'],
       '#app-manifest': ['../node_modules/.cache/nuxt/manifest'],
+      'vue-router': ['../node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt/dist/missing', '../node_modules/.pnpm/vue-router@4.0.0/node_modules/vue-router'],
       '#shared': ['../shared'],
       '#build/*': ['./*'],
     }
     await writeFile(join(cwd, '.nuxt/tsconfig.json'), JSON.stringify({ compilerOptions: { paths } }))
     await writeFile(join(cwd, '.nuxt/tsconfig.app.json'), JSON.stringify({ compilerOptions: { paths: { 'vue-demi': paths['vue-demi'] } } }))
-    expect(missingPathPackages(cwd)).toEqual({ aliases: ['vue', '@unhead/vue'], tsconfigs: [join(cwd, '.nuxt/tsconfig.json')] })
+    expect(missingPathPackages(cwd)).toEqual({ aliases: ['vue', '@unhead/vue', 'vue-router'], tsconfigs: [join(cwd, '.nuxt/tsconfig.json')] })
   })
 })
 

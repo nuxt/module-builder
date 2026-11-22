@@ -429,8 +429,8 @@ export function missingPathPackages(dir: string): { aliases: string[], tsconfigs
       continue
     }
     for (const [alias, targets] of Object.entries(paths ?? {})) {
-      const packageDir = targets.map(target => resolve(buildDir, target).match(PACKAGE_DIR_RE)?.[1]).find(Boolean)
-      if (packageDir && !existsSync(packageDir)) {
+      const packageDirs = targets.flatMap(target => resolve(buildDir, target).match(PACKAGE_DIR_RE)?.[1] ?? [])
+      if (packageDirs.some(packageDir => !existsSync(packageDir))) {
         aliases.add(alias)
         tsconfigs.add(file)
       }
