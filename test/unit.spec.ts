@@ -2162,6 +2162,8 @@ describe('declaration engines', () => {
       expect(await loadDeclarationEngine(broken, { declarationEngine: 'typescript7' })).toBeUndefined()
       expect(warn).toHaveBeenCalledTimes(1)
       await expect(createNativeEngine(broken, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'platform', message: expect.stringContaining('its binary does not start') }))
+      const unspawnable = await fakePackage(typescript7(`export default () => 'tsc\\0'\n`))
+      await expect(createNativeEngine(unspawnable, 'typescript7')).rejects.toThrow(expect.objectContaining({ reason: 'platform', message: expect.stringContaining('its binary does not start') }))
     })
 
     it('should refuse a module whose own `typescript` has no JavaScript API, and say which versions work', async () => {

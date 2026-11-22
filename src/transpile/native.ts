@@ -200,7 +200,12 @@ async function findPackage(cwd: string, engine: NativeEngineName): Promise<Nativ
     throw new NativeEngineError(engine, 'platform', `\`${packageName}@${version}\` has no binary for ${process.platform}-${process.arch} (${(error instanceof Error ? error.message : String(error)).split('\n')[0]})`, { cause: error })
   }
   const failure = await new Promise<string | undefined>((resolve) => {
-    execFile(exe, ['--version'], { timeout: 30_000 }, (error, _stdout, stderr) => resolve(error ? (stderr.trim() || error.message) : undefined))
+    try {
+      execFile(exe, ['--version'], { timeout: 30_000 }, (error, _stdout, stderr) => resolve(error ? (stderr.trim() || error.message) : undefined))
+    }
+    catch (error) {
+      resolve(error instanceof Error ? error.message : String(error))
+    }
   })
   if (failure) {
     throw new NativeEngineError(engine, 'platform', `its binary does not start (${failure.split('\n')[0]})`)
