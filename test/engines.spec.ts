@@ -1,4 +1,6 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -44,6 +46,20 @@ const PORTABILITY_LINKS = {
   'node_modules/fake-shared': store('fake-shared'),
 }
 
+async function ownTypescript7Fixture() {
+  const dir = await fixture('.temp-engines/own-typescript7', { remove: ['src/runtime/components/TestMe.vue', 'src/runtime/components/TestMeSetup.vue'], files: EXTRA })
+  const builder = join(dir, 'builder')
+  await cp(join(repoRoot, 'src'), join(builder, 'src'), { recursive: true })
+  await cp(join(repoRoot, 'package.json'), join(builder, 'package.json'))
+  await writeFile(join(dir, 'tsdown.config.ts'), `import { builder } from ${JSON.stringify(pathToFileURL(join(builder, 'src/tsdown/index.ts')).href)}\nexport default {\n  plugins: [builder({ entries: ['./src/utils', './src/kit/index.ts', { input: './src/extra/', outDir: 'dist/extra' }] })],\n}\n`)
+  for (const [name, installed] of [['typescript', '@typescript/typescript7'], ['@typescript/typescript6', '@typescript/typescript6']]) {
+    await mkdir(join(dir, 'node_modules', name, '..'), { recursive: true })
+    await rm(join(dir, 'node_modules', name), { recursive: true, force: true })
+    await symlink(realpathSync(join(repoRoot, 'node_modules', installed!)), join(dir, 'node_modules', name))
+  }
+  return dir
+}
+
 const declarationsOf = async (dir: string, sub: string) => {
   const files = (await listFiles(join(dir, sub))).filter(file => /\.d\.[cm]?ts$/.test(file))
   return Object.fromEntries(await Promise.all(files.map(async file => [file, await read(dir, sub, file)] as const)))
@@ -78,6 +94,9 @@ beforeAll(async () => {
   }
   dirs.fallback = await fixture('.temp-engines/fallback', { config: config('tsrs'), files: EXTRA })
   dirs.installed = await fixture('.temp-engines/installed', { files: EXTRA })
+  if (!reasons.typescript7) {
+    dirs.ownTypescript7 = await ownTypescript7Fixture()
+  }
   dirs.declarationMap = await fixture('.temp-engines/declaration-map', {
     files: {
       'tsconfig.module.json': JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { declarationMap: true } }),
@@ -112,6 +131,13 @@ beforeAll(async () => {
     ...['typescript', ...native].map(engine => step(`${engine}-portability`, tsdown(dirs[`${engine}-portability`]!)).then(() => step(`${engine}-portability:prepare`, cli(['prepare', dirs[`${engine}-portability`]!])))),
     step('fallback', tsdown(dirs.fallback!, [], { TSRS_BINARY: join(dirs.fallback!, 'missing-tsrs') })),
     step('installed', cli(['prepare', dirs.installed!])),
+    ...dirs.ownTypescript7
+      ? [(async () => {
+          const env = { NODE_DEBUG: 'nuxt-module-builder', NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(join(repoRoot, 'test/typescript-from.cjs'))}`, TYPESCRIPT_FROM: join(dirs.ownTypescript7!, 'package.json') }
+          await step('ownTypescript7', tsdown(dirs.ownTypescript7!, [], env))
+          await step('ownTypescript7:prepare', run('node', [join(dirs.ownTypescript7!, 'builder/src/cli.ts'), 'prepare', dirs.ownTypescript7!], { env }))
+        })()]
+      : [],
     step('declarationMap', tsdown(dirs.declarationMap!)),
     step('isolated', tsdown(dirs.isolated!)).then(() => step('isolated:prepare', cli(['prepare', dirs.isolated!]))).then(() => step('isolated:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolated }))),
     step('isolatedMissing', tsdown(dirs.isolatedMissing!)).then(() => step('isolatedMissing:prepare', cli(['prepare', dirs.isolatedMissing!]))),
@@ -205,6 +231,21 @@ it.skipIf(reasons.typescript7)('should map the declarations of the bundled entri
 it.skipIf(reasons.typescript7)('should generate declarations with the engine the module has installed when none is selected', async () => {
   expectBuilt('installed')
   expect(await read(dirs.installed!, '.nuxt/module-builder/declarations/src/runtime/plugins/plugin.d.ts')).toContain('injection: \'injected\'')
+})
+
+it.skipIf(reasons.typescript7)('should build and prepare a module whose own `typescript` is TypeScript 7.1 with `@typescript/typescript6`, generating the declarations TypeScript 6 generates with TypeScript 7', async () => {
+  for (const name of ['ownTypescript7', 'ownTypescript7:prepare']) {
+    const output = expectBuilt(name)
+    expect(output).toMatch(/the TypeScript JavaScript API is @typescript\/typescript6@6\.\d+\.\d+, as `typescript` is typescript@7\.1\./)
+    expect(output).toMatch(/the typescript declaration engine uses typescript@7\.1\.\S+, installed as typescript\n/)
+  }
+  for (const sub of ['dist', '.nuxt/module-builder/declarations']) {
+    const quotes = (text: string | undefined) => sub === 'dist' ? text : text?.replaceAll('\'', '"')
+    const own = Object.fromEntries(Object.entries(await declarationsOf(dirs.ownTypescript7!, sub)).map(([file, text]) => [file, quotes(text)]))
+    const typescript = await declarationsOf(dirs.typescript!, sub)
+    expect(Object.keys(own)).toContain(sub === 'dist' ? 'extra/math.d.mts' : 'src/runtime/plugins/plugin.d.ts')
+    expect(own).toEqual(Object.fromEntries(Object.keys(own).map(file => [file, quotes(typescript[file])])))
+  }
 })
 
 it('should report an inferred type that cannot be named with TypeScript 6', () => {

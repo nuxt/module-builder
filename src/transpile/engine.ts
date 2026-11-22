@@ -1,5 +1,6 @@
-import { createRequire } from 'node:module'
 import type ts from 'typescript'
+
+import { loadTypescript } from './typescript.ts'
 
 /** The values of `declarations.engine`. */
 export const ENGINES = {
@@ -92,10 +93,10 @@ export function createTscEngine({ sourceFiles }: TscEngineOptions = {}): TscEngi
   return {
     name: ENGINES.typescript,
     get version() {
-      return (createRequire(import.meta.url)('typescript/package.json') as { version: string }).version
+      return loadTypescript().version
     },
     async open({ tsconfig, include, roots, compilerOptions }) {
-      const { default: ts } = await import('typescript')
+      const { ts } = loadTypescript()
       const parsed = tsconfig ? ts.getParsedCommandLineOfConfigFile(tsconfig, {}, configHost(ts)) : undefined
       const rootNames = [...new Set([...(parsed?.fileNames ?? []).filter(include), ...roots])]
       const options: ts.CompilerOptions = { ...parsed?.options, ...compilerOptions as ts.CompilerOptions }

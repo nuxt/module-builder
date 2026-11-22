@@ -5,10 +5,10 @@ import { dirname, join, normalize, relative, resolve } from 'pathe'
 import { warnings } from '../diagnostics.ts'
 import { createDeclarationProgram } from '../transpile/declarations.ts'
 import type { DeclarationEngine } from '../transpile/engine.ts'
+import { loadOxc } from '../transpile/oxc.ts'
 import { moduleSpecifiers, rewriteSpecifiers } from '../transpile/specifiers.ts'
 import { hasIsolatedDeclarations, isModuleFile } from '../transpile/tsconfig.ts'
 import { isInside, isSourceScript, probe, RELATIVE_RE, relativeSpecifier, SCRIPT_RE } from '../utils.ts'
-import { loadOxc } from './loader.ts'
 import { writeSourceTypes } from './types.ts'
 
 const NUXT_DIR_RE = /^\.nuxt(?:\/|$)/

@@ -4,6 +4,7 @@ import { glob } from 'tinyglobby'
 
 import { warnings } from '../diagnostics.ts'
 import type { TsconfigResolver } from '../transpile/tsconfig.ts'
+import { loadTypescript } from '../transpile/typescript.ts'
 import { moduleTsconfigs } from './build.ts'
 
 const NUXT_BUILD_DIR_RE = /[\\/]\.nuxt(?:[\\/]|$)/
@@ -30,7 +31,7 @@ async function uncheckedFiles(cwd: string, tsconfigs: TsconfigResolver, { outDir
   if (!root?.config.references?.length || tsconfigs.replaced) {
     return groups
   }
-  const { default: ts } = await import('typescript')
+  const { ts } = loadTypescript()
   const ownExcludes = root.config.references.flatMap(({ path }) => {
     const file = resolve(dirname(root.path), path)
     const config = file.endsWith('.json') ? file : join(file, 'tsconfig.json')

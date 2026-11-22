@@ -1,9 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "ignore": [
-    "test/__snapshots__/**"
+    "test/__snapshots__/**",
+    "test/typescript-from.cjs"
   ],
   "ignoreDependencies": [
+    "@typescript/typescript6",
     "@typescript/typescript7",
     "rolldown-plugin-dts",
     "tsrs"

@@ -69,12 +69,16 @@
   },
   "peerDependencies": {
     "@nuxt/cli": "^3.37.0 || ^4.0.0",
+    "@typescript/typescript6": "^6.0.0",
     "@typescript/typescript7": "npm:typescript@>=7.1.0-beta",
     "tsdown": "^0.23.7",
     "tsrs": ">=7.1.0-beta.tsrs3",
     "typescript": "^5.9.3 || ^6.0.0"
   },
   "peerDependenciesMeta": {
+    "@typescript/typescript6": {
+      "optional": true
+    },
     "@typescript/typescript7": {
       "optional": true
     },
@@ -88,7 +92,9 @@
     "@nuxt/cli": "^4.0.3",
     "@nuxt/eslint-config": "^1.17.0",
     "@nuxt/schema": "~4.6.4",
+    "@oxc-project/types": "^0.157.0",
     "@types/node": "^26.6.6",
+    "@typescript/typescript6": "6.0.2",
     "@typescript/typescript7": "npm:typescript@7.1.0-beta",
     "@vitest/coverage-v8": "^5.1.0",
     "eslint": "^10.14.0",

@@ -1,14 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { createRequire, registerHooks } from 'node:module'
+import { registerHooks } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join, relative, resolve } from 'pathe'
 import { createPathsMatcher, getTsconfig } from 'get-tsconfig'
 import type { Diagnostic } from 'nostics'
-import type ts from 'typescript'
+import type { Expression, ImportDeclaration, ObjectExpression, TSGlobalDeclaration, TSModuleDeclaration } from '@oxc-project/types'
 
-import type { Transform } from '../transpile/transpile-dir.ts'
+import { literalText, parseModule, walk } from '../transpile/oxc.ts'
+import type { Node } from '../transpile/oxc.ts'
 import { packageName } from '../transpile/tsconfig.ts'
-import { findPackageDir, findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE, TYPESCRIPT_RE } from '../utils.ts'
+import { findPackageDir, findUp, isFile, isInside, isPlainObject, NODE_MODULES_RE, probe, relativeSpecifier, resolveFrom, SCRIPT_RE } from '../utils.ts'
 import type { PackageJson } from '../utils.ts'
 import { errors } from '../diagnostics.ts'
 import { importsKeyFor } from './package.ts'
@@ -63,26 +64,6 @@ export async function importModule(path: string, { cwd, stubs = {}, version }: I
   }
 }
 
-interface Oxc {
-  transform: Transform
-  transformSync: (...args: Parameters<Transform>) => Awaited<ReturnType<Transform>>
-}
-
-let oxc: Oxc | null | undefined
-
-/** The oxc bindings of the `rolldown` that `tsdown` depends on, or `null` when `tsdown` is not installed. */
-export function loadOxc(): Oxc | null {
-  if (oxc === undefined) {
-    try {
-      oxc = createRequire(import.meta.resolve('tsdown'))('rolldown/utils') as Oxc
-    }
-    catch {
-      oxc = null
-    }
-  }
-  return oxc
-}
-
 export interface ModuleCodeIssue {
   /** Path relative to the module root. */
   file: string
@@ -96,14 +77,14 @@ export interface ModuleCodeIssue {
   unfollowed?: true
 }
 
-const NON_ERASABLE: Array<[message: string, matches: (ts: typeof import('typescript'), node: ts.Node) => boolean]> = [
-  ['`enum` (use an `as const` object and a union type of its values)', (ts, node) => ts.isEnumDeclaration(node)],
-  ['`namespace` (use plain exports or an object)', (ts, node) => ts.isModuleDeclaration(node) && ts.isIdentifier(node.name) && !(node.flags & (ts.NodeFlags.NestedNamespace | ts.NodeFlags.GlobalAugmentation)) && hasRuntimeCode(ts, node)],
-  ['angle-bracket type assertion (write `value as Type`)', (ts, node) => ts.isTypeAssertionExpression(node)],
-  ['parameter property (declare the field and assign it in the constructor)', (ts, node) => ts.isParameter(node) && ts.isParameterPropertyDeclaration(node, node.parent)],
-  ['`import =` (use `import`, or `createRequire` for CommonJS)', (ts, node) => ts.isImportEqualsDeclaration(node) && !node.isTypeOnly],
-  ['`export =` (use `export default`)', (ts, node) => ts.isExportAssignment(node) && !!node.isExportEquals],
-  ['decorator (call the decorator as a function)', (ts, node) => ts.isDecorator(node)],
+const NON_ERASABLE: Array<[message: string, matches: (node: Node, parent: Node | undefined, grandparent: Node | undefined) => boolean]> = [
+  ['`enum` (use an `as const` object and a union type of its values)', node => node.type === 'TSEnumDeclaration'],
+  ['`namespace` (use plain exports or an object)', node => node.type === 'TSModuleDeclaration' && node.id.type !== 'Literal' && node.kind !== 'global' && hasRuntimeCode(node)],
+  ['angle-bracket type assertion (write `value as Type`)', node => node.type === 'TSTypeAssertion'],
+  ['parameter property (declare the field and assign it in the constructor)', (node, _, method) => node.type === 'TSParameterProperty' && method?.type === 'MethodDefinition' && method.kind === 'constructor'],
+  ['`import =` (use `import`, or `createRequire` for CommonJS)', node => node.type === 'TSImportEqualsDeclaration' && node.importKind !== 'type'],
+  ['`export =` (use `export default`)', node => node.type === 'TSExportAssignment'],
+  ['decorator (call the decorator as a function)', node => node.type === 'Decorator'],
 ]
 
 /**
@@ -319,90 +300,95 @@ function importTarget(target: unknown, match: string | undefined): string | unde
   }
 }
 
-let typescript: typeof ts | undefined
-
-function scriptKind(ts: typeof import('typescript'), filename: string) {
-  if (TYPESCRIPT_RE.test(filename)) {
-    return filename.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-  }
-  return filename.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
+function hasRuntimeCode(node: TSModuleDeclaration | TSGlobalDeclaration): boolean {
+  return !!node.body?.body.some((statement) => {
+    const declaration = statement.type === 'ExportNamedDeclaration' && statement.declaration ? statement.declaration : statement
+    return !(declaration.type === 'TSInterfaceDeclaration' || declaration.type === 'TSTypeAliasDeclaration' || (declaration.type === 'TSModuleDeclaration' && !hasRuntimeCode(declaration)))
+  })
 }
 
-function hasRuntimeCode(ts: typeof import('typescript'), node: ts.ModuleDeclaration): boolean {
-  const { body } = node
-  if (!body) {
-    return false
+const LINE_BREAK_RE = /\r\n?|[\n\u2028\u2029]/g
+
+/** The 1-based line and column of each offset of `source`, in UTF-16 code units. */
+function lineColumns(source: string) {
+  const starts = [0, ...[...source.matchAll(LINE_BREAK_RE)].map(({ index, 0: lineBreak }) => index + lineBreak.length)]
+  return (offset: number) => {
+    let low = 0
+    let high = starts.length - 1
+    while (low < high) {
+      const middle = (low + high + 1) >> 1
+      if (starts[middle]! <= offset) {
+        low = middle
+      }
+      else {
+        high = middle - 1
+      }
+    }
+    return { line: low + 1, column: offset - starts[low]! + 1 }
   }
-  if (ts.isModuleDeclaration(body)) {
-    return hasRuntimeCode(ts, body)
-  }
-  return ts.isModuleBlock(body) && body.statements.some(statement => !(
-    ts.isInterfaceDeclaration(statement)
-    || ts.isTypeAliasDeclaration(statement)
-    || (ts.isModuleDeclaration(statement) && !hasRuntimeCode(ts, statement))
-  ))
 }
+
+type ImportAttributes = ImportDeclaration['attributes']
 
 function analyseSource(filename: string, source: string): SourceAnalysis {
-  const ts = typescript ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
-  const { SyntaxKind } = ts
-  const sourceFile = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, scriptKind(ts, filename))
+  const position = lineColumns(source)
   const found: SourceAnalysis = { nonErasable: [], imports: [] }
-  const position = (node: ts.Node) => {
-    const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
-    return { line: line + 1, column: character + 1 }
-  }
-  const isJson = (attributes: ts.ImportAttributes | undefined) => !!attributes?.elements.some(element => element.name.text === 'type' && ts.isStringLiteral(element.value) && element.value.text === 'json')
+  const isJson = (attributes: ImportAttributes) => attributes.some(({ key, value }) => (key.type === 'Literal' ? key.value : key.name) === 'type' && value.value === 'json')
   // `true` when the value is not known statically.
-  const property = (object: ts.ObjectLiteralExpression, name: string): ts.Expression | true | undefined => {
+  const property = (object: ObjectExpression, name: string): Expression | true | undefined => {
     for (const property of [...object.properties].reverse()) {
-      if (ts.isPropertyAssignment(property) && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))) {
-        if (property.name.text === name) {
-          return property.initializer
+      const key = property.type === 'Property' && !property.computed ? property.key : undefined
+      const keyName = key?.type === 'Identifier' ? key.name : key?.type === 'Literal' && typeof key.value === 'string' ? key.value : undefined
+      if (property.type === 'Property' && property.kind === 'init' && !property.method && !property.shorthand && keyName !== undefined) {
+        if (keyName === name) {
+          return property.value as Expression
         }
       }
-      else if (!ts.isShorthandPropertyAssignment(property) || property.name.text === name) {
+      else if (!(property.type === 'Property' && property.shorthand) || keyName === name) {
         return true
       }
     }
   }
-  const isJsonOptions = (options: ts.Expression | undefined) => {
-    if (!options || !ts.isObjectLiteralExpression(options)) {
+  const isJsonOptions = (options: Expression | null) => {
+    if (options?.type !== 'ObjectExpression') {
       return !!options
     }
     const attributes = property(options, 'with')
-    if (!attributes || attributes === true || !ts.isObjectLiteralExpression(attributes)) {
+    if (!attributes || attributes === true || attributes.type !== 'ObjectExpression') {
       return !!attributes
     }
     const type = property(attributes, 'type')
-    return !!type && (type === true || !ts.isStringLiteralLike(type) || type.text === 'json')
+    return !!type && (type === true || literalText(type) === undefined || literalText(type) === 'json')
   }
-  const specifierOf = (node: ts.Node) => {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      return { specifier: node.moduleSpecifier, typeOnly: node.importClause?.isTypeOnly ?? false, json: isJson(node.attributes) }
+  const specifierOf = (node: Node) => {
+    if (node.type === 'ImportDeclaration') {
+      return { specifier: node.source, typeOnly: node.importKind === 'type', json: isJson(node.attributes) }
     }
-    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      return { specifier: node.moduleSpecifier, typeOnly: node.isTypeOnly, json: isJson(node.attributes) }
+    if ((node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') && node.source) {
+      return { specifier: node.source, typeOnly: node.exportKind === 'type', json: isJson(node.attributes) }
     }
-    if (ts.isCallExpression(node) && node.expression.kind === SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
-      return { specifier: node.arguments[0], typeOnly: false, json: isJsonOptions(node.arguments[1]) }
+    if (node.type === 'ImportExpression' && literalText(node.source) !== undefined) {
+      return { specifier: node.source, typeOnly: false, json: isJsonOptions(node.options) }
     }
   }
-  const visit = (node: ts.Node) => {
-    if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(modifier => modifier.kind === SyntaxKind.DeclareKeyword)) {
-      return
+  const parents = new Map<Node, Node>()
+  walk(parseModule(source, filename).program, (node, parent) => {
+    if ('declare' in node && node.declare) {
+      return false
     }
-    const nonErasable = NON_ERASABLE.find(([, matches]) => matches(ts, node))
+    if (parent) {
+      parents.set(node, parent)
+    }
+    const nonErasable = NON_ERASABLE.find(([, matches]) => matches(node, parent, parent && parents.get(parent)))
     if (nonErasable) {
-      found.nonErasable.push({ ...position(node), message: nonErasable[0] })
+      found.nonErasable.push({ ...position(parent?.type === 'ExportNamedDeclaration' ? parent.start : node.start), message: nonErasable[0] })
     }
     const imported = specifierOf(node)
     if (imported) {
-      found.imports.push({ specifier: imported.specifier.text, typeOnly: imported.typeOnly, json: imported.json, ...position(imported.specifier) })
+      found.imports.push({ specifier: literalText(imported.specifier)!, typeOnly: imported.typeOnly, json: imported.json, ...position(imported.specifier.start) })
     }
-    ts.forEachChild(node, visit)
-  }
-  visit(sourceFile)
+  })
+  found.imports.sort((a, b) => a.line - b.line || a.column - b.column)
   return found
 }
 
