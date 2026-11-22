@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -140,6 +140,31 @@ describe.each(NATIVE)('the %s declaration engine', (engine) => {
     expect(build).toMatch(/src\/logger\.ts\(3,14\): error TS2883/)
     expect(build).toContain('- `logger` in src/logger.ts:3')
     expect(expectBuilt(`${engine}-portability:prepare`)).toMatch(/\[NUXT_MB_B0204\][\s\S]*src\/logger\.ts\(3,14\): error TS2883/)
+  })
+
+  it.skipIf(reason)('should keep the files a program read, and update it with the files changed or added next to them when it is opened again', async () => {
+    const dir = join(repoRoot, `.temp-engines/session-${engine}`)
+    await rm(dir, { recursive: true, force: true })
+    await mkdir(dir, { recursive: true })
+    const entry = join(dir, 'entry.ts')
+    await writeFile(entry, `import { value } from './generated'\n\nexport const copy = value\n`)
+    await writeFile(join(dir, 'other.ts'), `export const other = 1 as const\n`)
+    const native = await createNativeEngine(repoRoot, engine)
+    try {
+      const options = { tsconfig: undefined, include: () => true, roots: [entry, join(dir, 'other.ts')], compilerOptions: { declaration: true, emitDeclarationOnly: true, noCheck: true, module: 99, moduleResolution: 100, target: 99 } }
+      const emit = async () => (await (await native.open(options)).emit([entry])).declarations.get(entry)
+      expect(await emit()).toContain('copy: any')
+      const project = await native.open(options)
+      await writeFile(join(dir, 'other.ts'), `export const other = 2 as const\n`)
+      expect((await project.inputs()).get(join(dir, 'other.ts'))).toBe(`export const other = 1 as const\n`)
+      await writeFile(join(dir, 'generated.ts'), `export const value = 42 as const\n`)
+      expect(await emit()).toContain('copy: 42')
+      await writeFile(join(dir, 'generated.ts'), `export const value = 7 as const\n`)
+      expect(await emit()).toContain('copy: 7')
+    }
+    finally {
+      await native.close()
+    }
   })
 
   it.skipIf(reason)('should update declarations from the same compiler process when a watched build rebuilds', async () => {

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { debuglog } from 'node:util'
@@ -65,6 +65,7 @@ interface Program {
   getSourceFileNames: () => Promise<readonly string[]>
   getDeclarationEmit: (files: readonly string[]) => Promise<{ emitSkipped: boolean, diagnostics: readonly Diagnostic[], outputFiles: ReadonlyMap<string, { text: string, sourceFileName?: string }> }>
   getSyntacticDiagnostics: (files: readonly string[]) => Promise<readonly Diagnostic[]>
+  getSourceFile: (file: string) => Promise<{ text: string } | undefined>
 }
 
 interface Snapshot {
@@ -215,17 +216,39 @@ async function findPackage(cwd: string, engine: NativeEngineName): Promise<Nativ
 
 interface OpenProject {
   snapshot: Snapshot
-  /** The size and modification time of each file outside `node_modules` that the program read. */
-  stats?: Promise<Map<string, string>>
+  create: () => Promise<Snapshot>
+  /** What `snapshot` holds of the files outside `node_modules`, read from it on first use. */
+  files?: Promise<SnapshotFiles>
 }
 
-const statOf = (file: string) => stat(file).then(({ size, mtimeMs }) => `${size}:${mtimeMs}`, () => undefined)
+interface SnapshotFiles {
+  /** The text of each file. */
+  contents: Map<string, string>
+  /** The names in each directory of those files. */
+  listings: Map<string, string>
+}
+
+const BOM_RE = /^\uFEFF/
+const listingOf = (dir: string) => readdir(dir).then(names => names.sort().join('\0'), () => '')
+const textOf = (file: string) => readFile(file, 'utf8').then(text => text.replace(BOM_RE, ''), () => undefined)
+
+async function snapshotFiles(snapshot: Snapshot): Promise<SnapshotFiles> {
+  const program = snapshot.getProjects()[0]!.program
+  const files = (await program.getSourceFileNames()).map(file => normalize(file)).filter(file => !NODE_MODULES_RE.test(file))
+  const texts = await Promise.all(files.map(async file => [file, (await program.getSourceFile(file))?.text] as const))
+  const dirs = [...new Set(files.map(file => dirname(file)))]
+  return {
+    contents: new Map(texts.flatMap(([file, text]) => text === undefined ? [] : [[file, text.replace(BOM_RE, '')]])),
+    listings: new Map(await Promise.all(dirs.map(async dir => [dir, await listingOf(dir)] as const))),
+  }
+}
 
 /**
  * A native compiler with the TypeScript 7.1 API: `typescript` 7.1 or later, the module's own or
  * `@typescript/typescript7`, or `tsrs`. One process serves every program until `close`. A
  * program opened again with the same roots and options is kept, and updated with the files
- * outside `node_modules` that changed since. Throws a {@link NativeEngineError} when the engine
+ * outside `node_modules` whose text differs from what it read, or created again when a file was
+ * added next to them. Throws a {@link NativeEngineError} when the engine
  * cannot be used.
  */
 export async function createNativeEngine(cwd: string, engine: NativeEngineName): Promise<DeclarationEngine> {
@@ -234,28 +257,32 @@ export async function createNativeEngine(cwd: string, engine: NativeEngineName):
   const projects = new Map<string, Promise<OpenProject>>()
 
   const refresh = async (open: OpenProject) => {
-    const previous = await open.stats
-    if (!previous) {
-      return
+    const { contents, listings } = await (open.files ??= snapshotFiles(open.snapshot))
+    const previous = open.snapshot
+    const added = (await Promise.all([...listings].map(async ([dir, names]) => await listingOf(dir) !== names))).some(Boolean)
+    if (added) {
+      open.snapshot = await open.create()
     }
-    const changed: string[] = []
-    const deleted: string[] = []
-    await Promise.all([...previous].map(async ([file, recorded]) => {
-      const current = await statOf(file)
-      if (current === undefined) {
-        deleted.push(file)
+    else {
+      const changed: string[] = []
+      const deleted: string[] = []
+      await Promise.all([...contents].map(async ([file, text]) => {
+        const current = await textOf(file)
+        if (current === undefined) {
+          deleted.push(file)
+        }
+        else if (current !== text) {
+          changed.push(file)
+        }
+      }))
+      if (!changed.length && !deleted.length) {
+        return
       }
-      else if (current !== recorded) {
-        changed.push(file)
-      }
-    }))
-    if (changed.length || deleted.length) {
-      const current = open.snapshot
-      open.snapshot = await current.update({ fileNotifications: { changed, deleted }, ensurePrograms: true })
-      open.stats = undefined
-      if (open.snapshot !== current) {
-        await current.dispose()
-      }
+      open.snapshot = await previous.update({ fileNotifications: { changed, deleted }, ensurePrograms: true })
+    }
+    open.files = undefined
+    if (open.snapshot !== previous) {
+      await previous.dispose()
     }
   }
 
@@ -274,15 +301,18 @@ export async function createNativeEngine(cwd: string, engine: NativeEngineName):
             await refresh(open)
             return open
           })
-        : client.createSnapshot({ createPrograms: [{ rootFiles: rootNames, compilerOptions: options }] }).then(snapshot => ({ snapshot }) as OpenProject)
+        : (() => {
+            const create = () => client!.createSnapshot({ createPrograms: [{ rootFiles: rootNames, compilerOptions: options }] })
+            return create().then(snapshot => ({ snapshot, create }) as OpenProject)
+          })()
       projects.set(id, pending)
       const opened = await pending
       const program = () => opened.snapshot.getProjects()[0]!.program
       const sourceFiles = async () => (await program().getSourceFileNames()).map(file => normalize(file))
-      opened.stats ??= sourceFiles().then(async files => new Map((await Promise.all(files.filter(file => !NODE_MODULES_RE.test(file)).map(async file => [file, await statOf(file)] as const))).flatMap(([file, recorded]) => recorded === undefined ? [] : [[file, recorded]])))
       return {
         async inputs() {
-          return new Map((await sourceFiles()).map(file => [file, undefined]))
+          const { contents } = await (opened.files ??= snapshotFiles(opened.snapshot))
+          return new Map((await sourceFiles()).map(file => [file, contents.get(file)]))
         },
         async emit(files) {
           const present = new Set(await sourceFiles())
