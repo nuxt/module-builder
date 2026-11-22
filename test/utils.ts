@@ -3,7 +3,7 @@ import { cp, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { availableParallelism } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { dirname, join } from 'pathe'
+import { dirname, join, relative, resolve } from 'pathe'
 import { exec } from 'tinyexec'
 import ts from 'typescript'
 import { expect, onTestFailed } from 'vitest'
@@ -120,6 +120,7 @@ export async function fixture(dir: string, { from = exampleDir, config = DEFAULT
   await mkdir(dirname(root), { recursive: true })
   await cp(from, root, { recursive: true })
   await rm(join(root, 'dist'), { recursive: true, force: true })
+  await rebaseBuildDirPaths(from, root)
   const pkgPath = join(root, 'package.json')
   const { build, publishConfig: _, ...published } = publishedPackage(JSON.parse(await readFile(pkgPath, 'utf-8')))
   const copied = config === false ? { ...published, build } : published
@@ -148,6 +149,27 @@ export async function fixture(dir: string, { from = exampleDir, config = DEFAULT
     await symlink(join(root, target), join(root, link))
   }
   return root
+}
+
+/** Points the `paths` of the tsconfigs in `root/.nuxt`, copied from `from/.nuxt`, that lead out of `from` at the same files from `root`. */
+async function rebaseBuildDirPaths(from: string, root: string) {
+  const buildDir = join(root, '.nuxt')
+  const files = existsSync(buildDir) ? (await readdir(buildDir)).filter(file => /^tsconfig.*\.json$/.test(file)) : []
+  for (const file of files) {
+    const path = join(buildDir, file)
+    const config = JSON.parse(await readFile(path, 'utf-8'))
+    const paths: Record<string, string[]> | undefined = config.compilerOptions?.paths
+    if (!paths) {
+      continue
+    }
+    for (const [alias, targets] of Object.entries(paths)) {
+      paths[alias] = targets.map((target) => {
+        const original = resolve(from, '.nuxt', target)
+        return relative(from, original).startsWith('..') ? relative(buildDir, original) : target
+      })
+    }
+    await writeFile(path, JSON.stringify(config, null, 2))
+  }
 }
 
 export const listFiles = async (dir: string) => (await readdir(dir, { recursive: true })).map(file => file.replaceAll('\\', '/')).sort()
