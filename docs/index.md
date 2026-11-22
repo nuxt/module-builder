@@ -85,7 +85,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    ```json [package.json]
    {
      "scripts": {
-       "dev": "nuxt dev playground",
+       "dev": "nuxt-module-build prepare && nuxt dev playground",
        "dev:prepare": "nuxt-module-build prepare && nuxt prepare playground",
        "prepack": "tsdown"
      }

@@ -246,6 +246,7 @@ In each script that runs the builder, change only the builder's commands, and ke
 - `nuxt-module-build prepare --stub` becomes `nuxt-module-build prepare`.
 - A script that only ran the stub build, such as `"stub": "nuxt-module-build build --stub ."`, has nothing left to run. Delete it, and remove it from the scripts that run it, such as `pnpm stub &&`.
 - In `dev:prepare`, run `nuxt-module-build prepare` first, before the build and every `nuxt prepare`. Add it if it isn't there.
+- In `dev`, run `nuxt-module-build prepare` before `nuxt dev playground`. Without `.nuxt`, the playground responds to every request with a 500 error.
 - If `package.json` points at `dist`, run `tsdown` in `dev:prepare` before the first `nuxt prepare`. Do the same if a subpath stays at `dist` and the playground or tests load it.
 - The build empties `dist` first, so a command that writes into `dist` has to run after `tsdown`.
 - If `package.json` points at your sources, run `tsdown` as a command of `prepack` itself, so that the [pack checks](#publishing-source-exports) run. A `prepack` that runs another script, such as `pnpm run build`, isn't checked: move that script's commands into `prepack`.

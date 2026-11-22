@@ -33,7 +33,7 @@
   },
   "scripts": {
     "prepack": "node ../src/cli.ts build",
-    "dev": "nuxt dev playground",
+    "dev": "node ../src/cli.ts prepare && nuxt dev playground",
     "dev:build": "nuxt build playground",
     "dev:prepare": "node ../src/cli.ts prepare && nuxt prepare playground",
     "test:types": "vue-tsc -b --noEmit"
