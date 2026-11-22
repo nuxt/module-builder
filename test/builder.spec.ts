@@ -284,7 +284,7 @@ export default {
   dirs.rootPaths = await withoutVue('root-paths', { files: { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { paths: MY_PATHS } }) } })
   const staleVue = (source: string) => source.replace(/\.pnpm\/vue@[^/]+\//g, '.pnpm/vue@0.0.0/')
   dirs.stale = await fixture('.temp-builder/stale', { config: PLUGIN, files: Object.fromEntries(['', '.app', '.node', '.server', '.shared'].map(part => [`.nuxt/tsconfig${part}.json`, staleVue])) })
-  dirs.standalone = await withoutVue('standalone', { files: { 'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', allowImportingTsExtensions: true, noEmit: true }, include: ['src'] }) } })
+  dirs.standalone = await withoutVue('standalone', { files: { 'src/runtime/components/Commented.vue': `<!-- <script setup lang="ts" generic="T"> -->\n<script setup lang="ts">\ndefineProps<{ label: string }>()\n</script>\n\n<template>\n  <span>{{ label }}</span>\n</template>\n`, 'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', allowImportingTsExtensions: true, noEmit: true }, include: ['src'] }) } })
 
   await Promise.all([
     ...['legacyPaths', 'ownVue', 'partPaths', 'rootPaths', 'stale', 'standalone'].map(name => step(name, tsdown(dirs[name]!))),
@@ -607,6 +607,7 @@ describe('a module that does not install `vue`', () => {
     expect(output).toContain('NUXT_MB_B0206: `vue` does not resolve from these components')
     expect(output).toContain('`src/runtime/components/ErrorState.vue`')
     expect(output).toContain('`src/runtime/components/TestMe.vue`')
+    expect(output).toContain('`src/runtime/components/Commented.vue`')
     expect(output).not.toContain('RowActions.vue')
     expect(exists(dirs.standalone!, 'dist')).toBe(false)
   })

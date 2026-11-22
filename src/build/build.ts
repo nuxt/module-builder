@@ -155,6 +155,7 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput }: { keepOutput
 }
 
 const SCRIPT_TAG_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi
+const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g
 
 /**
  * Fails when the library that the generated code of a single-file component imports does not
@@ -164,7 +165,7 @@ const SCRIPT_TAG_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi
 async function assertResolvableVueLibrary(plan: BuildPlan) {
   const { cwd, rootTsconfig, directories } = plan
   const components = directories.flatMap(directory => globSync(['**/*.vue'], { cwd: directory.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true }).map(file => normalize(file)))
-  const inferred = components.filter(file => ![...readFileSync(file, 'utf8').matchAll(SCRIPT_TAG_RE)].some(([tag]) => /\ssetup\b/.test(tag) && /\sgeneric\s*=/.test(tag)))
+  const inferred = components.filter(file => ![...readFileSync(file, 'utf8').replace(HTML_COMMENT_RE, '').matchAll(SCRIPT_TAG_RE)].some(([tag]) => /\ssetup\b/.test(tag) && /\sgeneric\s*=/.test(tag)))
   if (!rootTsconfig || !inferred.length) {
     return
   }
