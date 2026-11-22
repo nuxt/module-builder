@@ -36,6 +36,7 @@ pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 ts
 - `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect elsewhere. Yarn 1 takes `-W` instead. Other package managers need no flag.
 - If your module is a package of a monorepo, such as `packages/my-module`, run the command in the module's directory. Or add both packages to the catalog that the module's `package.json` uses.
 - If pnpm's `minimumReleaseAge` fails the install with `ERR_PNPM_NO_MATURE_MATCHING_VERSION`, add the `<package>@<version>` that the error names to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. Then install again. Without an error, the same setting can install an older v2 release than the latest one.
+- If Yarn's `npmMinimalAgeGate` fails the install with `YN0016`, add the package that the error names to `npmPreapprovedPackages` in `.yarnrc.yml`. Then install again.
 
 Then change the other dependencies:
 

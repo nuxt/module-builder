@@ -52,7 +52,7 @@ To add `@nuxt/module-builder` to an existing module, follow these steps:
    pnpm add -D --ignore-workspace-root-check @nuxt/module-builder@^2.0.0-alpha.0 tsdown@^0.23.7 typescript nuxt
    ```
 
-   `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect in a single package.
+   `--ignore-workspace-root-check` lets `pnpm add` install at the root of a pnpm workspace, and has no effect in a single package. If pnpm's `minimumReleaseAge` or Yarn's `npmMinimalAgeGate` rejects a recent release, see [Install v2 and tsdown](/docs/api/module-builder/upgrade-v2#step-1-install-v2-and-tsdown).
 
 2. Create a `tsdown.config.ts` in the module root that uses the `builder()` plugin:
 
