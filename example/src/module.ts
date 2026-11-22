@@ -40,7 +40,7 @@ export default defineNuxtModule<ModuleOptions>({
     // @ts-expect-error type should be resolved
     _options.shared = 'not-shared-type'
 
-    // Do not add the extension since the `.ts` will be transpiled to `.mjs` after `npm run prepack`
+    // Nuxt adds the extension: `.ts` for the sources, `.js` for `dist`
     addPlugin(resolver.resolve('./runtime/plugins/plugin'))
   },
 })
