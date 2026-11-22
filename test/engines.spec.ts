@@ -133,7 +133,7 @@ beforeAll(async () => {
     step('installed', cli(['prepare', dirs.installed!])),
     ...dirs.ownTypescript7
       ? [(async () => {
-          const env = { NODE_DEBUG: 'nuxt-module-builder', NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${join(repoRoot, 'test/typescript-from.cjs')}`, TYPESCRIPT_FROM: join(dirs.ownTypescript7!, 'package.json') }
+          const env = { NODE_DEBUG: 'nuxt-module-builder', NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(join(repoRoot, 'test/typescript-from.cjs'))}`, TYPESCRIPT_FROM: join(dirs.ownTypescript7!, 'package.json') }
           await step('ownTypescript7', tsdown(dirs.ownTypescript7!, [], env))
           await step('ownTypescript7:prepare', run('node', [join(dirs.ownTypescript7!, 'builder/src/cli.ts'), 'prepare', dirs.ownTypescript7!], { env }))
         })()]
