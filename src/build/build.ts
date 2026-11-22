@@ -12,7 +12,7 @@ import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { loadOxc } from '../transpile/oxc.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, packageName, replacedGeneratedPaths, restoredTsconfigPaths, TsconfigError, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, packageName, replacedGeneratedPaths, restoredTsconfigPaths, TsconfigError, unresolvedVueLibrary, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
 import type { TsconfigResolver } from '../transpile/tsconfig.ts'
 import { errors, warnings } from '../diagnostics.ts'
 import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
@@ -146,11 +146,32 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput }: { keepOutput
   }
 
   await writeServerRoutesStub(cwd)
+  await assertResolvableVueLibrary(plan)
   if (plan.moduleTsconfig && plan.declarationTsconfig) {
     const imports = plan.moduleProject ? await writeDependencyImports(cwd, plan.rootTsconfig) : undefined
     await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, { file: plan.declarationTsconfig, imports })
   }
   plan.prepared = analyseSources(plan)
+}
+
+const SCRIPT_TAG_RE = /<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi
+
+/**
+ * Fails when the library that the generated code of a single-file component imports does not
+ * resolve from it, for each component whose declaration is inferred from that library: every
+ * component but one with a `generic` script setup, whose declaration spells out its type.
+ */
+async function assertResolvableVueLibrary(plan: BuildPlan) {
+  const { cwd, rootTsconfig, directories } = plan
+  const components = directories.flatMap(directory => globSync(['**/*.vue'], { cwd: directory.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true }).map(file => normalize(file)))
+  const inferred = components.filter(file => ![...readFileSync(file, 'utf8').matchAll(SCRIPT_TAG_RE)].some(([tag]) => /\ssetup\b/.test(tag) && /\sgeneric\s*=/.test(tag)))
+  if (!rootTsconfig || !inferred.length) {
+    return
+  }
+  const unresolved = unresolvedVueLibrary(await writeDerivedTsconfig(cwd, rootTsconfig, plan.directoryPaths, { vue: true }), inferred)
+  if (unresolved.length) {
+    throw errors.NUXT_MB_B0206({ lib: unresolved[0]!.lib, files: unresolved.map(({ file }) => relative(cwd, file)), sources: unresolved.map(({ file }) => file) })
+  }
 }
 
 /**

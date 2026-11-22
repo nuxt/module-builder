@@ -82,6 +82,12 @@ export const errorCodes = {
     docs: false,
   },
 
+  NUXT_MB_B0206: {
+    why: (p: { lib: string, files: string[] }): string => `\`${p.lib}\` does not resolve from these components with the tsconfig that their declarations are generated with, so each would be declared as \`any\`: ${list(p.files)}.`,
+    fix: (p: { lib: string }): string => `Add \`${p.lib}\` to \`devDependencies\`, or make the tsconfig that includes them extend or reference the tsconfigs in \`.nuxt\`, which map it in \`paths\`.`,
+    docs: '#declaration-errors',
+  },
+
   NUXT_MB_C0001: {
     why: (p: { options: Array<{ option: string, reason: string }> }): string => [
       '`builder()` sets these tsdown options itself, and the tsdown config sets them too:',

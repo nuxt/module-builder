@@ -378,6 +378,7 @@ The build generates declarations with TypeScript, using the tsconfig project tha
 
 - An export whose inferred type can't be named (TS2742, TS2883, or TS4023) needs a type annotation. See [Portability errors](#portability-errors).
 - If `.nuxt` is out of date, run `nuxt-module-build prepare` and build again.
+- A component without a `generic` script setup is declared with the types of `vue`, so the build fails when `vue` doesn't resolve from it. Add `vue` to `devDependencies`, or make the tsconfig that includes the component extend or reference the tsconfigs in `.nuxt`, which map `vue` in `paths`.
 - Syntax errors, and files for which no declaration can be emitted, fail the build too.
 
 The build doesn't type check otherwise, so your own type check reports every other type error. See [Declarations](./5.typescript.md#declarations).

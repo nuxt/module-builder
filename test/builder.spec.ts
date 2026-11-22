@@ -284,9 +284,10 @@ export default {
   dirs.rootPaths = await withoutVue('root-paths', { files: { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { paths: MY_PATHS } }) } })
   const staleVue = (source: string) => source.replace(/\.pnpm\/vue@[^/]+\//g, '.pnpm/vue@0.0.0/')
   dirs.stale = await withoutVue('stale', { files: Object.fromEntries(['', '.app', '.node', '.server', '.shared'].map(part => [`.nuxt/tsconfig${part}.json`, staleVue])) })
+  dirs.standalone = await withoutVue('standalone', { files: { 'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', allowImportingTsExtensions: true, noEmit: true }, include: ['src'] }) } })
 
   await Promise.all([
-    ...['legacyPaths', 'ownVue', 'partPaths', 'rootPaths', 'stale'].map(name => step(name, tsdown(dirs[name]!))),
+    ...['legacyPaths', 'ownVue', 'partPaths', 'rootPaths', 'stale', 'standalone'].map(name => step(name, tsdown(dirs[name]!))),
     step('compose', tsdown(dirs.compose)),
     step('packageImports', tsdown(dirs.packageImports)),
     step('warnings', tsdown(dirs.warnings))
@@ -599,5 +600,14 @@ describe('a module that does not install `vue`', () => {
     expect(output).toMatch(/\[NUXT_MB_B0102\] `\.nuxt` is out of date: its tsconfigs map `vue` into packages that are not installed/)
     await expectTyped(dirs.stale!)
     expect(await read(dirs.stale!, '.nuxt/tsconfig.app.json')).not.toContain('vue@0.0.0')
+  })
+
+  it('should fail when `vue` does not resolve from the components whose declarations it types', () => {
+    const output = expectFailed('standalone')
+    expect(output).toContain('NUXT_MB_B0206: `vue` does not resolve from these components')
+    expect(output).toContain('`src/runtime/components/ErrorState.vue`')
+    expect(output).toContain('`src/runtime/components/TestMe.vue`')
+    expect(output).not.toContain('RowActions.vue')
+    expect(exists(dirs.standalone!, 'dist')).toBe(false)
   })
 })

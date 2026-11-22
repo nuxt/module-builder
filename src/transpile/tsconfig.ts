@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createFilesMatcher, createPathsMatcher, getTsconfig, parseTsconfig } from 'get-tsconfig'
 import type { TsConfigResult } from 'get-tsconfig'
-import { dirname, join, relative, resolve } from 'pathe'
+import { dirname, join, normalize, relative, resolve } from 'pathe'
 import type ts from 'typescript'
 
 import { findPackageDir, findUp, getOrCreate, isInside, NODE_MODULES_RE } from '../utils.ts'
@@ -354,6 +354,58 @@ function generatedBase(file: string, seen: Set<string>): string | undefined {
 /** The tsconfig's `paths` made absolute, with the generated entries that they replace (see {@link replacedGeneratedPaths}) under them. */
 export function restoredTsconfigPaths(tsconfig: TsConfigResult | undefined): Record<string, string[]> {
   return { ...replacedGeneratedPaths(tsconfig)?.paths, ...tsconfigPaths(tsconfig) }
+}
+
+/**
+ * The `.vue` files among `files` from which the library that their generated code imports,
+ * `vueCompilerOptions.lib` or else `vue`, does not resolve. Each is resolved with the options of
+ * the project of `tsconfig` that a declaration program over it compiles the file with: the
+ * first that lists it, or else the first.
+ */
+export function unresolvedVueLibrary(tsconfig: string, files: string[]): Array<{ file: string, lib: string }> {
+  const { ts } = loadTypescript()
+  const projects: Array<{ path: string, options: ts.CompilerOptions, fileNames: Set<string>, lib: string }> = []
+  const seen = new Set<string>()
+  const collect = (path: string) => {
+    if (seen.has(path)) {
+      return
+    }
+    seen.add(path)
+    const parsed = parseProject(ts, path, true)
+    if (parsed && !parsed.fileNames.length && parsed.projectReferences?.length) {
+      for (const reference of parsed.projectReferences) {
+        collect(normalize(ts.resolveProjectReferencePath(reference)))
+      }
+    }
+    else if (parsed) {
+      projects.push({ path, options: parsed.options, fileNames: new Set(parsed.fileNames.map(file => normalize(file))), lib: vueLibrary(ts, path, new Set()) ?? 'vue' })
+    }
+  }
+  collect(normalize(tsconfig))
+  const resolved = new Map<string, boolean>()
+  return files.flatMap((file) => {
+    const project = projects.find(({ fileNames }) => fileNames.has(normalize(file))) ?? projects[0]
+    if (!project) {
+      return []
+    }
+    const found = getOrCreate(resolved, `${project.path}\0${dirname(file)}`, () => !!ts.resolveModuleName(project.lib, file, project.options, ts.sys).resolvedModule)
+    return found ? [] : [{ file, lib: project.lib }]
+  })
+}
+
+function vueLibrary(ts: typeof import('typescript'), file: string, seen: Set<string>): string | undefined {
+  seen.add(file)
+  const raw = ts.readConfigFile(file, ts.sys.readFile).config as (RawTsconfig & { vueCompilerOptions?: { lib?: string } }) | undefined
+  if (typeof raw?.vueCompilerOptions?.lib === 'string') {
+    return raw.vueCompilerOptions.lib
+  }
+  for (const target of [raw?.extends ?? []].flat().reverse()) {
+    const resolved = resolveExtends(ts, target, dirname(file))
+    const lib = resolved && !seen.has(resolved) ? vueLibrary(ts, resolved, seen) : undefined
+    if (lib) {
+      return lib
+    }
+  }
 }
 
 const PACKAGE_DIR_RE = /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^.\\/][^\\/]*)/
