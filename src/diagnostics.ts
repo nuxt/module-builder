@@ -32,14 +32,26 @@ function describeUnpublishable(items: UnpublishableItem[]) {
   }).join(' ')
 }
 
+/** A package that the bundled entries bundle from `node_modules`. */
+export interface BundledPackage {
+  name: string
+  /** The files, relative to the module root, and the other packages that import it. */
+  importers: string[]
+}
+
 /** Definitions of the {@link errors}. */
 export const errorCodes = {
   NUXT_MB_B0001: {
-    why: (p: { issues: ModuleCodeIssue[] }): string => [
-      'Module code has to load with Node, which strips types and resolves imports as written:',
-      ...new Set(p.issues.map(({ file, line, column, importedBy, message }) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`)),
-    ].join('\n'),
-    fix: 'Change each one as suggested.',
+    why: (p: { issues: ModuleCodeIssue[] }): string => {
+      const line = ({ file, line, column, importedBy, message }: ModuleCodeIssue) => `  - ${file}:${line}:${column}${importedBy ? ` (imported by ${importedBy})` : ''}: ${message}`
+      const unfollowed = p.issues.filter(issue => issue.unfollowed)
+      return [
+        'Module code has to load with Node, which strips types and resolves imports as written:',
+        ...new Set(p.issues.filter(issue => !issue.unfollowed).map(line)),
+        ...unfollowed.length ? ['The check stopped at these imports, so the files they import may have more of these problems:', ...new Set(unfollowed.map(line))] : [],
+      ].join('\n')
+    },
+    fix: (p: { issues: ModuleCodeIssue[] }): string => p.issues.some(issue => issue.unfollowed) ? 'Change each one as suggested. Once the imports that the check stopped at resolve, run it again to check the files that they import.' : 'Change each one as suggested.',
     docs: '#step-4-make-module-code-load-with-node',
   },
   NUXT_MB_B0002: {
@@ -51,6 +63,14 @@ export const errorCodes = {
     why: '`@nuxt/module-builder` builds with `tsdown`, which is a peer dependency and is not installed.',
     fix: (): string => `Install it in your module: \`pnpm add -D tsdown@"${pkg.peerDependencies.tsdown}"\`.`,
     docs: '#step-1-install-v2-and-tsdown',
+  },
+  NUXT_MB_B0004: {
+    why: (p: { packages: BundledPackage[] }): string => [
+      'The bundled entries bundle these packages, which `package.json` does not list in `dependencies` or `peerDependencies`:',
+      ...p.packages.map(({ name, importers }) => `  - \`${name}\`${importers.length ? `, imported by ${importers.join(', ')}` : ''}`),
+    ].join('\n'),
+    fix: (p: { legacy: boolean }): string => `For each one, if apps that install the module need it, move it to \`dependencies\` or \`peerDependencies\`. If bundling it is intended, list it in ${p.legacy ? '`rollup.inlineDependencies` in the build config' : '`deps.onlyBundle` in the tsdown config'}. If the app provides it, add it to ${p.legacy ? '`externals` in the build config' : '`builder({ externals })`'}.`,
+    docs: '#bundled-packages',
   },
 
   NUXT_MB_C0001: {
@@ -145,7 +165,7 @@ export const errorCodes = {
 
   NUXT_MB_C0302: {
     why: (p: { path: string, reason: string, tsconfig: 'own' | 'parent' | 'referenced' }): string => `Cannot read \`${p.path}\`, ${{ own: 'the module\'s tsconfig', parent: 'the nearest tsconfig above the module, which has no `tsconfig.json` of its own', referenced: 'a project that the tsconfig of the module references' }[p.tsconfig]}: ${p.reason}`,
-    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` and a `tsconfig.module.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
+    fix: (p: { tsconfig: 'own' | 'parent' | 'referenced' }): string => p.tsconfig === 'parent' ? 'Give the module a `tsconfig.json` of its own, as described in the upgrade guide, before you run `prepare` or build.' : 'Fix the tsconfig, or generate the file that it names before you run `prepare` or build.',
     docs: '#other-tsconfig-layouts',
   },
 
@@ -217,7 +237,7 @@ export const warningCodes = {
   },
   NUXT_MB_C0301: {
     why: (p: { path: string }): string => `\`${p.path}\` takes its generated types from another app's \`.nuxt\`; declarations are generated with \`.nuxt/tsconfig.json\` instead.`,
-    fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./tsconfig.module.json\`, which extends \`./.nuxt/tsconfig.node.json\`, and \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
+    fix: (p: { inside: boolean }): string => `${p.inside ? 'Reference the module\'s own tsconfigs from it instead' : 'Add a `tsconfig.json` to the module directory that references the module\'s own tsconfigs'}: \`./.nuxt/tsconfig.node.json\`, \`./.nuxt/tsconfig.app.json\`, \`./.nuxt/tsconfig.server.json\` and \`./.nuxt/tsconfig.shared.json\`.`,
     docs: '#other-tsconfig-layouts',
   },
   NUXT_MB_C0303: {

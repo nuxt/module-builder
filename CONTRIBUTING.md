@@ -53,7 +53,7 @@ The package has three entry points:
    - the tsconfigs for declarations;
    - the module's self-reference paths;
    - a cache key for `.vue` declarations.
-4. Sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`. Adds `runtimeExternals` (bundled code imports runtime files from `dist` instead of inlining them), the declaration externals, replacements, and one `transpileDir()` per directory.
+4. Sets `entry`, `format`, `dts`, `clean` and `deps.neverBundle`, and `deps.onlyBundle` unless the config sets it. Adds `runtimeExternals` (bundled code imports runtime files from `dist` instead of inlining them), the declaration externals, `bundledPackages` (which fails on packages that `deps.onlyBundle` leaves out), replacements, and one `transpileDir()` per directory.
 
 Then, once per build:
 
@@ -86,7 +86,8 @@ In watch mode the output directory is kept, unchanged files aren't rewritten (`u
 
 That writes `.nuxt`, including:
 
-- the tsconfigs of each context;
+- the tsconfigs of each context, with `erasableSyntaxOnly` in the node tsconfig when the root tsconfig has `references` and its `compilerOptions` leave the option unset;
+- with a root tsconfig that has `references`, `.nuxt/nuxt.module.d.ts`, which the node tsconfig includes in place of `.nuxt/nuxt.d.ts`: a copy of it without Nitro's `types/nitro-imports.d.ts`, so the module code project doesn't load the server sources that the server's auto-imports point at;
 - `.nuxt/module-builder/types.d.mts`, which source exports point at;
 - the declarations that resolve the module's own package name inside its type checks.
 
@@ -94,7 +95,7 @@ With a root tsconfig that has `references`, it then lists the module's TypeScrip
 
 ### Module code loads with Node
 
-Nuxt 5, and a playground that loads the module from its sources, import `src/module.ts` with Node as written. Node strips types and resolves imports exactly as they are written. `findModuleCodeIssues` in `src/build/loader.ts` reports each import and each piece of syntax that breaks this, with its file, line, column and fix. `build`, `tsdown` and `prepare` all stop on these findings. Keep this check strict: code that passes it has to run under Node.
+Nuxt 5, and a playground that loads the module from its sources, import `src/module.ts` with Node as written. Node strips types and resolves imports exactly as they are written. `findModuleCodeIssues` in `src/build/loader.ts` reports each import and each piece of syntax that breaks this, with its file, line, column and fix. `build`, `tsdown` and `prepare` all stop on these findings. It follows relative imports without their extension to their files, so one run reports every file it reaches, and it lists the imports that resolve to no file as `unfollowed`, which only accompany other findings. Keep this check strict: code that passes it has to run under Node.
 
 ### Legacy code
 

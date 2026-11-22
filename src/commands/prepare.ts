@@ -100,6 +100,7 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
   const ambient = await ambientDeclarations(cwd, runtimeDirs, [...rootConfig.exclude ?? [], outDir])
   const selfPaths = selfReferencePaths(cwd, pkg, outDir, entries)
   const sourceTypesDir = resolve(cwd, '.nuxt/module-builder')
+  const nodeAppEntry = resolve(cwd, '.nuxt/nuxt.module.d.ts')
   const declarationsDir = join(sourceTypesDir, 'declarations')
   const ownTypes = join(declarationsDir, 'types.d.mts')
   const own = name ? moduleDeclarationPaths(cwd, declarationsDir, name, selfPaths, runtimeDirs) : { paths: {}, sources: [] }
@@ -207,13 +208,17 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
                 list.push(...ambient.augmentations.map(path => ({ path })))
               }
               // Module code can import types from runtime sources, which rely on the app's aliases, declarations and JSX options.
-              const appDeclarations = (tsConfig.include ?? []).filter(pattern => isInside(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)))
+              const appEntry = join(nuxt.options.buildDir, 'nuxt.d.ts')
+              const appDeclarations = (tsConfig.include ?? [])
+                .filter(pattern => isInside(nuxt.options.buildDir, resolve(nuxt.options.buildDir, pattern)))
+                .map(pattern => rootConfig.references && resolve(nuxt.options.buildDir, pattern) === appEntry ? `./${relative(nuxt.options.buildDir, nodeAppEntry)}` : pattern)
               nodeTsConfig.include = [...new Set([...nodeTsConfig.include ?? [], ...appDeclarations])]
               // A type reference does not resolve the module's own package name.
               const ownReference = nodeReferences.findIndex(isOwnTypes)
               nodeReferences.splice(ownReference === -1 ? nodeReferences.length : ownReference, ownReference === -1 ? 0 : 1, { path: join(sourceTypesDir, 'types.d.mts') })
               const { jsx, jsxImportSource } = tsConfig.compilerOptions ?? {}
-              nodeTsConfig.compilerOptions = { jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
+              // Module code loads with Node, so the module code project reports the syntax that type stripping cannot remove.
+              nodeTsConfig.compilerOptions = { ...rootConfig.references && { erasableSyntaxOnly: true }, jsx, jsxImportSource, ...nodeTsConfig.compilerOptions }
               nodeTsConfig.compilerOptions.paths = { ...tsConfig.compilerOptions?.paths, ...nodeTsConfig.compilerOptions.paths }
               // The module's own package resolves to declarations of module code here, so module code is not type checked in these parts.
               // Included rather than referenced from `nuxt.d.ts`, which `.nuxt/tsconfig.json` also includes.
@@ -234,6 +239,9 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
     } satisfies NuxtConfig,
   })
   await writeSourceTypes(sourceTypesDir, entryPath)
+  if (perContext && rootConfig.references) {
+    await writeNodeAppDeclarations(resolve(cwd, '.nuxt'), nodeAppEntry)
+  }
   await writeCompatibilityTsconfig(resolve(cwd, '.nuxt/tsconfig.json'), cwd, { ownPaths, ownTypes, entryPath, ambient: ambient.globals })
   if (perContext) {
     await noteUncheckedFiles(cwd, { outDir, exclude: rootConfig.exclude ?? [] })
@@ -248,6 +256,42 @@ export async function prepareModule(cwd: string, prepareConfig?: PrepareConfig, 
     await writeModuleDeclarations(cwd, declarationsDir, { tsconfig, entry: entryPath, roots, paths: selfPaths, imports })
   }
   return result
+}
+
+const REFERENCE_PATH_RE = /^\/\/\/ <reference path="([^"]+)" \/>$/
+
+/**
+ * Writes to `file`, next to the app's `nuxt.d.ts` in `buildDir` so that its relative imports
+ * resolve the same, a copy of it for the module code project without Nitro's
+ * `types/nitro-imports.d.ts`. That file only re-exports the server's auto-imports for `#imports`
+ * in the server part, and refers to the module's server sources.
+ */
+async function writeNodeAppDeclarations(buildDir: string, file: string) {
+  const serverImports = join(buildDir, 'types/nitro-imports.d.ts')
+  const referenced = (from: string, line: string) => {
+    const path = line.match(REFERENCE_PATH_RE)?.[1]
+    return path && resolve(dirname(from), path)
+  }
+  const reference = (target: string) => `/// <reference path="${relative(dirname(file), target)}" />`
+  const appEntry = join(buildDir, 'nuxt.d.ts')
+  const lines: string[] = []
+  for (const line of (await readFile(appEntry, 'utf8')).split('\n')) {
+    const target = referenced(appEntry, line)
+    const nested = target && isInside(buildDir, target) ? (await readFile(target, 'utf8').catch(() => '')).split('\n').filter(line => line.startsWith('/// <reference ')) : []
+    if (!target) {
+      lines.push(line)
+    }
+    else if (nested.some(line => referenced(target, line) === serverImports)) {
+      lines.push(...nested.flatMap((line) => {
+        const nestedTarget = referenced(target, line)
+        return nestedTarget === serverImports ? [] : [nestedTarget ? reference(nestedTarget) : line]
+      }))
+    }
+    else if (target !== serverImports) {
+      lines.push(reference(target))
+    }
+  }
+  await writeFile(file, lines.join('\n'))
 }
 
 interface CompatibilityOptions {

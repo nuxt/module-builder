@@ -197,6 +197,23 @@ export default {
       'tsconfig.json': REFERENCES('./tsconfig.module.json'),
     },
   })
+  const serverImports = (name: string, files: Record<string, string>) => fixture(`.temp-builder/${name}`, {
+    config: PLUGIN,
+    remove: ['.nuxt'],
+    module: source => source
+      .replace('import { defineNuxtModule, addPlugin, createResolver } from \'@nuxt/kit\'', 'import { defineNuxtModule, addPlugin, addServerHandler, addServerImportsDir, createResolver } from \'@nuxt/kit\'')
+      .replace('    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))', '    addPlugin(resolver.resolve(\'./runtime/plugins/plugin\'))\n    addServerImportsDir(resolver.resolve(\'./runtime/server/utils\'))\n    addServerHandler({ route: \'/api/count\', handler: resolver.resolve(\'./runtime/server/api/count.get\') })\n    _nuxt.hook(\'prepare:types\', ({ declarations }) => { declarations.push(\'import "../src/runtime/augment"\') })'),
+    files: {
+      'src/runtime/server/utils/counter.ts': `export class Counter {\n  constructor(public count: number) {}\n}\n\nexport const useCounter = (): Counter => new Counter(0)\n`,
+      'src/runtime/server/api/count.get.ts': `import { defineEventHandler } from 'h3'\n\nexport default defineEventHandler(() => ({ count: 1 }))\n`,
+      'src/runtime/composables/useCount.ts': `export const useCount = () => $fetch('/api/count')\n`,
+      'src/runtime/augment.ts': `declare global {\n  const fromAugment: string\n}\n\nexport {}\n`,
+      'src/standalone.ts': `export enum Mode { On = 'on' }\n`,
+      ...files,
+    },
+  })
+  dirs.serverImports = await serverImports('server-imports', { 'tsconfig.json': REFERENCES('./.nuxt/tsconfig.node.json') })
+  dirs.erasableRoot = await serverImports('erasable-root', { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { erasableSyntaxOnly: false } }) })
   dirs.tsconfigOption = await fixture('.temp-builder/tsconfig-option', { config: `export default { tsconfig: 'tsconfig.override.json', plugins: [builder()] }\n`, module: source => source + FIELDS, files: moduleProject })
   dirs.appProject = await fixture('.temp-builder/app-project', {
     config: PLUGIN,
@@ -229,7 +246,9 @@ export default {
     module: (source: string) => `import { existsSync } from 'node:fs'\n${['dep', 'peer', 'dev', 'undeclared'].map(name => `import { value as ${name} } from 'fake-${name}'`).join('\n')}\n\n${source}\nexport const values: unknown[] = [existsSync, dep, peer, dev, undeclared]\n`,
     files: fakePackages,
   }
-  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: PLUGIN, ...dependencies })
+  dirs.dependencies = await fixture('.temp-builder/dependencies', { config: `export default { deps: { onlyBundle: ['fake-dev', 'fake-undeclared'] }, plugins: [builder()] }\n`, ...dependencies })
+  dirs.undeclared = await fixture('.temp-builder/undeclared', { config: PLUGIN, ...dependencies })
+  dirs.anyBundled = await fixture('.temp-builder/any-bundled', { config: `export default { deps: { onlyBundle: false }, plugins: [builder()] }\n`, ...dependencies })
   dirs.onlyBundle = await fixture('.temp-builder/only-bundle', { config: `export default { deps: { onlyBundle: ['fake-dev'] }, plugins: [builder()] }\n`, ...dependencies })
   dirs.singleTsconfig = await fixture('.temp-builder/single-tsconfig', {
     config: PLUGIN,
@@ -250,12 +269,24 @@ export default {
     ...Object.keys(variants).map(name => step(name, tsdown(dirs[name]!))),
     step('contexts', tsdown(dirs.contexts)).then(() => step('contexts:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.contexts }))),
     step('moduleProject', tsdown(dirs.moduleProject)),
+    step('serverImports:prepare', cli(['prepare', dirs.serverImports!]))
+      .then(() => step('serverImports:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.serverImports })))
+      .then(() => step('serverImports:files', run(bin('vue-tsc'), ['-p', '.nuxt/tsconfig.node.json', '--noEmit', '--listFilesOnly'], { cwd: dirs.serverImports })))
+      .then(async () => {
+        await writeFile(join(dirs.serverImports!, 'tsconfig.module.json'), JSON.stringify({ extends: './.nuxt/tsconfig.node.json', compilerOptions: { erasableSyntaxOnly: false } }))
+        await writeFile(join(dirs.serverImports!, 'tsconfig.json'), REFERENCES('./tsconfig.module.json'))
+      })
+      .then(() => step('serverImports:own', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.serverImports }))),
+    step('erasableRoot:prepare', cli(['prepare', dirs.erasableRoot!]))
+      .then(() => step('erasableRoot:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit', '--force'], { cwd: dirs.erasableRoot }))),
     step('isolatedAsDocumented:prepare', cli(['prepare', dirs.isolatedAsDocumented]))
       .then(() => step('isolatedAsDocumented:typecheck', run(bin('vue-tsc'), ['-b', '--noEmit'], { cwd: dirs.isolatedAsDocumented })))
       .then(() => step('isolatedAsDocumented', tsdown(dirs.isolatedAsDocumented!, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))),
     step('tsconfigOption', tsdown(dirs.tsconfigOption)),
     step('singleTsconfig', tsdown(dirs.singleTsconfig)),
     step('dependencies', tsdown(dirs.dependencies)),
+    step('undeclared', tsdown(dirs.undeclared)),
+    step('anyBundled', tsdown(dirs.anyBundled)),
     step('onlyBundle', tsdown(dirs.onlyBundle)),
     step('nested', tsdown(dirs.nested, [], { DEBUG: 'rolldown-plugin-dts:tsc-compiler' }))
       .then(async () => snapshots.declarations = await read(dirs.nested!, 'dist/module.d.mts'))
@@ -288,16 +319,31 @@ describe('builder', () => {
     expect(JSON.parse(await read(dir, 'dist/module.json'))).toMatchObject({ name: 'my-module', configKey: 'myModule' })
   })
 
-  it('should leave dependencies, peer dependencies and Node builtins external, and bundle every other package, unless `deps.onlyBundle` leaves it out', async () => {
-    const output = expectBuilt('dependencies')
+  it('should leave dependencies, peer dependencies and Node builtins external, and bundle the packages that `deps.onlyBundle` lists', async () => {
+    expectBuilt('dependencies')
     const module = await read(dirs.dependencies!, 'dist/module.mjs')
     for (const name of ['node:fs', 'fake-dep', 'fake-peer']) {
       expect(module).toContain(`from "${name}"`)
     }
     for (const name of ['fake-dev', 'fake-undeclared']) {
       expect(module).toContain(`inlined-${name}`)
-      expect(output).toContain(`- ${name}`)
     }
+  })
+
+  it('should fail the build when it bundles a package that is not a dependency, unless the tsdown config sets `deps.onlyBundle`', async () => {
+    const failure = expectFailed('undeclared')
+    expect(failure).toContain('NUXT_MB_B0004: ')
+    expect(failure).toContain('`fake-dev`, imported by src/module.ts')
+    expect(failure).toContain('`fake-undeclared`, imported by src/module.ts')
+    expect(failure).not.toContain('`fake-dep`')
+    expect(failure).toContain('`deps.onlyBundle` in the tsdown config')
+    expect(failure).not.toMatch(/^\s+at /m)
+    expect(exists(dirs.undeclared!, 'dist')).toBe(false)
+    expect(await read(dirs.anyBundled!, 'dist/module.mjs')).toBe(await read(dirs.dependencies!, 'dist/module.mjs'))
+    expect(expectBuilt('anyBundled')).not.toContain('onlyBundle')
+  })
+
+  it('should fail the build with tsdown\'s own error when it bundles a package that the `deps.onlyBundle` of the tsdown config leaves out', () => {
     const failure = expectFailed('onlyBundle')
     expect(failure).toContain('fake-undeclared is located in node_modules but is not included in deps.onlyBundle')
     expect(failure).not.toContain('fake-dev is located')
@@ -413,6 +459,29 @@ describe('with a root tsconfig that only lists references', () => {
 
   it('should name a dependency in runtime declarations by its package when only another part of the module imports it', async () => {
     expect(await read(dirs.contexts!, 'dist/runtime/logger.d.ts')).toContain('import("fake-logger").LoggerInstance')
+  })
+
+  it('should report the syntax that Node cannot strip in the module code project of the references layout, unless the module sets `erasableSyntaxOnly` itself', async () => {
+    expectBuilt('serverImports:prepare')
+    expect(results['serverImports:typecheck']!.output.trim().split('\n')).toEqual([expect.stringMatching(/^src\/standalone\.ts\(1,13\): error TS1294:/)])
+    const options = async (dir: string, part: string) => JSON.parse(await read(dir, `.nuxt/tsconfig.${part}.json`)).compilerOptions
+    expect((await options(dirs.serverImports!, 'node')).erasableSyntaxOnly).toBe(true)
+    for (const part of ['app', 'server', 'shared']) {
+      expect((await options(dirs.serverImports!, part)).erasableSyntaxOnly, part).toBeUndefined()
+    }
+    expect(expectBuilt('serverImports:own')).toBe('')
+    expectBuilt('erasableRoot:prepare')
+    expect(expectBuilt('erasableRoot:typecheck')).toBe('')
+    expect((await options(dirs.erasableRoot!, 'node')).erasableSyntaxOnly).toBe(false)
+  })
+
+  it('should leave the server auto-imports out of the module project, and keep the types of server routes', () => {
+    const files = expectBuilt('serverImports:files')
+    expect(files).not.toContain('src/runtime/server/utils/counter.ts')
+    expect(files).not.toContain('.nuxt/types/nitro-imports.d.ts')
+    expect(files).toContain('src/runtime/server/api/count.get.ts')
+    expect(files).toContain('.nuxt/types/nitro-routes.d.ts')
+    expect(files).toContain('src/runtime/augment.ts')
   })
 
   it('should type check and generate the module entry\'s declarations with oxc with the documented `isolatedDeclarations` tsconfig', async () => {

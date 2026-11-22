@@ -67,6 +67,7 @@ If your module has a `build.config.ts`, or a `build` or `unbuild` field in `pack
 | `hooks['build:before']` | tsdown's `hooks['build:prepare']`, where `ctx.options.cwd` is the module root |
 | `hooks['build:done']` | tsdown's `hooks['build:done']` |
 | `hooks['rollup:done']` | a plugin that [emits the extra files](./4.configuration.md#extra-files-in-the-output), or `package.json` paths that point at the files the build emits |
+| `rollup.inlineDependencies` | a list: tsdown's `deps.onlyBundle`. `true`: `deps.onlyBundle: false`. `false`: nothing, drop it |
 | `hooks['mkdist:*']`, `declaration`, `failOnWarn`, `name`, and `parallel` | nothing: drop them |
 | any other option | see [Unsupported build options](#unsupported-build-options) |
 
@@ -104,8 +105,8 @@ export default defineConfig({
 ```
 
 - If both `build.config.ts` and a field of `package.json` hold options, move the options of both. List each external once.
-- The build never bundles the packages in `dependencies`, `peerDependencies`, and `optionalDependencies`, their subpaths, Node builtins, `@nuxt/kit`, `@nuxt/schema`, `nuxt`, `vue`, `#app`, `#build/*`, and `#imports`. Drop the externals that are among these, and those that no bundled entry imports. The build bundles every other import, `devDependencies` included, so keep the rest in `builder({ externals })`.
-- Optional: to fail the build when it bundles a package from `node_modules` by mistake, set tsdown's `deps.onlyBundle`. List the packages that you mean to bundle, or set it to `[]`.
+- The build never bundles the packages in `dependencies`, `peerDependencies`, and `optionalDependencies`, their subpaths, Node builtins, `@nuxt/kit`, `@nuxt/schema`, `nuxt`, `vue`, `#app`, `#build/*`, and `#imports`. Drop the externals that are among these, and those that no bundled entry imports. Keep the rest in `builder({ externals })`.
+- The build fails when it bundles any other package from `node_modules`, `devDependencies` included. See [Bundled packages](#bundled-packages).
 - `src/module` is always built, so you can leave it out of `entries`. Drop `addRelativeDeclarationExtensions` from directory entries.
 - Relative imports in `tsdown.config.ts` carry their extension, because `prepare` loads the file with Node.
 
@@ -165,9 +166,9 @@ import { addComponents } from './components/index.ts'
 Before you run `prepare`:
 
 - If module code imports files that a build hook generates, commit them, or generate them in `dev:prepare` before `nuxt-module-build prepare`. tsdown's hooks don't run for `prepare`.
-- If your module is in a monorepo and has no `tsconfig.json` of its own, create the two tsconfigs of step 5 now. Otherwise, `prepare` reads the repository root's tsconfig, which can extend a `.nuxt` that doesn't exist yet.
+- If your module is in a monorepo and has no `tsconfig.json` of its own, create the `tsconfig.json` of step 5 now. Otherwise, `prepare` reads the repository root's tsconfig, which can extend a `.nuxt` that doesn't exist yet.
 
-Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Node, it lists each problem with its file, line, and fix, and doesn't generate `.nuxt`. Fix them all, and run it again until it generates `.nuxt`.
+Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Node, it lists every problem with its file, line, and fix, and doesn't generate `.nuxt`. Fix them all, and run it again to generate `.nuxt`.
 
 ### Step 5: Switch to the module's own tsconfigs
 
@@ -176,7 +177,7 @@ Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Nod
 ```json [tsconfig.json]
 {
   "references": [
-    { "path": "./tsconfig.module.json" },
+    { "path": "./.nuxt/tsconfig.node.json" },
     { "path": "./.nuxt/tsconfig.app.json" },
     { "path": "./.nuxt/tsconfig.server.json" },
     { "path": "./.nuxt/tsconfig.shared.json" }
@@ -186,25 +187,13 @@ Then run `pnpm exec nuxt-module-build prepare`. Until module code loads with Nod
 }
 ```
 
-Create `tsconfig.module.json` next to it, for module code:
+`prepare` sets `erasableSyntaxOnly` in the generated tsconfig for module code, so the type check reports the syntax that Node can't run. Then adjust the setup to your module:
 
-```json [tsconfig.module.json]
-{
-  "extends": "./.nuxt/tsconfig.node.json",
-  "compilerOptions": {
-    "tsBuildInfoFile": "./.nuxt/tsconfig.module.tsbuildinfo",
-    "erasableSyntaxOnly": true
-  }
-}
-```
-
-Then adjust them to your module:
-
-- `prepare` copies the `compilerOptions` of `tsconfig.json` into every part. Move `types` that only tests use, such as `"vitest/globals"`, into a `tsconfig.test.json` (see below), and options for module code only into `tsconfig.module.json`.
+- `prepare` copies the `compilerOptions` of `tsconfig.json` into every part. Move `types` that only tests use, such as `"vitest/globals"`, into a `tsconfig.test.json` (see below). For options of module code only, see [Options of one part](./5.typescript.md#options-of-one-part).
 - `prepare` doesn't copy `paths` or `baseUrl`. Move each alias from `paths` into the `imports` field of `package.json`.
 - The generated tsconfigs cover `src` and the module's `.d.ts` files. Move a `.d.ts` that is in an excluded directory, such as `test/`, into `src`.
 - Tests outside `test/nuxt`, and TypeScript config files in the module root such as `tsdown.config.ts`, are in no part. To type check them, add a [`tsconfig.test.json`](./5.typescript.md#tests-and-config-files) to `references`. Leave out of its `include` what your old `exclude` left out, such as `test`.
-- If your module is in a monorepo, put both files in the module's directory. Copy into its `compilerOptions` the entries of the repository root's `types` that `src` relies on.
+- If your module is in a monorepo, put `tsconfig.json` in the module's directory. Copy into its `compilerOptions` the entries of the repository root's `types` that `src` relies on.
 
 Then change the type check:
 
@@ -350,6 +339,16 @@ The build also fails when another plugin changes one of these options, or the fi
 
 tsdown's hooks and plugins don't run for `nuxt-module-build prepare`, or for a playground that loads your sources. If module code imports generated files, commit them, or generate them in `dev:prepare` before `nuxt-module-build prepare`.
 
+### Bundled packages
+
+The build fails when the bundled entries bundle a package from `node_modules` that `package.json` doesn't list in `dependencies` or `peerDependencies`. For each package that the message names:
+
+- If apps that install the module need it, move it to `dependencies` or `peerDependencies`.
+- If bundling it is intended, list it in tsdown's `deps.onlyBundle`. Without a `tsdown.config.ts`, list it in `rollup.inlineDependencies` instead.
+- If the app provides it, add it to `builder({ externals })`.
+
+See [Externals](./4.configuration.md#externals).
+
 ### Output directory
 
 The build empties the output directory before it writes to it, and `tsdown --watch` removes the files that it doesn't emit any more. So `outDir` and `--outDir` have to name a directory inside the module, such as `dist`. A directory outside the module, such as `../dist`, or the module root itself, fails the build.
@@ -395,7 +394,7 @@ When `prepare` reports this, as a warning, run `nuxt-module-build prepare` again
 
 ### Isolated declarations
 
-With `isolatedDeclarations: true` in the tsconfig that includes `src/module.ts`, the build generates the module entry's declarations with oxc. This is faster than TypeScript, but requires an explicit type on every export. TypeScript only accepts `isolatedDeclarations` with `declaration` and without `allowJs`, which the generated tsconfigs set, so set all three in `tsconfig.module.json`:
+With `isolatedDeclarations: true` in the tsconfig that includes `src/module.ts`, the build generates the module entry's declarations with oxc. This is faster than TypeScript, but requires an explicit type on every export. TypeScript only accepts `isolatedDeclarations` with `declaration` and without `allowJs`, which the generated tsconfigs set, so set all three in a `tsconfig.module.json` that you reference in place of `./.nuxt/tsconfig.node.json`:
 
 ```json [tsconfig.module.json]
 {
@@ -404,8 +403,7 @@ With `isolatedDeclarations: true` in the tsconfig that includes `src/module.ts`,
     "tsBuildInfoFile": "./.nuxt/tsconfig.module.tsbuildinfo",
     "allowJs": false,
     "declaration": true,
-    "isolatedDeclarations": true,
-    "erasableSyntaxOnly": true
+    "isolatedDeclarations": true
   }
 }
 ```
@@ -435,7 +433,7 @@ See [Checks on published paths](./3.develop-and-publish.md#checks-on-published-p
 
 ### Other tsconfig layouts
 
-These messages appear when the module doesn't have the tsconfigs of step 5. Either its tsconfig extends another app's `.nuxt/tsconfig.json`, such as a monorepo root's, or the build reads the nearest tsconfig above the module. Give the module a `tsconfig.json` and a `tsconfig.module.json` in its own directory, as in [step 5](#step-5-switch-to-the-modules-own-tsconfigs). If one of the module's own tsconfigs can't be read, fix it, or generate the file it names before you run `prepare`. See [Monorepos](./5.typescript.md#monorepos).
+These messages appear when the module doesn't have the tsconfigs of step 5. Either its tsconfig extends another app's `.nuxt/tsconfig.json`, such as a monorepo root's, or the build reads the nearest tsconfig above the module. Give the module a `tsconfig.json` in its own directory, as in [step 5](#step-5-switch-to-the-modules-own-tsconfigs). If one of the module's own tsconfigs can't be read, fix it, or generate the file it names before you run `prepare`. See [Monorepos](./5.typescript.md#monorepos).
 
 ### Tests and config files
 
@@ -462,7 +460,7 @@ Only the `build:before`, `rollup:done`, and `build:done` hooks run. `mkdist:*` h
 
 #### Rollup options
 
-The module entry is bundled with tsdown's defaults for a Node library, so `rollup.*` options fail the build. Remove them. The build applies `rollup.replace`, and accepts `rollup.emitCJS: false`, `rollup.cjsBridge: false`, and `rollup.output.exports`.
+The module entry is bundled with tsdown's defaults for a Node library, so `rollup.*` options fail the build. Remove them. The build applies `rollup.replace` and `rollup.inlineDependencies`, and accepts `rollup.emitCJS: false`, `rollup.cjsBridge: false`, and `rollup.output.exports`.
 
 #### CommonJS output
 

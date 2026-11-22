@@ -173,11 +173,16 @@ interface InheritedTsconfig {
   compilerOptions: Record<string, unknown>
   /** Absolute patterns. */
   exclude?: string[]
+  /** Whether the tsconfig itself has `references`, rather than one it extends. */
+  references?: boolean
 }
 
-/** The `compilerOptions` and `exclude` of `dir/tsconfig.json`, see {@link inheritedTsconfig}, apart from those of tsconfigs in a `.nuxt`. */
-export function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
-  return inheritedTsconfig(join(dir, 'tsconfig.json'), file => NUXT_BUILD_DIR_RE.test(file))
+/** The `compilerOptions` and `exclude` of `dir/tsconfig.json`, see {@link inheritedTsconfig}, apart from those of tsconfigs in a `.nuxt`, and whether it has `references`. */
+export async function rootTsconfig(dir: string): Promise<InheritedTsconfig> {
+  const { default: ts } = await import('typescript')
+  const file = join(dir, 'tsconfig.json')
+  const raw = ts.readConfigFile(file, ts.sys.readFile).config as RawTsconfig | undefined
+  return { ...await inheritedTsconfig(file, target => NUXT_BUILD_DIR_RE.test(target)), references: !!raw?.references?.length }
 }
 
 /**

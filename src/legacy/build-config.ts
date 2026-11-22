@@ -8,7 +8,7 @@ import type { Diagnostic } from 'nostics'
 import { relative, resolve } from 'pathe'
 
 import type { BuildPlan } from '../build/build.ts'
-import { findModuleCodeIssues, importModule, moduleCodeError } from '../build/loader.ts'
+import { findModuleCodeIssues, hasLoadIssues, importModule, moduleCodeError } from '../build/loader.ts'
 import { bundledEntries, createOptionsCollector, entryName } from '../build/options.ts'
 import type { BuildHookName, ModuleConfig } from '../build/options.ts'
 import { errors, warnings } from '../diagnostics.ts'
@@ -23,7 +23,7 @@ const DEFINE_BUILD_CONFIG_STUB = [
   'export const definePreset = preset => preset',
 ].join('\n')
 
-const ACCEPTED_KEYS = new Set(['failOnWarn', 'name', 'parallel'])
+const ACCEPTED_KEYS = new Set(['name', 'parallel'])
 const SUPPORTED_HOOKS: readonly string[] = ['build:before', 'rollup:done', 'build:done'] satisfies BuildHookName[]
 const UNBUILD_IMPORT_RE = /\bfrom\s*['"]unbuild['"]/
 
@@ -65,6 +65,8 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
   let sourcemap = false
   let declaration: unknown
   let replaceDisabled = false
+  let failOnWarn: boolean | undefined
+  let inlineDependencies: boolean | Array<string | RegExp> | undefined
 
   for (const { name: source, config } of sources) {
     const unsupported = (option: string) => rejected.push(`${source}: ${option}`)
@@ -93,6 +95,9 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
           break
         case 'declaration':
           declaration ??= value
+          break
+        case 'failOnWarn':
+          failOnWarn ??= value !== false
           break
         case 'clean':
           if (value === false) {
@@ -144,6 +149,9 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
         if (key === 'replace' && option === false) {
           replaceDisabled = true
         }
+        else if (key === 'inlineDependencies' && (typeof option === 'boolean' || (Array.isArray(option) && option.every(entry => typeof entry === 'string' || entry instanceof RegExp)))) {
+          inlineDependencies ??= option
+        }
         else if (key === 'replace' && isPlainObject(option)) {
           const { sourcemap: _, sourceMap: __, ...replace } = option
           collector.replaceOptions(replace, 'rollup.replace', unsupported)
@@ -159,6 +167,7 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
   let ctx: BuildContext | undefined
   return {
     ...collector.finish(options.pkg ?? {}, { replace: !replaceDisabled }),
+    onlyBundle: inlineDependencies === true ? false : failOnWarn === false ? undefined : Array.isArray(inlineDependencies) ? inlineDependencies.map(entry => typeof entry === 'string' ? packageName(entry) : entry) : [],
     sourcemap,
     hooks,
     ignoredHooks,
@@ -170,6 +179,11 @@ export function translateBuildConfig(sources: BuildConfigSource[], options: { cw
       }
     },
   }
+}
+
+/** The package that an import specifier such as `@scope/name/subpath` names. */
+function packageName(specifier: string) {
+  return specifier.split('/', specifier.startsWith('@') ? 2 : 1).join('/')
 }
 
 /** Declarations are always generated, and relative declaration specifiers always carry their extension. */
@@ -200,7 +214,7 @@ export async function loadBuildConfig(cwd: string, pkg: PackageJson, outDir: str
     importsUnbuild = UNBUILD_IMPORT_RE.test(await readFile(resolve(cwd, file), 'utf8'))
     const stubs = { 'unbuild': DEFINE_BUILD_CONFIG_STUB, '@nuxt/module-builder': DEFINE_BUILD_CONFIG_STUB }
     const unresolvable = findModuleCodeIssues(cwd, [file], [])
-    if (unresolvable.length) {
+    if (hasLoadIssues(unresolvable)) {
       const withoutFile = translateBuildConfig(fieldSource, { cwd, outDir })
       const runtimeDirs = [resolve(cwd, 'src/runtime'), ...withoutFile.directories.map(directory => directory.srcDir)]
       const entries = bundledEntries(cwd, withoutFile)
