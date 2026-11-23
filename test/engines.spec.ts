@@ -240,7 +240,7 @@ it.skipIf(reasons.typescript7)('should build and prepare a module whose own `typ
     expect(output).toMatch(/the typescript declaration engine uses typescript@7\.1\.\S+, installed as typescript\n/)
   }
   for (const sub of ['dist', '.nuxt/module-builder/declarations']) {
-    const quotes = (text: string | undefined) => sub === 'dist' ? text : text?.replaceAll('\'', '"')
+    const quotes = (text: string | undefined) => text?.replaceAll('\'', '"')
     const own = Object.fromEntries(Object.entries(await declarationsOf(dirs.ownTypescript7!, sub)).map(([file, text]) => [file, quotes(text)]))
     const typescript = await declarationsOf(dirs.typescript!, sub)
     expect(Object.keys(own)).toContain(sub === 'dist' ? 'extra/math.d.mts' : 'src/runtime/plugins/plugin.d.ts')

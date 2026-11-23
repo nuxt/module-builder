@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { readdir, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'pathe'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -14,6 +16,20 @@ const REFERENCES = (node: string, server = './.nuxt/tsconfig.server.json') => JS
 })
 const FIELDS = `\nclass Fields { value!: string }\nexport const ownsField: boolean = Object.hasOwn(new Fields(), 'value')\n`
 const store = (name: string) => `node_modules/.pnpm/${name}@1.0.0/node_modules/${name}`
+const COMPONENTS = {
+  'src/runtime/components/ErrorState.vue': `<script setup lang="ts">\ntype Props = {\n  description?: string\n}\ndefineProps<Props>()\n</script>\n\n<template>\n  <div>\n    <UIcon name="lucide:circle-alert" />\n    <span>{{ description ?? $t('global.anErrorOccurred') }}</span>\n  </div>\n</template>\n`,
+  'src/runtime/components/RowActions.vue': `<script setup lang="ts" generic="R extends { id?: number | string }">\nimport { ref } from '#imports'\n\nconst props = defineProps<{ row: R }>()\nconst open = ref(false)\n</script>\n\n<template>\n  <UButton :aria-label="$t('global.action', 2)" @click="open = !open">\n    {{ props.row.id }}\n  </UButton>\n</template>\n`,
+  'src/runtime/components/WithEmits.vue': `<script setup lang="ts">\nconst emit = defineEmits<{ change: [value: string] }>()\n</script>\n\n<template>\n  <button @click="emit('change', 'clicked')" />\n</template>\n`,
+  'src/runtime/components/WithSlots.vue': `<script setup lang="ts">\ndefineSlots<{ default: (props: { item: string }) => unknown }>()\n</script>\n\n<template>\n  <slot item="one" />\n</template>\n`,
+  'src/runtime/components/WithModel.vue': `<script setup lang="ts">\nconst model = defineModel<string>()\n</script>\n\n<template>\n  <input v-model="model">\n</template>\n`,
+  'src/runtime/components/WithExpose.vue': `<script setup lang="ts">\ndefineExpose({ focus: (): void => {} })\n</script>\n\n<template>\n  <div />\n</template>\n`,
+  'src/runtime/components/index.ts': `import ErrorState from './ErrorState.vue'\n\nexport { default as TestMe } from './TestMe.vue'\nexport const errorState = ErrorState\n`,
+}
+const NO_VUE_DIR = join(tmpdir(), `module-builder-without-vue-${createHash('sha256').update(repoRoot).digest('hex').slice(0, 8)}`)
+const LEGACY_PATHS = (paths: Record<string, string[]>) => JSON.stringify({ extends: './.nuxt/tsconfig.json', compilerOptions: { paths }, exclude: ['dist', 'node_modules', 'playground'] })
+const MY_PATHS = { '#my/*': ['./src/runtime/*'] }
+const ANY_COMPONENT_RE = /declare const __VLS_(?:export|base): any;/
+const componentDeclarations = async (dir: string) => Object.fromEntries(await Promise.all(['ErrorState', 'RowActions', 'TestMe', 'TestMeSetup', 'WithEmits', 'WithSlots', 'WithModel', 'WithExpose'].map(async name => [name, await read(dir, `dist/runtime/components/${name}.d.vue.ts`)] as const)))
 const sizeRows = (output: string) => [...output.matchAll(/(dist\/(?:module\.mjs|runtime\/))\s[^\n]*types/g)].map(match => match[1]).sort()
 
 const dirs: Record<string, string> = {}
@@ -256,7 +272,22 @@ export default {
     files: { 'tsconfig.json': JSON.stringify({ extends: './.nuxt/tsconfig.json', exclude: ['dist', 'node_modules', 'playground'] }) },
   })
 
+  const withoutVue = (name: string, options: Parameters<typeof fixture>[1] = {}) => fixture(join(NO_VUE_DIR, name), { config: PLUGIN, ...options, files: { ...COMPONENTS, ...options.files } })
+  dirs.legacyPaths = await withoutVue('legacy-paths', { files: { 'tsconfig.json': LEGACY_PATHS(MY_PATHS) } })
+  dirs.ownVue = await withoutVue('own-vue', { files: { 'tsconfig.json': LEGACY_PATHS({ vue: ['./src/runtime/vue.d.ts'] }), 'src/runtime/vue.d.ts': 'export declare function defineComponent(options: unknown): \'from the module\'\n' } })
+  dirs.partPaths = await withoutVue('part-paths', {
+    files: {
+      'tsconfig.json': REFERENCES('./.nuxt/tsconfig.node.json').replace('./.nuxt/tsconfig.app.json', './tsconfig.app.json'),
+      'tsconfig.app.json': JSON.stringify({ extends: './.nuxt/tsconfig.app.json', compilerOptions: { tsBuildInfoFile: './.nuxt/tsconfig.app.tsbuildinfo', paths: MY_PATHS } }),
+    },
+  })
+  dirs.rootPaths = await withoutVue('root-paths', { files: { 'tsconfig.json': JSON.stringify({ ...JSON.parse(REFERENCES('./.nuxt/tsconfig.node.json')), compilerOptions: { paths: MY_PATHS } }) } })
+  const staleVue = (source: string) => source.replace(/\.pnpm\/vue@[^/]+\//g, '.pnpm/vue@0.0.0/')
+  dirs.stale = await fixture('.temp-builder/stale', { config: PLUGIN, files: Object.fromEntries(['', '.app', '.node', '.server', '.shared'].map(part => [`.nuxt/tsconfig${part}.json`, staleVue])) })
+  dirs.standalone = await withoutVue('standalone', { files: { 'src/runtime/components/Commented.vue': `<!-- <script setup lang="ts" generic="T"> -->\n<script setup lang="ts">\ndefineProps<{ label: string }>()\n</script>\n\n<template>\n  <span>{{ label }}</span>\n</template>\n`, 'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'ESNext', moduleResolution: 'Bundler', jsx: 'preserve', allowImportingTsExtensions: true, noEmit: true }, include: ['src'] }) } })
+
   await Promise.all([
+    ...['legacyPaths', 'ownVue', 'partPaths', 'rootPaths', 'stale', 'standalone'].map(name => step(name, tsdown(dirs[name]!))),
     step('compose', tsdown(dirs.compose)),
     step('packageImports', tsdown(dirs.packageImports)),
     step('warnings', tsdown(dirs.warnings))
@@ -502,6 +533,13 @@ describe('with a root tsconfig that only lists references', () => {
     expect(await read(dirs.singleTsconfig!, 'dist/module.d.mts')).toBe(await read(dirs.moduleProject!, 'dist/module.d.mts'))
   })
 
+  it('should prepare `.nuxt` again when its tsconfigs map a package into a directory that no longer exists', async () => {
+    expect(expectBuilt('stale')).toMatch(/\[NUXT_MB_B0102\] `\.nuxt` is out of date: its tsconfigs map `vue` into packages that are not installed/)
+    const [target] = JSON.parse(await read(dirs.stale!, '.nuxt/tsconfig.app.json')).compilerOptions.paths.vue
+    expect(target).not.toContain('vue@0.0.0')
+    expect(exists(dirs.stale!, '.nuxt', target)).toBe(true)
+  })
+
   it('should prepare a missing `.nuxt` without the declarations of module code when the module augments none of Nuxt\'s types', () => {
     expect(expectBuilt('appProject')).toContain('[NUXT_MB_B0101]')
     expect(exists(dirs.appProject!, '.nuxt/tsconfig.app.json')).toBe(true)
@@ -524,5 +562,53 @@ describe('with a root tsconfig that only lists references', () => {
     expect(snapshots.resultsAgain).toBe(snapshots.results)
     expectBuilt('nested:prepare')
     expect(await read(dirs.nested!, '.nuxt/module-builder/declarations/src/lib/two.d.ts')).toContain('label: string;')
+  })
+})
+
+describe('a module that does not install `vue`', () => {
+  const expectTyped = async (dir: string) => {
+    const declarations = await componentDeclarations(dir)
+    expect(Object.entries(declarations).filter(([, text]) => ANY_COMPONENT_RE.test(text)).map(([name]) => name)).toEqual([])
+    expect(declarations.ErrorState).toContain('description?: string;')
+    expect(declarations.RowActions).toContain('row: R;')
+    expect(await read(dir, 'dist/runtime/components/index.d.ts')).toMatch(/^export declare const errorState: import\("vue"\)\.DefineComponent<\{\n {4}description\?: string;/m)
+  }
+
+  it('should declare its components with the types of `vue` when its tsconfig extends `.nuxt/tsconfig.json` and sets `paths`, and warn about the entries they replace', async () => {
+    const output = expectBuilt('legacyPaths')
+    await expectTyped(dirs.legacyPaths!)
+    expect(output).toContain('[NUXT_MB_C0305]')
+    expect(output).toMatch(/- `tsconfig\.json` leaves out `vue`, .* of `\.nuxt\/tsconfig\.json`/)
+    expect(output).toContain(`${GUIDE_URL}#tsconfig-paths`)
+  })
+
+  it('should declare its components with the types of `vue` when a referenced tsconfig of its own sets `paths`, and warn about the entries they replace', async () => {
+    const output = expectBuilt('partPaths')
+    await expectTyped(dirs.partPaths!)
+    expect(output).toMatch(/- `tsconfig\.app\.json` leaves out `vue`, .* of `\.nuxt\/tsconfig\.app\.json`/)
+    expect(output).not.toMatch(/NUXT_MB_B010[12]/)
+  })
+
+  it('should not warn about `paths` in a root tsconfig that only lists references, which replace no generated entries', async () => {
+    const output = expectBuilt('rootPaths')
+    await expectTyped(dirs.rootPaths!)
+    expect(output).not.toContain('NUXT_MB_C0305')
+  })
+
+  it('should keep the module\'s own `paths` entry for a package that a generated tsconfig maps too', async () => {
+    const output = expectBuilt('ownVue')
+    expect(await read(dirs.ownVue!, 'dist/runtime/components/ErrorState.d.vue.ts')).toContain('declare const __VLS_export: "from the module";')
+    expect(output).toMatch(/- `tsconfig\.json` leaves out `@nuxt\/devtools`/)
+    expect(output).not.toMatch(/leaves out `vue`/)
+  })
+
+  it('should fail when `vue` does not resolve from the components whose declarations it types', () => {
+    const output = expectFailed('standalone')
+    expect(output).toContain('NUXT_MB_B0206: `vue` does not resolve from these components')
+    expect(output).toContain('`src/runtime/components/ErrorState.vue`')
+    expect(output).toContain('`src/runtime/components/TestMe.vue`')
+    expect(output).toContain('`src/runtime/components/Commented.vue`')
+    expect(output).not.toContain('RowActions.vue')
+    expect(exists(dirs.standalone!, 'dist')).toBe(false)
   })
 })

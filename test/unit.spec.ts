@@ -22,7 +22,7 @@ import { unchangedOutputs } from '../src/tsdown/unchanged.ts'
 import type { Rolldown, UserConfig } from 'tsdown'
 import { exec } from 'tinyexec'
 import { bundledPackages, runtimeExternals } from '../src/tsdown/externals.ts'
-import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, packageName, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
+import { SERVER_ROUTES_STUB, createTsconfigResolver, declarationPaths, missingPathPackages, packageName, replacedGeneratedPaths, rootTsconfig, tsconfigPaths, typeResolutionFs, writeDerivedTsconfig, writeServerRoutesStub } from '../src/transpile/tsconfig.ts'
 import { transformCss } from '../src/transpile/stylesheets.ts'
 import { contentCache } from '../src/transpile/cache.ts'
 import { createDeclarationProgram, declarationDiagnosticClass, declarationError, REMAPPED_CODES, restoreImports } from '../src/transpile/declarations.ts'
@@ -1423,6 +1423,49 @@ describe('resolveOutDir', () => {
     expect(() => resolveOutDir(join(root, 'mod'), 'linked/dist')).toThrow(`resolves to \`${join(root, 'other/dist')}\`, which is not inside the module root`)
     expect(() => resolveOutDir(join(root, 'mod'), 'self')).toThrow(`resolves to \`${join(root, 'mod')}\`, which is not inside the module root`)
     expect(resolveOutDir(join(root, 'mod'), 'dist')).toBe(join(root, 'mod/dist'))
+  })
+})
+
+describe('missingPathPackages', () => {
+  it('should list the aliases that `.nuxt` maps into a package directory that does not exist, and not those into a file of an installed package or outside a package', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-stale-'))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, '.nuxt'))
+    await mkdir(join(cwd, 'node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt'), { recursive: true })
+    await mkdir(join(cwd, 'node_modules/.cache'), { recursive: true })
+    const paths = {
+      'vue-demi': ['../node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt/dist/app/compat/vue-demi'],
+      'vue': ['../node_modules/.pnpm/vue@3.0.0/node_modules/vue'],
+      '@unhead/vue': ['../node_modules/.pnpm/@unhead+vue@2.0.0/node_modules/@unhead/vue'],
+      '#app-manifest': ['../node_modules/.cache/nuxt/manifest'],
+      'vue-router': ['../node_modules/.pnpm/nuxt@4.0.0/node_modules/nuxt/dist/missing', '../node_modules/.pnpm/vue-router@4.0.0/node_modules/vue-router'],
+      '#shared': ['../shared'],
+      '#build/*': ['./*'],
+    }
+    await writeFile(join(cwd, '.nuxt/tsconfig.json'), JSON.stringify({ compilerOptions: { paths } }))
+    await writeFile(join(cwd, '.nuxt/tsconfig.app.json'), JSON.stringify({ compilerOptions: { paths: { 'vue-demi': paths['vue-demi'] } } }))
+    expect(missingPathPackages(cwd)).toEqual({ aliases: ['vue', '@unhead/vue', 'vue-router'], tsconfigs: [join(cwd, '.nuxt/tsconfig.json')] })
+  })
+})
+
+describe('replacedGeneratedPaths', () => {
+  it('should list the generated entries that the module\'s own `paths` replace, through the tsconfigs that it extends, and none for a generated tsconfig or one without `paths`', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'module-builder-replaced-'))
+    onTestFinished(() => rm(cwd, { recursive: true, force: true }))
+    await mkdir(join(cwd, '.nuxt'))
+    const generated = join(cwd, '.nuxt/tsconfig.app.json')
+    await writeFile(generated, JSON.stringify({ compilerOptions: { paths: { 'vue': ['../node_modules/vue'], '#app': ['../node_modules/nuxt/dist/app'], '#my/*': ['../generated/*'] } } }))
+    const tsconfig = async (name: string, config: object) => {
+      await writeFile(join(cwd, name), JSON.stringify(config))
+      return { path: join(cwd, name), config: parseTsconfig(join(cwd, name)) }
+    }
+    await tsconfig('tsconfig.base.json', { extends: './.nuxt/tsconfig.app.json', compilerOptions: { paths: { '#my/*': ['./src/*'] } } })
+    expect(replacedGeneratedPaths(await tsconfig('tsconfig.app.json', { extends: './tsconfig.base.json', compilerOptions: { strict: true } }))).toEqual({
+      generated,
+      paths: { 'vue': [join(cwd, 'node_modules/vue')], '#app': [join(cwd, 'node_modules/nuxt/dist/app')] },
+    })
+    expect(replacedGeneratedPaths(await tsconfig('tsconfig.plain.json', { extends: './.nuxt/tsconfig.app.json', compilerOptions: { strict: true } }))).toBeUndefined()
+    expect(replacedGeneratedPaths({ path: generated, config: parseTsconfig(generated) })).toBeUndefined()
   })
 })
 

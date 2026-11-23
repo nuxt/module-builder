@@ -12,7 +12,7 @@ import { scriptExtension, valueSpecifiers } from '../transpile/specifiers.ts'
 import { loadOxc } from '../transpile/oxc.ts'
 import { EXCLUDE } from '../transpile/transpile-dir.ts'
 import type { ResolveExternal } from '../transpile/transpile-dir.ts'
-import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, TsconfigError, tsconfigPaths, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
+import { createTsconfigResolver, declarationPaths, hasIsolatedDeclarations, namedCachePath, packageName, replacedGeneratedPaths, restoredTsconfigPaths, TsconfigError, unresolvedVueLibrary, writeDependencyImports, writeDerivedTsconfig, writeServerRoutesStub } from '../transpile/tsconfig.ts'
 import type { TsconfigResolver } from '../transpile/tsconfig.ts'
 import { errors, warnings } from '../diagnostics.ts'
 import { findPackageDir, findUp, isInside, isSourceScript, probe, relativeSpecifier, SCRIPT_RE, writeIfChanged } from '../utils.ts'
@@ -81,6 +81,7 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     const sources = [tsconfigs.replaced, ...['.nuxt/tsconfig.json', ...['node', 'app', 'server', 'shared'].map(part => `.nuxt/tsconfig.${part}.json`)].map(file => resolve(cwd, file))]
     warnings.NUXT_MB_C0301({ path: relative(cwd, tsconfigs.replaced), inside: isInside(cwd, tsconfigs.replaced), sources }, { method: 'info' })
   }
+  reportReplacedPaths(cwd, tsconfigs)
 
   const directories: DirectoryEntry[] = [{ srcDir: resolve(cwd, 'src/runtime'), outDir: join(outDir, 'runtime'), ext: 'js' }, ...config.directories]
   const entries = bundledEntries(cwd, config)
@@ -105,9 +106,30 @@ export async function resolveBuild({ cwd, pkg, outDir, sourcemap, config }: Pick
     isolatedDeclarations: config.isolatedDeclarations ?? hasIsolatedDeclarations(moduleTsconfig),
     selfPaths,
     declarationTsconfig: moduleTsconfig ? namedCachePath(cwd, `declarations-${createHash('sha256').update(outDir).digest('hex').slice(0, 12)}.json`) : false,
-    declarationPaths: declarationPaths({ ...selfPaths, ...tsconfigPaths(moduleTsconfig) }, cwd).paths,
+    declarationPaths: declarationPaths({ ...selfPaths, ...restoredTsconfigPaths(moduleTsconfig) }, cwd).paths,
     directoryPaths: { ...selfPaths, ...nuxtDir && { '#app/nuxt': [join(nuxtDir, 'dist/app/nuxt')] } },
     generatedTypesHash: await hashGeneratedTypes(cwd),
+  }
+}
+
+/**
+ * Warns about the module's own tsconfigs whose `paths` replace generated entries that the
+ * module cannot resolve without them: aliases, and packages it does not install itself.
+ */
+function reportReplacedPaths(cwd: string, tsconfigs: TsconfigResolver) {
+  const replaced = [tsconfigs.root, ...tsconfigs.projects].flatMap((tsconfig) => {
+    const found = replacedGeneratedPaths(tsconfig)
+    const aliases = Object.keys(found?.paths ?? {}).filter((alias) => {
+      const name = packageName(alias)
+      return !name || !findPackageDir(name, cwd)
+    })
+    return found && aliases.length ? [{ path: tsconfig!.path, generated: found.generated, aliases: aliases.sort((a, b) => Number(b === 'vue') - Number(a === 'vue')) }] : []
+  })
+  if (replaced.length) {
+    warnings.NUXT_MB_C0305({
+      tsconfigs: replaced.map(({ path, generated, aliases }) => ({ path: relative(cwd, path), generated: relative(cwd, generated), aliases })),
+      sources: replaced.flatMap(({ path, generated }) => [path, generated]),
+    })
   }
 }
 
@@ -124,11 +146,32 @@ export async function prepareBuild(plan: BuildPlan, { keepOutput }: { keepOutput
   }
 
   await writeServerRoutesStub(cwd)
+  await assertResolvableVueLibrary(plan)
   if (plan.moduleTsconfig && plan.declarationTsconfig) {
     const imports = plan.moduleProject ? await writeDependencyImports(cwd, plan.rootTsconfig) : undefined
     await writeDerivedTsconfig(cwd, plan.moduleTsconfig, plan.selfPaths, { file: plan.declarationTsconfig, imports })
   }
   plan.prepared = analyseSources(plan)
+}
+
+const SCRIPT_TAG_OR_COMMENT_RE = /<!--[\s\S]*?(?:-->|$)|<script\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi
+
+/**
+ * Fails when the library that the generated code of a single-file component imports does not
+ * resolve from it, for each component whose declaration is inferred from that library: every
+ * component but one with a `generic` script setup, whose declaration spells out its type.
+ */
+async function assertResolvableVueLibrary(plan: BuildPlan) {
+  const { cwd, rootTsconfig, directories } = plan
+  const components = directories.flatMap(directory => globSync(['**/*.vue'], { cwd: directory.srcDir, ignore: EXCLUDE, absolute: true, onlyFiles: true }).map(file => normalize(file)))
+  const inferred = components.filter(file => ![...readFileSync(file, 'utf8').matchAll(SCRIPT_TAG_OR_COMMENT_RE)].some(([tag]) => /^<script\b/i.test(tag) && /\ssetup\b/.test(tag) && /\sgeneric\s*=/.test(tag)))
+  if (!rootTsconfig || !inferred.length) {
+    return
+  }
+  const unresolved = unresolvedVueLibrary(await writeDerivedTsconfig(cwd, rootTsconfig, plan.directoryPaths, { vue: true }), inferred)
+  if (unresolved.length) {
+    throw errors.NUXT_MB_B0206({ lib: unresolved[0]!.lib, files: unresolved.map(({ file }) => relative(cwd, file)), sources: unresolved.map(({ file }) => file) })
+  }
 }
 
 /**

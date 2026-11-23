@@ -13,6 +13,10 @@ function list(values: string[]) {
   return [...new Set(values)].map(value => `\`${value}\``).join(', ')
 }
 
+function someOf(values: string[], shown = 4) {
+  return values.length > shown + 1 ? `${list(values.slice(0, shown))} and ${values.length - shown} more` : list(values)
+}
+
 const UNPUBLISHABLE = 'TypeScript sources or paths that `files` leaves out'
 
 /** The upgrade guide as released with this version, which the `docs` anchors of diagnostics point into. */
@@ -76,6 +80,12 @@ export const errorCodes = {
     why: (p: { found?: string, fallback?: string }): string => `\`@nuxt/module-builder\` uses the JavaScript API of TypeScript, from the module's \`typescript\` (\`${pkg.peerDependencies.typescript}\`) or else from \`@typescript/typescript6\`. ${p.found ? `The module has \`${p.found}\`, which has no JavaScript API` : 'The module has no `typescript`'}, and ${p.fallback ? `\`@typescript/typescript6\` resolves to \`${p.fallback}\`, which is not \`@typescript/typescript6@^6.0.0\`` : '`@typescript/typescript6` is not installed'}.`,
     fix: (p: { install: string }): string => `Install the JavaScript API of TypeScript 6 next to TypeScript 7 with \`${p.install}\`, or install TypeScript 6 as the module's \`typescript\` with \`pnpm add -D typescript@^6.0.0\`.`,
     docs: false,
+  },
+
+  NUXT_MB_B0206: {
+    why: (p: { lib: string, files: string[] }): string => `\`${p.lib}\` does not resolve from these components with the tsconfig that their declarations are generated with, so each would be declared as \`any\`: ${list(p.files)}.`,
+    fix: (p: { lib: string }): string => `Add \`${p.lib}\` to \`devDependencies\`, or make the tsconfig that includes them extend or reference the tsconfigs in \`.nuxt\`, which map it in \`paths\`.`,
+    docs: '#declaration-errors',
   },
 
   NUXT_MB_C0001: {
@@ -222,6 +232,11 @@ export const warningCodes = {
     fix: 'Add `nuxt-module-build prepare` to the module\'s `dev:prepare` script to skip this step.',
     docs: '#preparing-nuxt',
   },
+  NUXT_MB_B0102: {
+    why: (p: { aliases: string[] }): string => `\`.nuxt\` is out of date: its tsconfigs map ${someOf(p.aliases)} into packages that are not installed. Running \`nuxt-module-build prepare\` first.`,
+    fix: 'Run `nuxt-module-build prepare` again after you update dependencies, to skip this step and to type check the module with the installed packages.',
+    docs: '#preparing-nuxt',
+  },
   NUXT_MB_B0202: {
     why: (p: { setting: string }): string => `The declarations of the bundled entries are generated with oxc, as ${p.setting} selects, which requires an explicit type annotation on every exported value, and some have none.`,
     fix: 'Give each export that an error names an explicit type. Write the module entry as:\n\n  const module: NuxtModule<ModuleOptions> = defineNuxtModule<ModuleOptions>({ /* ... */ })\n  export default module\n\nrather than `export default defineNuxtModule<ModuleOptions>({ /* ... */ })`.',
@@ -265,6 +280,14 @@ export const warningCodes = {
     why: (p: { groups: Array<[path: string, files: number]> }): string => `No project that \`tsconfig.json\` references includes these TypeScript files, so \`vue-tsc -b\` does not type check them: ${p.groups.map(([path, files]) => path.endsWith('/') ? `\`${path}\` (${files} ${files === 1 ? 'file' : 'files'})` : `\`${path}\``).join(', ')}.`,
     fix: 'Reference a tsconfig that includes them, such as a `tsconfig.test.json` for tests and config files, or add them to the `exclude` of `tsconfig.json`.',
     docs: '#tests-and-config-files',
+  },
+  NUXT_MB_C0305: {
+    why: (p: { tsconfigs: Array<{ path: string, generated: string, aliases: string[] }> }): string => [
+      `These tsconfigs set \`paths\`, which replace the \`paths\` of the generated tsconfig that they extend, so the module's own type check does not resolve the entries they leave out${p.tsconfigs.some(({ aliases }) => aliases.includes('vue')) ? ', and types components as `any`, as `vue` is one of them' : ''}. The declarations are generated with these entries.`,
+      ...p.tsconfigs.map(({ path, generated, aliases }) => `  - \`${path}\` leaves out ${someOf(aliases)} of \`${generated}\``),
+    ].join('\n'),
+    fix: (p: { tsconfigs: Array<{ path: string }> }): string => `Remove \`paths\` from ${list(p.tsconfigs.map(({ path }) => path))}. Replace each of its aliases with a relative import, or with an entry in the \`imports\` field of \`package.json\`, with its \`dist\` path in \`publishConfig.imports\`.`,
+    docs: '#tsconfig-paths',
   },
   NUXT_MB_C0404: {
     why: (p: { engine: string, reason: string }): string => `The \`${p.engine}\` declaration engine cannot be used: ${p.reason}. Declarations are generated with the JavaScript API of the module's own TypeScript instead.`,
