@@ -351,6 +351,8 @@ The build fails when the bundled entries bundle a package from `node_modules` th
 - If bundling it is intended, list it in tsdown's `deps.onlyBundle`. Without a `tsdown.config.ts`, list it in `rollup.inlineDependencies` instead.
 - If the app provides it, add it to `builder({ externals })`.
 
+Module Builder keeps imports of installed packages in generated declarations, even when it bundles their JavaScript. If you vendor a dependency, point public declarations at the types you ship. Type-check a public import from a fresh tarball install.
+
 See [Externals](./4.configuration.md#externals).
 
 ### Output directory
