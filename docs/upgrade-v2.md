@@ -313,6 +313,15 @@ Run your module's type-check script, and fix what it reports. [Errors from check
 
 5. If you kept `types` and `typesVersions` in step 3, check `node10` resolution as well, with `--ignore-rules cjs-resolves-to-esm internal-resolution-error` and no `--profile`.
 6. Fix any path that publint or attw reports.
+7. In a fresh Nuxt app, install the tarball:
+
+   ```bash
+   pnpm install /path/to/my-module-1.0.0.tgz
+   ```
+
+   Add the module to `modules` in `nuxt.config.ts`, then start and build the app. If consumers import from your package directly, use those imports in the app and run its type check.
+
+   If you vendor types, check the affected imports again in a separate TypeScript config with `skipLibCheck: false`. Extend the relevant generated Nuxt config, such as `.nuxt/tsconfig.app.json`, to keep aliases like `#app`. Look for errors in your package's declarations.
 
 [Checking the package](./3.develop-and-publish.md#checking-the-package) explains what attw reports for a module that is correct, and how to run step 4 on every build with tsdown's `attw` option. Finally, run your module's tests and its playground.
 
@@ -350,6 +359,8 @@ The build fails when the bundled entries bundle a package from `node_modules` th
 - If apps that install the module need it, move it to `dependencies` or `peerDependencies`.
 - If bundling it is intended, list it in tsdown's `deps.onlyBundle`. Without a `tsdown.config.ts`, list it in `rollup.inlineDependencies` instead.
 - If the app provides it, add it to `builder({ externals })`.
+
+Module Builder keeps imports of installed packages in generated declarations, even when it bundles their JavaScript. If you vendor a dependency, point your public declarations at the types you ship. Check those imports as in [step 10](#step-10-check-the-package).
 
 See [Externals](./4.configuration.md#externals).
 
