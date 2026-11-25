@@ -321,7 +321,7 @@ Run your module's type-check script, and fix what it reports. [Errors from check
 
    Add the module to `modules` in `nuxt.config.ts`, then start and build the app. If consumers import from your package directly, use those imports in the app and run its type check.
 
-   If you vendor types, import the affected entry points in a separate TypeScript project with `skipLibCheck: false`. Check for errors in your package's declarations.
+   If you vendor types, check the affected imports again in a separate TypeScript config with `skipLibCheck: false`. Extend the relevant generated Nuxt config, such as `.nuxt/tsconfig.app.json`, to keep aliases like `#app`. Look for errors in your package's declarations.
 
 [Checking the package](./3.develop-and-publish.md#checking-the-package) explains what attw reports for a module that is correct, and how to run step 4 on every build with tsdown's `attw` option. Finally, run your module's tests and its playground.
 
