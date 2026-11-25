@@ -294,7 +294,7 @@ Run your module's type-check script, and fix what it reports. [Errors from check
 
 ### Step 10: Check the package
 
-1. Run `pnpm pack`. It writes a tarball, such as `my-module-1.0.0.tgz`.
+1. Pack the module with the package manager you publish with. Run `pnpm pack` for pnpm or `npm pack` for npm. This writes a tarball, such as `my-module-1.0.0.tgz`.
 2. Run `pnpm dlx publint my-module-1.0.0.tgz`.
 3. List the imports in its declarations that don't resolve from the package alone. Write the report to a file first, as attw can exit before a pipe reads all of it:
 
@@ -313,6 +313,13 @@ Run your module's type-check script, and fix what it reports. [Errors from check
 
 5. If you kept `types` and `typesVersions` in step 3, check `node10` resolution as well, with `--ignore-rules cjs-resolves-to-esm internal-resolution-error` and no `--profile`.
 6. Fix any path that publint or attw reports.
+7. In a fresh Nuxt app, install the tarball:
+
+   ```bash
+   npm install /path/to/my-module-1.0.0.tgz
+   ```
+
+   Register the module in `nuxt.config.ts`, then start and build the app. If your package exposes public imports, use them in the app and run its type check. This checks how JavaScript and type imports resolve from the installed package.
 
 [Checking the package](./3.develop-and-publish.md#checking-the-package) explains what attw reports for a module that is correct, and how to run step 4 on every build with tsdown's `attw` option. Finally, run your module's tests and its playground.
 
@@ -351,7 +358,7 @@ The build fails when the bundled entries bundle a package from `node_modules` th
 - If bundling it is intended, list it in tsdown's `deps.onlyBundle`. Without a `tsdown.config.ts`, list it in `rollup.inlineDependencies` instead.
 - If the app provides it, add it to `builder({ externals })`.
 
-Module Builder keeps imports of installed packages in generated declarations, even when it bundles their JavaScript. If you vendor a dependency, point public declarations at the types you ship. Type-check a public import from a fresh tarball install.
+Module Builder keeps imports of installed packages in generated declarations, even when it bundles their JavaScript. If you vendor a dependency, point public declarations at the types you ship. Type-check a public import from the tarball as in [step 10](#step-10-check-the-package).
 
 See [Externals](./4.configuration.md#externals).
 
